@@ -4,7 +4,9 @@
 //! `qbz_app::settings::search_service::SearchService` (ADR-006: the cache
 //! (Capa A) + ranking (Capa B) model logic lives in `qbz-app`; this module
 //! only owns the per-user store lifecycle and the thin accessors the Slint
-//! search surfaces — the cortinilla and the SWR result-page controller — call).
+//! search surfaces — the cortinilla and the result-page controller — call).
+//! NOTE: there is no SWR here. The result cache is written by nobody and read
+//! by nobody; only the ranking half is live.
 //!
 //! Lifecycle mirrors `artist_blacklist` / `fav_cache` / `discover_prefs`: a
 //! process-global `Mutex<Option<Service>>` bound per session via [`init`] /
@@ -105,11 +107,13 @@ pub fn cached(query: &str) -> Option<qbz_models::SearchAllResults> {
     with_service(None, |s| s.cached(query))
 }
 
-/// Store a live `results` page for `query` in the cache. No-op when unbound /
-/// disabled.
-pub fn store(query: &str, results: &qbz_models::SearchAllResults) {
-    with_service_mut(|s| s.store(query, results));
-}
+// `store` — REMOVED with its only caller (`search.rs`'s cortinilla load).
+// `SearchCache` and `cached()` stay in `qbz-app` as an unused, tested library:
+// the code is fine, it was simply never wired to a reader. Anything that
+// revives it should read the two traps documented in the cortinilla-parity
+// contract first (a partial `Some` when the volatile tier was evicted but the
+// artist slice survived, and `page()` substituting `items.len()` for the
+// server's total).
 
 /// Record a user interaction with a search-surfaced entity. No-op when
 /// unbound / disabled. `kind` is one of `"artist" | "album" | "track" | "playlist"`.

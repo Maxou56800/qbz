@@ -4,9 +4,14 @@
 //! It owns ONLY the caching of `SearchAllResults` and exposes a tiny,
 //! synchronous `get`/`put` surface. It does NOT hold a `QbzCore`, does NOT
 //! call `core.search_all`, and knows nothing about the live network fetch.
-//! The SWR orchestration (render cached → fire live → replace, guarded by a
-//! version counter) lives in the qbz-slint controller, which already calls
-//! `core.search_all()` itself.
+//!
+//! **STATUS: this module is an unused library.** The SWR orchestration it was
+//! written for was never wired — `get` has no production caller in either
+//! frontend, and as of 2026-08-03 `put` has none either. It is kept, and kept
+//! tested, because the code is correct; it simply has no reader. The Qt
+//! frontend caches the FINISHED cortinilla payload instead
+//! (`qbz-app/src/settings/payload_cache.rs`), which also skips the mapping,
+//! ranking and local-library work an API-shaped cache cannot.
 //!
 //! ## Two tiers, by volatility
 //!

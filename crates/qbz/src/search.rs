@@ -1117,9 +1117,14 @@ where
     );
     let mut data = match results {
         Ok(results) => {
-            // Persist the live page so a later keystroke (or restart) can paint
-            // instantly from cache (SWR). No-op when the module is disabled.
-            crate::search_service::store(query, &results);
+            // NOTE: the live page is NOT persisted into the result cache
+            // (CAPA A). Nothing has ever read it — `search_service::cached`
+            // has zero non-test callers, and `git log -S` shows the read side
+            // was never wired in any commit of this repo's history. The write
+            // cost a full serialize + `fs::write` of a multi-megabyte artist
+            // store on this thread, per keystroke, to feed a file nobody
+            // opens. CAPA B (the learned ranking) below is the half that does
+            // reach the user.
             let top = crate::search_service::top_for_query(query);
             map_search_all_to_cortinilla(query, &results, top)
         }

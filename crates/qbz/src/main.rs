@@ -751,8 +751,10 @@ async fn enter_shell_offline(
         // Pinned items are local-only and must render offline too.
         crate::pinned::init_for_user(&dir);
         crate::local_favorites::init_for_user(&dir);
-        // Intelligent Search (cache + ranking), seeded from the persisted pref.
-        // Cached results stay searchable offline; live revalidation no-ops.
+        // Intelligent Search, seeded from the persisted pref. Only the
+        // RANKING half is live: the result cache is never read, so an offline
+        // session gets no cached search results (the claim that used to sit
+        // here was wrong from the day it was written).
         crate::search_service::init(&dir, crate::ui_prefs::load().intelligent_search);
         // Session persistence (queue + playback): open the per-user session.db
         // and seed the persist/resume gates from the playback prefs.
