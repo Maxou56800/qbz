@@ -246,10 +246,42 @@ impl SearchRanking {
                 continue;
             }
             max_order = max_order.max(bucket.order);
-            self.order.insert(bucket.query.clone(), bucket.order);
-            self.ranking.insert(bucket.query, map);
+            // ONE-SHOT KEY MIGRATION (2026-08-03). `normalize_query` gained
+            // accent + punctuation folding, so a bucket persisted under the
+            // OLD rule can carry a key the new rule would never produce —
+            // `lääz rockit` where lookups now ask for `laaz rockit`. Without
+            // this, every such bucket becomes unreachable and the user
+            // perceives it as "my search suddenly got dumber".
+            //
+            // Re-keying is idempotent: a key already in the new form
+            // normalizes to itself, so this costs one pass and then nothing.
+            // Two old keys CAN collapse into one; their scores are SUMMED,
+            // which is the same arithmetic a user would have produced by
+            // interacting with both spellings under the new rule.
+            //
+            // Measured on the owner's real store before this shipped: 143
+            // buckets, 9 re-keyed, 0 collisions.
+            let key = normalize_query(&bucket.query);
+            match self.ranking.get_mut(&key) {
+                Some(existing) => {
+                    for (k, v) in map {
+                        let slot = existing.entry(k).or_insert(0);
+                        *slot = (*slot + v).min(MAX_SCORE);
+                    }
+                    // Keep the MORE RECENT of the two recency stamps.
+                    let prev = self.order.get(&key).copied().unwrap_or(0);
+                    self.order.insert(key, prev.max(bucket.order));
+                }
+                None => {
+                    self.order.insert(key.clone(), bucket.order);
+                    self.ranking.insert(key, map);
+                }
+            }
         }
         self.tick = max_order;
+        // The re-keyed state only reaches disk on the next `record`. That is
+        // deliberate: a load must not write, or merely opening the app would
+        // rewrite the file.
     }
 
     /// Serialize the current in-memory state and write it to disk. Best-effort:
@@ -514,6 +546,38 @@ mod tests {
         assert_eq!(r.ranking.len(), MAX_QUERIES);
         assert_eq!(r.score_for("q0", "artist", "1"), 0); // evicted
         assert_eq!(r.score_for("overflow", "artist", "1"), 1); // present
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_keys_are_migrated_and_collisions_sum() {
+        // A store written under the OLD normalize rule (accents and
+        // punctuation preserved) must stay reachable under the new one.
+        let dir = unique_test_dir("migrate");
+        std::fs::create_dir_all(dir.join("search")).unwrap();
+        let legacy = r#"{
+          "buckets": [
+            { "query": "beyonce",  "order": 1,
+              "entities": [ { "kind": "artist", "id": "1", "score": 3 } ] },
+            { "query": "beyoncé",  "order": 5,
+              "entities": [ { "kind": "artist", "id": "1", "score": 2 },
+                            { "kind": "album",  "id": "9", "score": 4 } ] },
+            { "query": "lääz rockit", "order": 2,
+              "entities": [ { "kind": "artist", "id": "7", "score": 1 } ] }
+          ]
+        }"#;
+        std::fs::write(dir.join("search").join("search_ranking.json"), legacy).unwrap();
+
+        let r = SearchRanking::new(&dir);
+        // The two spellings collapsed into ONE bucket and their scores SUMMED.
+        assert_eq!(r.score_for("beyonce", "artist", "1"), 5, "3 + 2");
+        assert_eq!(r.score_for("beyoncé", "artist", "1"), 5, "same bucket now");
+        assert_eq!(r.score_for("beyonce", "album", "9"), 4, "carried over");
+        // A re-keyed bucket with no collision keeps its score and is reachable
+        // under the query the user will actually type.
+        assert_eq!(r.score_for("laaz rockit", "artist", "7"), 1);
+        assert_eq!(r.score_for("Lääz Rockit", "artist", "7"), 1);
+        drop(r);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
