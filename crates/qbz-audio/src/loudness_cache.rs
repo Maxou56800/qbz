@@ -71,14 +71,17 @@ pub fn lufs_from_replaygain(gain_db: f32) -> f32 {
 }
 
 /// Linear gain that moves a track at `lufs` to `target_lufs`: boost capped at
-/// [`MAX_BOOST_DB`], and with `prevent_clipping` never above what keeps the
-/// known peak [`PEAK_HEADROOM_DB`] under full scale.
+/// [`MAX_BOOST_DB`], and with `prevent_clipping` a BOOST is further capped at
+/// what keeps the known peak [`PEAK_HEADROOM_DB`] under full scale. The guard
+/// only ever limits a boost: a track that needs none keeps unity (or its
+/// attenuation) even when its own peaks already sit above the headroom —
+/// that is the master's doing, not ours.
 pub fn gain_for(lufs: f32, peak: Option<f32>, target_lufs: f32, prevent_clipping: bool) -> f32 {
     let db = (target_lufs - lufs).min(MAX_BOOST_DB);
     let mut gain = db_to_linear(db);
     if prevent_clipping {
         if let Some(p) = peak.filter(|p| *p > 0.0) {
-            let ceiling = db_to_linear(PEAK_HEADROOM_DB) / p;
+            let ceiling = (db_to_linear(PEAK_HEADROOM_DB) / p).max(1.0);
             if gain > ceiling {
                 gain = ceiling;
             }
@@ -281,8 +284,12 @@ mod tests {
             (gain_for(-30.0, None, -14.0, true) - db_to_linear(6.0)).abs() < 1e-4,
             "quiet track, no peak: +6 dB cap"
         );
-        let ceiling = db_to_linear(-1.0) / 0.9;
-        assert!((gain_for(-20.0, Some(0.9), -14.0, true) - ceiling).abs() < 1e-4, "-1 dBTP over the peak");
+        let ceiling = db_to_linear(-1.0) / 0.5;
+        assert!((gain_for(-20.0, Some(0.5), -14.0, true) - ceiling).abs() < 1e-4, "-1 dBTP over the peak");
+        assert!(
+            (gain_for(-20.0, Some(0.9), -14.0, true) - 1.0).abs() < 1e-4,
+            "a peak already at -0.9 dBFS leaves no room to boost, but the guard never attenuates"
+        );
         assert!(
             (gain_for(-20.0, Some(0.9), -14.0, false) - db_to_linear(6.0)).abs() < 1e-4,
             "no clipping guard: full boost"
