@@ -102,8 +102,9 @@ Rectangle {
     // columns EQUAL so the centre column stays dead centre. The breakpoints
     // are the SHARED theme token (QbzTheme.npbSideFrac) — the Small bar reads
     // the same one, so the two bars cannot drift apart.
-    // `root.width` IS the window width: the bar is anchored left-to-right on
-    // the shell root, exactly like PlayerBar.slint reads its own root.
+    // `root.width` is the window width minus the two side gutters
+    // (AppShell `npbGutter`): the bar is anchored left-to-right on the shell
+    // root, exactly like PlayerBar.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colSide: isClassic ? 0.324 : sideFrac
     property real colCentre: 1.0 - 2.0 * colSide

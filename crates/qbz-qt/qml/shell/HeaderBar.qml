@@ -175,20 +175,66 @@ Rectangle {
         try { return JSON.parse(QbzBridge.settingsJson) } catch (e) { return ({}) }
     }
 
-    // Follow navigation into the header, including the closed-sidebar fallback.
-    // The separate relocation preference also works while navigation stays in
-    // the sidebar; only that explicit title-bar placement needs custom chrome.
+    // Purchases FOLLOWS the section nav (2026-09-13): it is up here exactly
+    // when the sections are — the full tabs, or the compact buttons while
+    // the sidebar is closed / "Compact header navigation" is on — and in the
+    // sidebar otherwise (Sidebar.qml `purchasesVisible`).
     readonly property bool purchasesInHeader:
         root.settingsDoc.showPurchases === true
         && !QbzSession.offline
-        && (root.headerTabsOn || root.headerCompactOn
-            || (root.settingsDoc.navTbPurchases === true
-                && !QbzShell.systemTitleBar && !QbzShell.hideTitleBar))
+        && (root.headerTabsOn || root.headerCompactOn)
 
     // Highlighted section — derived from the live view (see NavFlyout), OR'd
     // in the triggers with "my menu is open" (Slint highlights off
     // HeaderMenuState.open-index).
     readonly property string activeNav: navFlyout.activeSection
+
+    // ---- Full-tab label size (2026-09-13) --------------------------------
+    // 11 px is the floor: the tabs beside the search box at the 1140 px
+    // breakpoint. 12 / 13 px when every label, MEASURED, fits in the room
+    // left of the search box — 13 px is what the sidebar rows and the flyout
+    // entries use, so with space the two hosts read the same. Measured, not
+    // a window-width breakpoint: the labels are translated and their count
+    // changes (offline hides the Qobuz sections, Purchases is opt-in), so no
+    // fixed width would hold for every locale.
+    readonly property string navLabelsJoined: {
+        var parts = []
+        var s = root.navSections || []
+        for (var i = 0; i < s.length; i++)
+            if (!(s[i].qobuz && QbzSession.offline)) parts.push(s[i].label)
+        if (root.purchasesInHeader) parts.push(QbzSession.tr("Purchases", QbzSession.trRev))
+        return parts.join("")
+    }
+    readonly property int navTabCount: {
+        var n = 0
+        var s = root.navSections || []
+        for (var i = 0; i < s.length; i++)
+            if (!(s[i].qobuz && QbzSession.offline)) n++
+        return n + (root.purchasesInHeader ? 1 : 0)
+    }
+    TextMetrics {
+        id: navMetrics13
+        font.pixelSize: 13
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    TextMetrics {
+        id: navMetrics12
+        font.pixelSize: 12
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    // Per-tab chrome around the label: paddings, the 14 px glyph and its
+    // 6 px gap above the 1140 px breakpoint, and the Row's 2 px spacing.
+    readonly property real navTabsChrome:
+        root.navTabCount * ((root.width >= 1140 ? 9 + 14 + 6 : 11) + 11 + 2)
+    // Room between the tabs' left edge and the (centred) search box.
+    readonly property real navTabsRoom: searchBox.x - (leftControls.x + fullTabs.x) - 16
+    readonly property int navLabelPx:
+        !root.headerTabsOn ? 11
+        : navMetrics13.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 13
+        : navMetrics12.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 12
+        : 11
 
     // Which of the two header forms is mounted (mutually exclusive, and both
     // off while the nav lives in the sidebar and the sidebar is not closed).
@@ -219,8 +265,8 @@ Rectangle {
     }
 
     // Full text tab (HeaderBar.slint NavTab): 30px tall, radius sm, icon 14
-    // (dropped under 1140px), label 11px — semibold + elevated fill when the
-    // section is the current view.
+    // (dropped under 1140px), label 11-13 px (`navLabelPx`) — semibold +
+    // elevated fill when the section is the current view.
     /// The title-bar Purchases entry. Deliberately NOT a `NavTab`: that
     /// component is built around a section object and its click opens the
     /// flyout, while Purchases navigates straight to its route.
@@ -257,7 +303,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 text: QbzSession.tr("Purchases", QbzSession.trRev)
                 color: theme.textPrimary
-                font.pixelSize: 11
+                font.pixelSize: root.navLabelPx
                 font.weight: purchaseTab.isActive ? theme.weightSemibold : theme.weightRegular
             }
         }
@@ -315,7 +361,7 @@ Rectangle {
                 height: parent.height
                 text: navTab.section ? navTab.section.label : ""
                 color: theme.textPrimary
-                font.pixelSize: 11
+                font.pixelSize: root.navLabelPx
                 font.weight: navTab.isActive ? theme.weightSemibold : theme.weightRegular
                 verticalAlignment: Text.AlignVCenter
             }
@@ -424,6 +470,7 @@ Rectangle {
         // closed, compact form OFF. Sits AFTER the three sacred buttons so it
         // can never overlap them (HeaderBar.slint:853).
         Row {
+            id: fullTabs
             visible: root.headerTabsOn
             height: parent.height
             spacing: 2
@@ -450,13 +497,6 @@ Rectangle {
                 showIcon: root.width >= 1140
                 anchors.verticalCenter: parent.verticalCenter
             }
-        }
-
-        // Explicit Purchases relocation with the other navigation in the sidebar.
-        PurchaseTab {
-            visible: root.purchasesInHeader && !root.headerTabsOn && !root.headerCompactOn
-            showIcon: root.width >= 1140
-            anchors.verticalCenter: parent.verticalCenter
         }
 
         // Compact section nav — while the sidebar is fully closed (so the

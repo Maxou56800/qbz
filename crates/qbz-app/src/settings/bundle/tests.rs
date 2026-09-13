@@ -80,6 +80,7 @@ fn portable_fields_apply_verbatim() {
             "gapless_enabled": true,
             "stream_buffer_seconds": 4,
             "normalization_target_lufs": -18.0,
+            "normalization_prevent_clipping": false,
             "sync_audio_on_startup": true
         },
         "prefs": { "streaming_quality": "hires_plus" }

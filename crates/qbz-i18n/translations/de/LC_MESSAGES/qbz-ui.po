@@ -2317,9 +2317,6 @@ msgstr "Wähle welche Seite beim App-Start angezeigt wird"
 msgid "Show Purchases"
 msgstr "Einkäufe anzeigen"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Einkäufe-Bereich in der Seitenleiste zum Durchsuchen und Herunterladen gekaufter Musik anzeigen"
-
 msgid "MENU BAR"
 msgstr "MENÜLEISTE"
 
@@ -4377,17 +4374,11 @@ msgstr "Qobuz-Link öffnen"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Füge eine URL von Qobuz, Spotify, Apple Music, Tidal, Deezer oder song.link ein"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Zeigt den Eintrag Käufe in der eigenen Titelleiste statt in der Seitenleiste"
-
 msgid "Press keys…"
 msgstr "Tasten drücken…"
 
 msgid "Purchases"
 msgstr "Käufe"
-
-msgid "Purchases in title bar"
-msgstr "Käufe in der Titelleiste"
 
 msgid "RENDERER"
 msgstr "RENDERER"
@@ -7575,3 +7566,55 @@ msgstr "Entfernt alles, was zum Offline-Hören gespeichert ist: {} mit {}. Gekau
 #: qbz-qt/qml/settings/SettingsView.qml
 msgid "Advanced"
 msgstr "Erweitert"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "LAUTHEIT"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "Lautstärkenormalisierung"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "Ziel-Lautheit"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "Die Lautheit, auf die jeder Titel angeglichen wird. -14 LUFS entspricht Streaming-Diensten, -18 LUFS ist die ReplayGain-Referenz."
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "Übersteuerung vermeiden"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "Begrenzt die Anhebung, damit der lauteste Pegel unter der Vollaussteuerung bleibt. Aus: leise Titel erreichen das Ziel, auch wenn ihre Spitzen übersteuern."
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · Laut"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · Streaming (Standard)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · Rundfunk (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "Benutzerdefiniert ({} LUFS)"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "Zeigt den Bereich Käufe neben den anderen Bereichen – in der Seitenleiste oder in der Kopfzeile, wo immer sie sind – zum Stöbern und Herunterladen deiner gekauften Musik"

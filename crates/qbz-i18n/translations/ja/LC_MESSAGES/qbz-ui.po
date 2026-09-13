@@ -4106,9 +4106,6 @@ msgstr "最小化、最大化、閉じるボタンをタイトルバーに表示
 msgid "Add discrete plus and minus buttons next to the volume slider in the player bar."
 msgstr "プレーヤーバーの音量スライダーの横に、独立したプラスとマイナスのボタンを追加します。"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "購入した音楽の閲覧とダウンロードのために、サイドバーに購入済みセクションを表示します"
-
 msgid "Keep playing in the menu bar instead of quitting when you close the window"
 msgstr "ウィンドウを閉じたときに終了せず、メニューバーで再生を続けます"
 
@@ -4324,17 +4321,11 @@ msgstr "Qobuzリンクを開く"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Qobuz、Spotify、Apple Music、Tidal、Deezer、song.linkのURLを貼り付けてください"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "購入をサイドバーではなくカスタムタイトルバーに表示します"
-
 msgid "Press keys…"
 msgstr "キーを押してください…"
 
 msgid "Purchases"
 msgstr "購入"
-
-msgid "Purchases in title bar"
-msgstr "タイトルバーに購入を表示"
 
 msgid "RENDERER"
 msgstr "レンダラー"
@@ -7556,3 +7547,55 @@ msgstr "オフライン再生用に保存したものをすべて削除します
 #: qbz-qt/qml/settings/SettingsView.qml
 msgid "Advanced"
 msgstr "詳細"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "ラウドネス"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "音量ノーマライズ"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "目標ラウドネス"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "各トラックを揃えるラウドネス。-14 LUFS はストリーミングサービスの基準、-18 LUFS は ReplayGain の基準です。"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "クリッピングを防止"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "最大ピークがフルスケールを超えないようブーストを制限します。オフにすると、ピークがクリップしても静かなトラックが目標に達します。"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · 大きめ"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · ストリーミング（既定）"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · 放送 (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "カスタム（{} LUFS）"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "購入セクションを他のセクションと同じ場所（サイドバーまたはヘッダー）に表示し、購入した音楽を閲覧・ダウンロードできます"

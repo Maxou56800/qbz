@@ -791,6 +791,7 @@ fn build_audio_rows(g: &Gathered) -> Vec<Row> {
             "—",
             0,
         ),
+        row("Normalization Clipping Guard", yn(d.audio_normalization_prevent_clipping), "—", 0),
         row("Gapless", yn(d.audio_gapless_enabled), "—", 0),
         row(
             "PW Force Bitperfect",
@@ -1092,6 +1093,7 @@ fn build_export_json(g: &Gathered) -> Value {
             "alsaHardwareVolumeProbe": d.audio_alsa_hardware_volume_probe,
             "normalizationEnabled": d.audio_normalization_enabled,
             "normalizationTargetLufs": d.audio_normalization_target_lufs,
+            "normalizationPreventClipping": d.audio_normalization_prevent_clipping,
             "gaplessEnabled": d.audio_gapless_enabled,
             "pwForceBitperfect": d.audio_pw_force_bitperfect,
             "streamBufferSeconds": d.audio_stream_buffer_seconds,

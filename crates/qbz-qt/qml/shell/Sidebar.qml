@@ -53,9 +53,10 @@
 // PURCHASES is the one row in that block that is NOT a section: it is a
 // DirectRow (SidebarDirectRow) — no dropdown, no catalog entry, it just
 // navigates — and it is triple-gated (opt-in `show_purchases`, hidden while
-// offline, and relocated to the custom title bar by `nav_tb_purchases`).
-// Both prefs default OFF, so on a stock install this block is still the same
-// four section rows it has always been.
+// offline, and shown only while the sections themselves live here: with the
+// navigation in the header it follows them up there). The pref defaults
+// OFF, so on a stock install this block is still the same four section rows
+// it has always been.
 // The playlist/folder tree below the nav IS live (sidebar_qt.rs: load, sort,
 // search, expand/collapse, drag-drop target), and so is everything the "..."
 // menu offers: New folder opens QbzFolderEdit's create panel (the small
@@ -146,9 +147,9 @@ Rectangle {
     // NO new bridge property is needed. `settings_bool`'s tail is
     // unconditional on success — `publish_snapshot()` re-serialises the WHOLE
     // settings document after every successful write (settings_qt.rs:2278-2285)
-    // — and both prefs are already in it (`showPurchases` / `navTbPurchases`,
-    // :1446-1449). So the two Appearance toggles reach this row through
-    // QbzBridge.settingsJson and nothing else is wired.
+    // — and the pref is already in it (`showPurchases`). So the Navigation
+    // toggle reaches this row through QbzBridge.settingsJson and nothing
+    // else is wired.
     //
     // GUARDED parse, the NavFlyout.qml:65-70 precedent: a bare JSON.parse in a
     // binding throws on the pre-publish frame and would take the whole sidebar
@@ -156,19 +157,15 @@ Rectangle {
     readonly property var settingsDoc: {
         try { return JSON.parse(QbzBridge.settingsJson) } catch (e) { return ({}) }
     }
-    // `show_purchases` is the MASTER gate; `nav_tb_purchases` only RELOCATES
-    // the entry to the custom title bar — and it can only relocate it when
-    // there IS one. Under the system chrome, or with no title bar at all, the
-    // entry stays here (the truth table's fourth row): the Appearance toggle
-    // is disabled in those states, but a `true` set earlier survives the
-    // switch, and honouring it then would make Purchases unreachable.
-    // Both prefs default false — Purchases ships hidden.
+    // `show_purchases` is the MASTER gate. Purchases then FOLLOWS the other
+    // sections (2026-09-13): it sits here while the navigation lives in the
+    // sidebar, and in the header beside them otherwise (HeaderBar.qml
+    // `purchasesInHeader`) — never the one entry left behind. The pref
+    // defaults false: Purchases ships hidden.
     readonly property bool purchasesVisible:
         root.settingsDoc.showPurchases === true
         && !QbzSession.offline
-        && !(root.settingsDoc.navTbPurchases === true
-             && !QbzShell.systemTitleBar
-             && !QbzShell.hideTitleBar)
+        && QbzShell.navInSidebar
 
     // Playlist tree state (phase 7).
     property bool searchOpen: false

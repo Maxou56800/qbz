@@ -53,6 +53,10 @@ pub struct AudioSettings {
     /// Target loudness in LUFS for normalization.
     /// Common values: -14.0 (Spotify/YouTube), -18.0 (audiophile), -23.0 (EBU broadcast)
     pub normalization_target_lufs: f32,
+    /// When true (default), the normalization boost is capped so the track's
+    /// known peak stays 1 dB under full scale; off lets quiet tracks reach
+    /// the target even if their peaks clip.
+    pub normalization_prevent_clipping: bool,
     /// When true, consecutive same-format tracks play without gap.
     /// Works on Rodio (PipeWire/Pulse) and ALSA Direct backends. Requires cached tracks.
     pub gapless_enabled: bool,
@@ -137,6 +141,7 @@ impl Default for AudioSettings {
             device_sample_rate_limits: HashMap::new(), // Per-device limits (empty = no limit)
             normalization_enabled: false,   // Off by default — preserves bit-perfect pipeline
             normalization_target_lufs: -14.0, // Spotify/YouTube standard
+            normalization_prevent_clipping: true, // Peak-aware boost cap (2026-09)
             gapless_enabled: true, // On by default — works for same-format tracks on all backends
             pw_force_bitperfect: false, // Off by default — experimental PipeWire feature
             sync_audio_on_startup: false, // Off by default — opt-in for stale-settings edge case
@@ -223,6 +228,10 @@ impl AudioSettingsStore {
         );
         let _ = conn.execute(
             "ALTER TABLE audio_settings ADD COLUMN normalization_target_lufs REAL DEFAULT -14.0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE audio_settings ADD COLUMN normalization_prevent_clipping INTEGER DEFAULT 1",
             [],
         );
         let _ = conn.execute(
@@ -326,7 +335,7 @@ impl AudioSettingsStore {
     pub fn get_settings(&self) -> Result<AudioSettings, String> {
         self.conn
             .query_row(
-                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup, quality_fallback_behavior, skip_sink_switch, allow_quality_fallback, reserve_dac_while_running, dsd_mode, alsa_hardware_volume_controls, playback_cache FROM audio_settings WHERE id = 1",
+                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup, quality_fallback_behavior, skip_sink_switch, allow_quality_fallback, reserve_dac_while_running, dsd_mode, alsa_hardware_volume_controls, playback_cache, normalization_prevent_clipping FROM audio_settings WHERE id = 1",
                 [],
                 |row| {
                     // Parse backend_type from JSON string
@@ -371,6 +380,7 @@ impl AudioSettingsStore {
                         device_sample_rate_limits,
                         normalization_enabled: row.get::<_, Option<i64>>(12)?.unwrap_or(0) != 0,
                         normalization_target_lufs: row.get::<_, Option<f64>>(13)?.unwrap_or(-14.0) as f32,
+                        normalization_prevent_clipping: row.get::<_, Option<i64>>(25)?.unwrap_or(1) != 0,
                         gapless_enabled: row.get::<_, Option<i64>>(14)?.unwrap_or(0) != 0,
                         pw_force_bitperfect: row.get::<_, Option<i64>>(16)?.unwrap_or(0) != 0,
                         sync_audio_on_startup: row.get::<_, Option<i64>>(17)?.unwrap_or(0) != 0,
@@ -803,6 +813,16 @@ impl AudioSettingsStore {
         Ok(())
     }
 
+    pub fn set_normalization_prevent_clipping(&self, on: bool) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE audio_settings SET normalization_prevent_clipping = ?1 WHERE id = 1",
+                params![on as i64],
+            )
+            .map_err(|e| format!("Failed to set normalization clipping guard: {}", e))?;
+        Ok(())
+    }
+
     /// Reset all audio settings to their default values
     pub fn reset_all(&self) -> Result<AudioSettings, String> {
         // ADR-003: quality_fallback_behavior must survive reset_all()
@@ -853,6 +873,7 @@ impl AudioSettingsStore {
                     allow_quality_fallback = ?20,
                     reserve_dac_while_running = ?21,
                     alsa_hardware_volume_controls = ?22,
+                    normalization_prevent_clipping = ?23,
                     playback_cache = '{}'
                 WHERE id = 1",
                 params![
@@ -878,6 +899,7 @@ impl AudioSettingsStore {
                     defaults.allow_quality_fallback as i64,
                     defaults.reserve_dac_while_running as i64,
                     mixer_controls_json,
+                    defaults.normalization_prevent_clipping as i64,
                 ],
             )
             .map_err(|e| format!("Failed to reset audio settings: {}", e))?;
@@ -1179,6 +1201,7 @@ mod tests {
             "device_max_sample_rate": null,
             "normalization_enabled": false,
             "normalization_target_lufs": -14.0,
+            "normalization_prevent_clipping": true,
             "gapless_enabled": true,
             "pw_force_bitperfect": false,
             "sync_audio_on_startup": false,

@@ -1600,6 +1600,21 @@ fn save_myqbz_label(label: &str) {
 pub const STREAMING_QUALITY_KEYS: &[&str] = &["mp3", "cd", "hires", "hires_plus"];
 pub const STREAMING_QUALITY_LABELS: &[&str] = &["MP3", "CD Quality", "Hi-Res", "Hi-Res+"];
 
+/// Target loudness presets (label msgid, LUFS). Index 1 is the store default.
+pub(crate) const NORMALIZATION_TARGETS: &[(&str, f32)] = &[
+    ("-11 LUFS · Loud", -11.0),
+    ("-14 LUFS · Streaming (default)", -14.0),
+    ("-16 LUFS · Apple Music", -16.0),
+    ("-18 LUFS · ReplayGain", -18.0),
+    ("-23 LUFS · Broadcast (EBU R128)", -23.0),
+];
+
+fn normalization_target_index(lufs: f32) -> Option<usize> {
+    NORMALIZATION_TARGETS
+        .iter()
+        .position(|(_, v)| (v - lufs).abs() < 0.01)
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot
 // ---------------------------------------------------------------------------
@@ -2084,6 +2099,15 @@ pub struct SettingsDoc {
     /// Settable via settingsBool("normalization", …) but never published
     /// back, so both now-playing bars had to shadow the toggle locally.
     pub normalization: bool,
+    /// Target loudness presets (translated labels) + the selected index; a
+    /// value outside the presets (qbzd CLI, an import) shows as a trailing
+    /// "Custom (N LUFS)" entry rather than being silently re-mapped.
+    #[serde(rename = "normalizationTargets")]
+    pub normalization_targets: Vec<String>,
+    #[serde(rename = "normalizationTargetIndex")]
+    pub normalization_target_index: i32,
+    #[serde(rename = "normalizationPreventClipping")]
+    pub normalization_prevent_clipping: bool,
     #[serde(rename = "persistSession")]
     pub persist_session: bool,
     #[serde(rename = "resumePosition")]
@@ -2234,8 +2258,6 @@ pub struct SettingsDoc {
     pub startup_page_index: i32,
     #[serde(rename = "showPurchases")]
     pub show_purchases: bool,
-    #[serde(rename = "navTbPurchases")]
-    pub nav_tb_purchases: bool,
     /// Opt-in: a click on a top-level section row (Discover / Library / Local
     /// Library / My QBZ) also NAVIGATES, landing on that section's first entry.
     /// Off by default, which is the behaviour that shipped: a click only opens
@@ -2634,6 +2656,24 @@ pub async fn publish_snapshot() {
             show_context_icon: prefs.show_context_icon,
             gapless: audio_settings.gapless_enabled,
             normalization: audio_settings.normalization_enabled,
+            normalization_targets: {
+                let mut v: Vec<String> = NORMALIZATION_TARGETS
+                    .iter()
+                    .map(|(l, _)| qbz_i18n::t(l))
+                    .collect();
+                if normalization_target_index(audio_settings.normalization_target_lufs).is_none() {
+                    v.push(qbz_i18n::t_args(
+                        "Custom ({} LUFS)",
+                        &[&format!("{:.0}", audio_settings.normalization_target_lufs)],
+                    ));
+                }
+                v
+            },
+            normalization_target_index: normalization_target_index(
+                audio_settings.normalization_target_lufs,
+            )
+            .unwrap_or(NORMALIZATION_TARGETS.len()) as i32,
+            normalization_prevent_clipping: audio_settings.normalization_prevent_clipping,
             persist_session: prefs.persist_session,
             resume_position: prefs.resume_playback_position,
             stream_uncached: audio_settings.stream_first_track,
@@ -2765,7 +2805,6 @@ pub async fn publish_snapshot() {
             startup_pages: STARTUP_PAGE_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             startup_page_index: index_of(STARTUP_PAGE_VALUES, &pref_str("startup_page", "home"), 0),
             show_purchases: pref_bool("show_purchases", false),
-            nav_tb_purchases: pref_bool("nav_tb_purchases", false),
             nav_click_first_tab: pref_bool("nav_click_first_tab", false),
             local_tab_order: local_tab_order(),
             genre_filters_position: local_genre_filters_position(),
@@ -3504,6 +3543,9 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "normalization" => {
             with_audio(|s| s.set_normalization_enabled(value)).map(|_| Apply::Reload)
         }
+        "normalization-prevent-clipping" => {
+            with_audio(|s| s.set_normalization_prevent_clipping(value)).map(|_| Apply::Reload)
+        }
         "stream-uncached" => with_audio(|s| s.set_stream_first_track(value)).map(|_| Apply::Reload),
         "streaming-only" => with_audio(|s| s.set_streaming_only(value)).map(|_| Apply::Reload),
         "continue-playback" => {
@@ -3710,10 +3752,6 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         }
         "show-purchases" => {
             save_pref("show_purchases", serde_json::json!(value));
-            Ok(Apply::None)
-        }
-        "nav-tb-purchases" => {
-            save_pref("nav_tb_purchases", serde_json::json!(value));
             Ok(Apply::None)
         }
         // Read by BOTH nav hosts off `settingsJson` (shell/NavFlyout.qml), so
@@ -4143,6 +4181,16 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             };
             if let Err(e) = with_audio(|s| s.set_quality_fallback_behavior(behavior)) {
                 log::error!("[qbz-qt] persist retry behavior failed: {e}");
+                return;
+            }
+            apply_audio(runtime, Apply::Reload);
+        }
+        "normalization-target" => {
+            let Some((_, lufs)) = NORMALIZATION_TARGETS.get(index) else {
+                return; // the trailing "Custom" entry is display-only
+            };
+            if let Err(e) = with_audio(|s| s.set_normalization_target_lufs(*lufs)) {
+                log::error!("[qbz-qt] persist normalization target failed: {e}");
                 return;
             }
             apply_audio(runtime, Apply::Reload);

@@ -13,6 +13,8 @@
 mod playback_engine;
 mod streaming_source;
 mod disk_playback;
+mod loudness_scan;
+mod normalization;
 
 pub mod memory_tuning;
 
@@ -48,10 +50,10 @@ use symphonia::default::{get_codecs, get_probe};
 
 use playback_engine::PlaybackEngine;
 use qbz_audio::{
-    calculate_gain_factor, db_to_linear, extract_replaygain, AnalyzerMessage, AnalyzerTap,
-    AnalyzerWaveformTrack, AudioBackendType, AudioDiagnostic, AudioSettings, BackendConfig,
-    BackendManager, BitPerfectMode, DiagnosticSource, DynamicAmplify, LoudnessAnalyzer,
-    LoudnessCache, TappedSource, VisualizerTap,
+    lufs_from_replaygain, AnalyzerMessage, AnalyzerTap, AnalyzerWaveformTrack, AudioBackendType,
+    AudioDiagnostic, AudioSettings, BackendConfig, BackendManager, BitPerfectMode,
+    DiagnosticSource, DynamicAmplify, LoudnessAnalyzer, LoudnessCache, LoudnessSource,
+    TappedSource, VisualizerTap,
 };
 use qbz_models::{AssetOrigin, ExternalStreamAsset, Quality, StreamQualityInfo};
 use qbz_qobuz::QobuzClient;
@@ -2070,6 +2072,10 @@ pub struct Player {
     /// Two-level playback cache (L1 memory + optional L2 disk). A track is
     /// cached after its first play so replays start instantly.
     audio_cache: Arc<qbz_cache::AudioCache>,
+    /// Loudness rows (absolute LUFS + peak + source), shared with the audio
+    /// thread (start gain, analyser) and the async prefetch (catalog
+    /// ReplayGain, pre-analysis).
+    loudness_cache: Arc<LoudnessCache>,
 }
 
 impl Default for Player {
@@ -2100,36 +2106,40 @@ impl Player {
         let thread_viz_tap = visualizer_tap.clone();
         let thread_diagnostic = diagnostic.clone();
 
+        // Shared with the audio thread (analyser + start gain) AND with the
+        // async prefetch (catalog ReplayGain, pre-analysis). A cache is an
+        // accelerator, never a reason to abort: this used to `panic!` on the
+        // audio thread, which killed it for the rest of the run (every later
+        // command failed with "Failed to send") on a full disk, a read-only
+        // profile or a corrupt loudness_cache.db. Degrade instead.
+        let loudness_cache: Arc<LoudnessCache> = match LoudnessCache::new() {
+            Ok(c) => Arc::new(c),
+            Err(e) => {
+                log::error!(
+                    "Failed to open the loudness cache: {e}. Normalization keeps working; \
+                     analyses are not persisted this run."
+                );
+                match LoudnessCache::in_memory() {
+                    Ok(c) => Arc::new(c),
+                    Err(e2) => {
+                        log::error!(
+                            "In-memory loudness cache failed too: {e2}. \
+                             Normalization analyses will not be cached at all."
+                        );
+                        Arc::new(LoudnessCache::disabled())
+                    }
+                }
+            }
+        };
+        let thread_cache = loudness_cache.clone();
+
         // Spawn dedicated audio thread
         thread::spawn(move || {
             log::info!("Audio thread starting...");
 
             // Initialize loudness analysis system
             let (analyzer_tx, analyzer_rx) = mpsc::sync_channel::<AnalyzerMessage>(64);
-            // A cache is an accelerator, never a reason to abort: this used to
-            // `panic!` here, which killed the one audio thread for the rest
-            // of the run (every later command failed with "Failed to send")
-            // on a full disk, a read-only profile or a corrupt
-            // loudness_cache.db. Degrade instead.
-            let loudness_cache = match LoudnessCache::new() {
-                Ok(c) => Arc::new(c),
-                Err(e) => {
-                    log::error!(
-                        "Failed to open the loudness cache: {e}. Normalization keeps working; \
-                         analyses are not persisted this run."
-                    );
-                    match LoudnessCache::in_memory() {
-                        Ok(c) => Arc::new(c),
-                        Err(e2) => {
-                            log::error!(
-                                "In-memory loudness cache failed too: {e2}. \
-                                 Normalization analyses will not be cached at all."
-                            );
-                            Arc::new(LoudnessCache::disabled())
-                        }
-                    }
-                }
-            };
+            let loudness_cache = thread_cache;
             let _analyzer_handle = LoudnessAnalyzer::spawn(analyzer_rx, loudness_cache.clone());
             let analyzer_enabled = Arc::new(AtomicBool::new(false));
 
@@ -2860,38 +2870,16 @@ impl Player {
                                 .duration
                                 .store(actual_duration, Ordering::SeqCst);
 
-                            // Calculate normalization gain if enabled
-                            let norm_settings = thread_settings
-                                .lock()
-                                .ok()
-                                .filter(|s| s.normalization_enabled)
-                                .map(|s| s.normalization_target_lufs);
-
+                            // Start gain BEFORE the first sample (normalization.rs):
+                            // cache row > ReplayGain tags > unity while measuring.
+                            let plan = normalization::plan_start_gain(
+                                &thread_settings,
+                                &loudness_cache,
+                                track_id,
+                                Some(&data),
+                            );
                             let (normalization, gain_atomic) =
-                                if let Some(target_lufs) = norm_settings {
-                                    // Check for ReplayGain metadata first (initial gain hint)
-                                    let rg_gain = extract_replaygain(&data)
-                                        .map(|rg| calculate_gain_factor(&rg, target_lufs));
-
-                                    // Create shared atomic for dynamic normalization
-                                    let atomic =
-                                        Arc::new(AtomicU32::new(rg_gain.unwrap_or(1.0).to_bits()));
-
-                                    // Check loudness cache for pre-computed EBU R128 gain
-                                    if let Some(cached) = loudness_cache.get(track_id) {
-                                        let cached_gain = db_to_linear(cached.gain_db.min(6.0));
-                                        atomic.store(cached_gain.to_bits(), Ordering::Relaxed);
-                                        log::info!(
-                                            "Normalization: cache hit for track {}, gain {:.4}",
-                                            track_id,
-                                            cached_gain
-                                        );
-                                    }
-
-                                    (rg_gain, Some(atomic))
-                                } else {
-                                    (None, None)
-                                };
+                                (plan.normalization, plan.gain_atomic.clone());
 
                             *current_normalization_gain = normalization;
                             *current_gain_atomic = gain_atomic.clone();
@@ -2910,8 +2898,10 @@ impl Player {
                                     channels,
                                     duration_secs: actual_duration,
                                     start_frame: 0,
-                                    target_lufs: norm_settings,
+                                    target_lufs: plan.target_lufs,
                                     gain_atomic,
+                                    known_gain: plan.known_gain,
+                                    prevent_clipping: plan.prevent_clipping,
                                 }),
                                 0,
                             );
@@ -3458,38 +3448,18 @@ impl Player {
                             // This allows the seekbar to show progress even during streaming
                             thread_state.duration.store(duration_secs, Ordering::SeqCst);
 
-                            // Normalization for streaming: try ReplayGain from buffered data,
-                            // then fall back to real-time EBU R128 analysis
-                            let norm_settings = thread_settings
-                                .lock()
-                                .ok()
-                                .filter(|s| s.normalization_enabled)
-                                .map(|s| s.normalization_target_lufs);
-
-                            let (normalization, gain_atomic) = if let Some(target_lufs) =
-                                norm_settings
-                            {
-                                // Try ReplayGain metadata from buffered data
-                                let rg_gain = source.get_buffered_data().and_then(|data| {
-                                    extract_replaygain(&data)
-                                        .map(|rg| calculate_gain_factor(&rg, target_lufs))
-                                });
-
-                                // Create shared atomic for dynamic normalization
-                                let atomic =
-                                    Arc::new(AtomicU32::new(rg_gain.unwrap_or(1.0).to_bits()));
-
-                                // Check loudness cache
-                                if let Some(cached) = loudness_cache.get(track_id) {
-                                    let cached_gain = db_to_linear(cached.gain_db.min(6.0));
-                                    atomic.store(cached_gain.to_bits(), Ordering::Relaxed);
-                                    log::info!("Streaming normalization: cache hit for track {}, gain {:.4}", track_id, cached_gain);
-                                }
-
-                                (rg_gain, Some(atomic))
-                            } else {
-                                (None, None)
-                            };
+                            // Start gain BEFORE the first sample (normalization.rs):
+                            // cache row > ReplayGain tags in the buffered head >
+                            // unity while measuring.
+                            let buffered = source.get_buffered_data();
+                            let plan = normalization::plan_start_gain(
+                                &thread_settings,
+                                &loudness_cache,
+                                track_id,
+                                buffered.as_deref(),
+                            );
+                            let (normalization, gain_atomic) =
+                                (plan.normalization, plan.gain_atomic.clone());
 
                             *current_normalization_gain = normalization;
                             *current_gain_atomic = gain_atomic.clone();
@@ -3553,8 +3523,10 @@ impl Player {
                                     duration_secs,
                                     start_frame: start_position_secs
                                         .saturating_mul(actual_sr as u64),
-                                    target_lufs: norm_settings,
+                                    target_lufs: plan.target_lufs,
                                     gain_atomic,
+                                    known_gain: plan.known_gain,
+                                    prevent_clipping: plan.prevent_clipping,
                                 }),
                                 start_position_secs.saturating_mul(actual_sr as u64),
                             );
@@ -4706,27 +4678,16 @@ impl Player {
                             let actual_duration =
                                 source.total_duration().map(|d| d.as_secs()).unwrap_or(0);
 
-                            // Calculate normalization for the next track
-                            let norm_settings = thread_settings
-                                .lock()
-                                .ok()
-                                .filter(|s| s.normalization_enabled)
-                                .map(|s| s.normalization_target_lufs);
-
+                            // Start gain for the next track, resolved before
+                            // its first sample (normalization.rs).
+                            let plan = normalization::plan_start_gain(
+                                &thread_settings,
+                                &loudness_cache,
+                                track_id,
+                                Some(&data),
+                            );
                             let (normalization, gain_atomic) =
-                                if let Some(target_lufs) = norm_settings {
-                                    let rg_gain = extract_replaygain(&data)
-                                        .map(|rg| calculate_gain_factor(&rg, target_lufs));
-                                    let atomic =
-                                        Arc::new(AtomicU32::new(rg_gain.unwrap_or(1.0).to_bits()));
-                                    if let Some(cached) = loudness_cache.get(track_id) {
-                                        let cached_gain = db_to_linear(cached.gain_db.min(6.0));
-                                        atomic.store(cached_gain.to_bits(), Ordering::Relaxed);
-                                    }
-                                    (rg_gain, Some(atomic))
-                                } else {
-                                    (None, None)
-                                };
+                                (plan.normalization, plan.gain_atomic.clone());
 
                             // Wrap source with normalization/visualizer pipeline
                             let pending_gain_atomic = gain_atomic.clone();
@@ -4742,8 +4703,10 @@ impl Player {
                                     channels,
                                     duration_secs: actual_duration,
                                     start_frame: 0,
-                                    target_lufs: norm_settings,
+                                    target_lufs: plan.target_lufs,
                                     gain_atomic,
+                                    known_gain: plan.known_gain,
+                                    prevent_clipping: plan.prevent_clipping,
                                 }),
                                 0,
                             );
@@ -4870,30 +4833,15 @@ impl Player {
                                     return;
                                 }
                             };
-                            let norm_settings = thread_settings
-                                .lock()
-                                .ok()
-                                .filter(|settings| settings.normalization_enabled)
-                                .map(|settings| settings.normalization_target_lufs);
-                            let (normalization, gain_atomic) = if let Some(target_lufs) = norm_settings
-                            {
-                                let replay_gain = source.get_buffered_data().and_then(|data| {
-                                    extract_replaygain(&data)
-                                        .map(|gain| calculate_gain_factor(&gain, target_lufs))
-                                });
-                                let atomic = Arc::new(AtomicU32::new(
-                                    replay_gain.unwrap_or(1.0).to_bits(),
-                                ));
-                                if let Some(cached) = loudness_cache.get(track_id) {
-                                    atomic.store(
-                                        db_to_linear(cached.gain_db.min(6.0)).to_bits(),
-                                        Ordering::Relaxed,
-                                    );
-                                }
-                                (replay_gain, Some(atomic))
-                            } else {
-                                (None, None)
-                            };
+                            let buffered = source.get_buffered_data();
+                            let plan = normalization::plan_start_gain(
+                                &thread_settings,
+                                &loudness_cache,
+                                track_id,
+                                buffered.as_deref(),
+                            );
+                            let (normalization, gain_atomic) =
+                                (plan.normalization, plan.gain_atomic.clone());
                             let pending_gain_atomic = gain_atomic.clone();
                             let source_to_play = wrap_source(
                                 Box::new(incremental),
@@ -4907,8 +4855,10 @@ impl Player {
                                     channels,
                                     duration_secs,
                                     start_frame: 0,
-                                    target_lufs: norm_settings,
+                                    target_lufs: plan.target_lufs,
                                     gain_atomic,
+                                    known_gain: plan.known_gain,
+                                    prevent_clipping: plan.prevent_clipping,
                                 }),
                                 0,
                             );
@@ -5493,6 +5443,7 @@ impl Player {
             visualizer_tap,
             diagnostic,
             audio_cache,
+            loudness_cache,
         }
     }
 
@@ -5556,6 +5507,9 @@ impl Player {
                     quality
                 );
             } else {
+                // The row is normally there from the first play; one
+                // track/get otherwise, so the level is right from sample 0.
+                self.ensure_loudness_row(client, track_id).await;
                 if !self.is_current_play(gen) {
                     log::info!(
                         "Player: cache-hit play for track {track_id} superseded (gen {gen})"
@@ -5580,6 +5534,7 @@ impl Player {
         }
 
         if let Some((source, meta, duration)) = self.cached_disk_source(track_id, quality)? {
+            self.ensure_loudness_row(client, track_id).await;
             if self.is_current_play(gen) {
                 return self.apply_completed_source(source, meta, duration, track_id, start_position_secs);
             }
@@ -5597,7 +5552,13 @@ impl Player {
         // Only the init segment is fetched synchronously; audio segments
         // stream in a background task.
         log::info!("[CMAF] Attempting CMAF streaming for track {}", track_id);
-        match qbz_qobuz::cmaf::setup_streaming(client, track_id, quality).await {
+        // The catalog's ReplayGain rides along with the CMAF setup so the
+        // first sample already carries its gain (ensure_loudness_row).
+        let (cmaf_setup, _) = tokio::join!(
+            qbz_qobuz::cmaf::setup_streaming(client, track_id, quality),
+            self.ensure_loudness_row(client, track_id)
+        );
+        match cmaf_setup {
             Ok(cmaf_info) => {
                 if !self.is_current_play(gen) {
                     log::info!(
@@ -6009,12 +5970,120 @@ impl Player {
             Ok(()) => {
                 self.audio_cache.clear_failed(track_id);
                 log::info!("[PREFETCH] Complete for track {track_id}");
+                // While the bytes are ours and the audio thread is busy with
+                // the current track: the catalog row, else a full analysis.
+                self.pre_analyze_loudness(client, track_id).await;
                 Ok(())
             }
             Err(error) => {
                 self.audio_cache.mark_failed(track_id);
                 Err(error)
             }
+        }
+    }
+
+    /// Make sure the loudness cache knows `track_id` before its first sample:
+    /// one `track/get` for the catalog's own ReplayGain, only while
+    /// normalization is on and nothing is stored yet — so once per track, ever.
+    /// Returns whether a row exists afterwards.
+    async fn ensure_loudness_row(&self, client: &QobuzClient, track_id: u64) -> bool {
+        let enabled = self
+            .audio_settings
+            .lock()
+            .map(|s| s.normalization_enabled)
+            .unwrap_or(false);
+        if !enabled {
+            return false;
+        }
+        if self.loudness_cache.lookup(track_id).is_some() {
+            return true;
+        }
+        let track = match client.get_track(track_id).await {
+            Ok(track) => track,
+            Err(e) => {
+                log::debug!("[LOUDNESS] track {track_id}: track/get failed: {e}");
+                return false;
+            }
+        };
+        let rg = track.audio_info.as_ref().and_then(|a| {
+            a.replaygain_track_gain.map(|g| {
+                (
+                    g as f32,
+                    a.replaygain_track_peak
+                        .map(|p| p as f32)
+                        .filter(|p| *p > 0.0),
+                )
+            })
+        });
+        match rg {
+            Some((gain_db, peak)) => {
+                let stored = self.loudness_cache.store(
+                    track_id,
+                    lufs_from_replaygain(gain_db),
+                    peak,
+                    LoudnessSource::ReplayGain,
+                );
+                log::info!(
+                    "[LOUDNESS] track {track_id}: catalog ReplayGain {gain_db:+.2} dB, peak {peak:?}{}",
+                    if stored { "" } else { " (a better row already exists)" }
+                );
+                true
+            }
+            None => {
+                log::info!("[LOUDNESS] track {track_id}: the catalog carries no ReplayGain");
+                false
+            }
+        }
+    }
+
+    /// Off the audio thread, right after a prefetch landed in the cache: the
+    /// catalog row first (one request); only when the catalog has none, a
+    /// full decode + EBU R128 + true-peak measurement of the cached bytes in
+    /// a blocking task, skipped on low-memory hosts. The bytes are read back
+    /// from the cache (the prefetch streams them straight in), so the
+    /// analysis holds one transient copy and drops it.
+    async fn pre_analyze_loudness(&self, client: &QobuzClient, track_id: u64) {
+        if self.ensure_loudness_row(client, track_id).await {
+            return;
+        }
+        let enabled = self
+            .audio_settings
+            .lock()
+            .map(|s| s.normalization_enabled)
+            .unwrap_or(false);
+        if !enabled || is_low_memory_class() {
+            return;
+        }
+        let bytes = match self.audio_cache.get(track_id) {
+            Some(cached) => cached.data,
+            None => match self
+                .audio_cache
+                .get_playback_cache()
+                .and_then(|cache| cache.get(track_id))
+            {
+                Some(data) => data,
+                None => {
+                    log::debug!("[LOUDNESS] track {track_id}: no cached bytes to pre-analyse");
+                    return;
+                }
+            },
+        };
+        let shared = Arc::new(bytes);
+        let started = Instant::now();
+        match tokio::task::spawn_blocking(move || loudness_scan::measure_bytes(&shared)).await {
+            Ok(Ok(m)) => {
+                self.loudness_cache
+                    .store(track_id, m.lufs, m.true_peak, LoudnessSource::Ebur128Full);
+                log::info!(
+                    "[LOUDNESS] track {track_id}: pre-analysed {:.1} LUFS, true peak {:?}, {} frames in {} ms",
+                    m.lufs,
+                    m.true_peak,
+                    m.frames,
+                    started.elapsed().as_millis()
+                );
+            }
+            Ok(Err(e)) => log::warn!("[LOUDNESS] track {track_id}: pre-analysis failed: {e}"),
+            Err(e) => log::warn!("[LOUDNESS] track {track_id}: pre-analysis task failed: {e}"),
         }
     }
 
@@ -6077,7 +6146,12 @@ impl Player {
 
         // CMAF full download (Akamai CDN), legacy full download as
         // fallback. Warm L1 so a re-gapless / replay skips the network.
-        let downloaded = match qbz_qobuz::cmaf::download_full(client, track_id, quality).await {
+        // The catalog row rides along with the download (once per track).
+        let (downloaded, _) = tokio::join!(
+            qbz_qobuz::cmaf::download_full(client, track_id, quality),
+            self.ensure_loudness_row(client, track_id)
+        );
+        let downloaded = match downloaded {
             Ok(data) => Some(data),
             Err(e) => {
                 log::warn!("[GAPLESS] CMAF failed for track {track_id}: {e}, trying legacy");

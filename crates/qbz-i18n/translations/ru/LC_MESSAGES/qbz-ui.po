@@ -4133,9 +4133,6 @@ msgstr "Показывать кнопки свернуть, развернуть
 msgid "Add discrete plus and minus buttons next to the volume slider in the player bar."
 msgstr "Добавить отдельные кнопки плюс и минус рядом с ползунком громкости в панели плеера."
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Показывать раздел «Покупки» в боковой панели для просмотра и скачивания купленной музыки"
-
 msgid "Keep playing in the menu bar instead of quitting when you close the window"
 msgstr "Продолжать воспроизведение в строке меню вместо выхода при закрытии окна"
 
@@ -4351,17 +4348,11 @@ msgstr "Открыть ссылку Qobuz"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Вставьте ссылку Qobuz, Spotify, Apple Music, Tidal, Deezer или song.link"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Размещает раздел «Покупки» в собственной строке заголовка вместо боковой панели"
-
 msgid "Press keys…"
 msgstr "Нажмите клавиши…"
 
 msgid "Purchases"
 msgstr "Покупки"
-
-msgid "Purchases in title bar"
-msgstr "Покупки в строке заголовка"
 
 msgid "RENDERER"
 msgstr "РЕНДЕРЕР"
@@ -7594,3 +7585,55 @@ msgstr "Удаляет всё, что сохранено для прослуши
 #: qbz-qt/qml/settings/SettingsView.qml
 msgid "Advanced"
 msgstr "Дополнительно"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "ГРОМКОСТЬ"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "Нормализация громкости"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "Целевая громкость"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "Громкость, к которой приводится каждый трек. -14 LUFS соответствует стриминговым сервисам, -18 LUFS — эталон ReplayGain."
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "Не допускать клиппинга"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "Ограничивает усиление, чтобы самый громкий пик оставался ниже полной шкалы. Выключено — тихие треки достигают цели, даже если их пики клиппируют."
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · Громко"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · Стриминг (по умолчанию)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · Вещание (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "Своё значение ({} LUFS)"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "Показывает раздел «Покупки» рядом с остальными разделами — в боковой панели или в заголовке, где бы они ни были — для просмотра и загрузки купленной музыки"

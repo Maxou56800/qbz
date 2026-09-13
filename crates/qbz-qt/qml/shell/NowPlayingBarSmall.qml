@@ -64,8 +64,9 @@ Rectangle {
     // column lands PLAY on the window centre. The breakpoints (39/30/25 at
     // 1366 / 1920) are the SHARED theme token, so this bar and PlayerBar can
     // never drift apart — see QbzTheme.npbSideFrac.
-    // `root.width` IS the window width: the bar is anchored left-to-right on
-    // the shell root, exactly like PlayerBarSmall.slint reads its own root.
+    // `root.width` is the window width minus the two side gutters
+    // (AppShell `npbGutter`): the bar is anchored left-to-right on the shell
+    // root, exactly like PlayerBarSmall.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colCentre: 1.0 - 2.0 * root.sideFrac
     // WIDE = inline horizontal volume slider; NARROW = button-only.
