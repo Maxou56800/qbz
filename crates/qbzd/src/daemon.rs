@@ -89,7 +89,15 @@ pub async fn run(roots: ProfileRoots, cfg: QbzdConfig, warns: Vec<String>, orbit
         // FB6: the default bind is now 0.0.0.0 — LAN-first posture (Sonos/
         // Chromecast parity), not a misconfiguration. One INFO line, not a
         // stderr warning; loopback binds stay silent.
-        log::info!("{}", crate::cli::copy::lan_posture_note(&bind_addr.to_string()));
+        let token_set = cfg
+            .server
+            .token
+            .as_deref()
+            .is_some_and(|t| !t.trim().is_empty());
+        log::info!(
+            "{}",
+            crate::cli::copy::lan_posture_note(&bind_addr.to_string(), token_set)
+        );
     }
 
     // 6.-9. compose stores + runtime + restore credentials + restore session.
