@@ -7573,3 +7573,51 @@ msgstr "Remove tudo o que está salvo para ouvir offline: {} ocupando {}. As com
 #: qbz-qt/qml/settings/SettingsView.qml
 msgid "Advanced"
 msgstr "Avançado"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "SONORIDADE"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "Normalização de volume"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "Sonoridade alvo"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "A sonoridade à qual cada faixa é alinhada. -14 LUFS corresponde aos serviços de streaming; -18 LUFS é a referência do ReplayGain."
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "Evitar clipping"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "Limita o ganho para que o pico mais alto fique abaixo da escala completa. Desligado, as faixas baixas atingem o alvo mesmo que os picos cortem."
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · Alto"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · Streaming (padrão)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · Radiodifusão (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "Personalizado ({} LUFS)"

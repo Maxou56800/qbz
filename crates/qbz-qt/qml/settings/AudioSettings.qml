@@ -350,6 +350,44 @@ Column {
     SettingsDivider { }
     SettingsSpacer { }
 
+    // ============================= LOUDNESS ==============================
+    // The bars' audio flyout keeps its normalization switch; this is the
+    // same key with its two companions. Target and clipping guard only show
+    // while normalization is on.
+    GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("LOUDNESS", QbzSession.trRev) }
+    SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Volume normalization", QbzSession.trRev)
+        description: QbzSession.tr("Level loudness across tracks", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.normalization === true
+            onToggled: function (v) { QbzBridge.settingsBool("normalization", v) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
+        visible: root.doc.normalization === true
+        label: QbzSession.tr("Target loudness", QbzSession.trRev)
+        description: QbzSession.tr("The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference.", QbzSession.trRev)
+        QbzSelect { kioskHost: root.kioskHost;
+            menuWidth: 260
+            options: root.doc.normalizationTargets || []
+            currentIndex: root.doc.normalizationTargetIndex || 0
+            onSelected: function (i) { QbzBridge.settingsSelect("normalization-target", i) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
+        visible: root.doc.normalization === true
+        label: QbzSession.tr("Prevent clipping", QbzSession.trRev)
+        description: QbzSession.tr("Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.normalizationPreventClipping === true
+            onToggled: function (v) { QbzBridge.settingsBool("normalization-prevent-clipping", v) }
+        }
+    }
+
+    SettingsSpacer { }
+    SettingsDivider { }
+    SettingsSpacer { }
+
     // ============================= STARTUP ===============================
     GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("STARTUP", QbzSession.trRev) }
     SettingRow { kioskHost: root.kioskHost;
