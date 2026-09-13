@@ -46,14 +46,18 @@
 //! the documented follow-up. No RGBA decode in Rust: QML `Image` decodes
 //! `file://` asynchronously and natively.
 //!
-//! ## Cache eviction — scaled derivatives only
+//! ## Cache eviction — both directories, once per run
 //!
-//! [`housekeeping`] bounds `~/.cache/qbz/images/scaled` (this module's OWN
-//! derivative directory) at [`MAX_SCALED_BYTES`], LRU by mtime, and does the
-//! one-time `.jpg` orphan sweep the `.png` key change left behind. The PARENT
-//! `~/.cache/qbz/images` is the SHARED cache and keeps its own policy
-//! (`qbz_cache::ImageCacheService`, SQLite `last_accessed` + the Slint app's
-//! 200 MB `evict`) — do NOT add a second one for it from here.
+//! [`housekeeping`] runs on the blocking pool at boot and bounds BOTH caches:
+//! the SHARED `~/.cache/qbz/images` (the full-size originals `store` writes;
+//! `qbz_cache::ImageCacheService`, SQLite `last_accessed` LRU, budget
+//! [`MAX_SHARED_BYTES`], trimmed in [`EVICT_BATCH_ENTRIES`]-row batches so the
+//! GUI thread is never parked behind a long unlink loop) and this module's
+//! OWN derivative directory `images/scaled` ([`MAX_SCALED_BYTES`], LRU by
+//! mtime, plus the one-time `.jpg` orphan sweep). The shared trim was the
+//! Slint app's `spawn_evict` (v2.0.2); it was retired with that frontend
+//! (69ed61207) and 2.1.0/2.1.1 shipped with NO caller of `evict` at all — the
+//! directory grew without bound.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -1229,6 +1233,38 @@ pub fn scaled_path(path: &str, w: u32, h: u32) -> Option<std::path::PathBuf> {
 /// order of magnitude under the 260 MB the parent image cache already holds.
 const MAX_SCALED_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Byte budget for the SHARED cache (`~/.cache/qbz/images`): the Slint app's
+/// `MAX_CACHE_BYTES` ("matches the Tauri default"), restored unchanged.
+const MAX_SHARED_BYTES: u64 = 200 * 1024 * 1024;
+
+/// Rows deleted per `evict` call; the cache mutex is released between calls.
+const EVICT_BATCH_ENTRIES: usize = 64;
+
+/// Trim the shared cache to `max_bytes`, LRU by `last_accessed`, in batches.
+/// Blocking (SQLite + unlinks) — call from `spawn_blocking`. Returns the
+/// bytes freed, `None` when the cache could not be opened (already logged).
+fn evict_shared(max_bytes: u64) -> Option<u64> {
+    let cache = cache()?;
+    let mut freed_total = 0u64;
+    loop {
+        let batch = {
+            let guard = cache.lock().ok()?;
+            match guard.evict(max_bytes, EVICT_BATCH_ENTRIES) {
+                Ok(batch) => batch,
+                Err(e) => {
+                    log::warn!("[qbz-qt] image cache eviction failed: {e}");
+                    return Some(freed_total);
+                }
+            }
+        };
+        freed_total += batch.freed_bytes;
+        if batch.evicted_entries == 0 {
+            return Some(freed_total);
+        }
+        std::thread::yield_now();
+    }
+}
+
 /// Keep `scaled/` bounded: drop the oldest derivatives past
 /// [`MAX_SCALED_BYTES`]. Mtime order, oldest first — the same shape as
 /// `icon_tint_qt::prune`, with one deliberate difference: `prune` caps on a
@@ -1302,16 +1338,18 @@ fn sweep_orphan_scaled(dir: &Path) -> (usize, u64) {
     (n, freed)
 }
 
-/// Boot-time housekeeping for the derivative cache: the one-time `.jpg`
-/// orphan sweep, then the byte cap. Blocking (`read_dir` + unlinks) — call
-/// from `spawn_blocking`.
-///
-/// SCOPE: `images/scaled` ONLY. The parent `~/.cache/qbz/images` (260 MB) is
-/// the SHARED cache owned by `qbz_cache::ImageCacheService` (SQLite
-/// `last_accessed` + the Slint app's 200 MB `evict`); two processes evicting
-/// the same directory on different policies is exactly what the memo at the
-/// top of this file had to be written about.
+/// Boot-time housekeeping for both image caches — see the module doc
+/// "Cache eviction". Blocking; call from `spawn_blocking`.
 pub fn housekeeping() {
+    // 1. The SHARED cache (full-size originals): LRU trim to the budget.
+    if let Some(freed) = evict_shared(MAX_SHARED_BYTES) {
+        if freed > 0 {
+            log::info!(
+                "[qbz-qt][perf] image cache evicted {freed} B (budget {MAX_SHARED_BYTES} B)"
+            );
+        }
+    }
+    // 2. This module's OWN derivative directory: orphan sweep, then byte cap.
     let Some(dir) = dirs::cache_dir().map(|d| d.join("qbz").join("images").join("scaled")) else {
         return;
     };

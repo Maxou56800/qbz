@@ -61,5 +61,5 @@ mod image_cache;
 mod playback_cache;
 
 pub use audio_cache::{AudioCache, CacheStats, CachedTrack, CacheAdmission};
-pub use image_cache::{ImageCacheService, ImageCacheStats};
+pub use image_cache::{EvictBatch, ImageCacheService, ImageCacheStats};
 pub use playback_cache::{PlaybackCache, PlaybackCacheStats};
