@@ -570,6 +570,7 @@ fn main() {
                 "qml/controls/MyQbzModals.qml",
                 "qml/controls/PlaylistCreateModal.qml",
                 "qml/controls/PlaylistEditModal.qml",
+        "qml/controls/PlaylistDeleteConfirm.qml",
                 "qml/controls/PlaylistImportModal.qml",
                 "qml/controls/PlaylistPickerModal.qml",
                 "qml/controls/PmFolderIcon.qml",

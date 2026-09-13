@@ -132,6 +132,10 @@ pub struct SidebarEntry {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub is_local: bool,
+    /// The signed-in user owns it (a local playlist always does): the row
+    /// menu offers Delete only then (2026-09-13).
+    #[serde(default, rename = "isOwner")]
+    pub is_owner: bool,
 }
 
 /// One LOCAL playlist listed in the sidebar (library.db, ids `local:<uuid>`).
@@ -155,6 +159,8 @@ struct SidebarPlaylist {
     tracks_count: u32,
     cover_urls: Vec<String>,
     position: i32,
+    /// `owner.id == the signed-in user` at load; false when unknown.
+    is_owner: bool,
 }
 
 #[derive(Default, Clone)]
@@ -292,6 +298,7 @@ pub async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
                 out
             };
             SidebarPlaylist {
+                is_owner: crate::playlist_qt::current_user_id().is_some_and(|uid| uid == p.owner.id),
                 id: p.id,
                 name: p.name,
                 tracks_count: p.tracks_count,
@@ -357,6 +364,8 @@ pub async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
                 tracks_count,
                 cover_urls: Vec::new(),
                 position: 0,
+                // An offline header row: ownership unknown, no Delete offered.
+                is_owner: false,
             });
         }
     }
@@ -508,6 +517,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         |p: &SidebarPlaylist| !searching || p.name.to_lowercase().contains(query.as_str());
 
     let entry_for = |p: &SidebarPlaylist, indent: bool, folder_id: &str| SidebarEntry {
+        is_owner: p.is_owner,
         kind: "playlist".into(),
         id: p.id.to_string(),
         name: p.name.clone(),
@@ -519,6 +529,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         is_local: false,
     };
     let local_entry_for = |p: &SidebarLocal, indent: bool, folder_id: &str| SidebarEntry {
+        is_owner: true,
         kind: "playlist".into(),
         id: p.id.clone(),
         name: p.name.clone(),
@@ -570,6 +581,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         // When searching, force-expand so matches inside are visible.
         let is_exp = searching || expanded.contains(fid);
         entries.push(SidebarEntry {
+        is_owner: false,
             kind: "folder".into(),
             id: fid.clone(),
             name: fname.clone(),
@@ -777,6 +789,8 @@ pub fn insert_qobuz_entry(id: u64, name: &str, tracks_count: u32, covers: &[Stri
             tracks_count,
             cover_urls: covers.iter().take(4).cloned().collect(),
             position: 0,
+            // Just created by this user.
+            is_owner: true,
         },
     );
     data.recent_qobuz.insert(id, std::time::Instant::now());
@@ -951,6 +965,7 @@ mod creation_regressions {
         let now = std::time::Instant::now();
         let mut previous = SidebarData::default();
         previous.playlists.push(SidebarPlaylist {
+            is_owner: true,
             id: 42,
             name: "Created".into(),
             tracks_count: 0,

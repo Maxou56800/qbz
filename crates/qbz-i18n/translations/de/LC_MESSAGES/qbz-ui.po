@@ -7626,3 +7626,15 @@ msgstr "In diesem Netzwerk"
 #: qbz-qt/qml/shell/QconnectFlyout.qml
 msgid "Pair"
 msgstr "Koppeln"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "Playlist löschen"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "Playlist löschen?"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "„{}“ wird gelöscht. Das lässt sich nicht rückgängig machen."

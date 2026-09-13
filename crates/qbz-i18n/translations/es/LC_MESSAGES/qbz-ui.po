@@ -7632,3 +7632,15 @@ msgstr "En esta red"
 #: qbz-qt/qml/shell/QconnectFlyout.qml
 msgid "Pair"
 msgstr "Vincular"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "Eliminar lista de reproducción"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "¿Eliminar la lista de reproducción?"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "«{}» se eliminará. Esto no se puede deshacer."

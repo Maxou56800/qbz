@@ -950,6 +950,13 @@ Rectangle {
     PlaylistEditModal {
         anchors.fill: parent
     }
+    // PlaylistDeleteConfirm — the "Delete playlist?" confirmation the sidebar
+    // row menu and the playlist cards summon (QbzPlaylistEdit.askDelete).
+    // Self-gates on QbzPlaylistEdit.deleteJson; invisible and inert while
+    // closed. Out here for the same reason as FolderModals above.
+    PlaylistDeleteConfirm {
+        anchors.fill: parent
+    }
     // PlaylistCreateModal — "New playlist" (name · description · folder ·
     // public · offline-only), raised by the sidebar's "+" and, like its
     // neighbour, self-gating on its own document (QbzPlaylistEdit.createJson).

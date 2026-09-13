@@ -3265,3 +3265,27 @@ msgstr "On this network"
 #: qbz-qt/qml/shell/QconnectFlyout.qml
 msgid "Pair"
 msgstr "Pair"
+
+#: qbz-qt/qml/controls/PlaylistEditModal.qml
+msgid "Folder"
+msgstr "Folder"
+
+#: qbz-qt/qml/controls/PlaylistEditModal.qml
+msgid "No folder"
+msgstr "No folder"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "Delete playlist"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "Delete playlist?"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "“{}” will be deleted. This cannot be undone."
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete"
+msgstr "Delete"
