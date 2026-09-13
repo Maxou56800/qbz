@@ -1358,6 +1358,7 @@ fn parse_top_track(index: usize, raw: &Value) -> TrackRow {
             raw.get("release_date_stream").and_then(|v| v.as_str()),
         );
     TrackRow {
+        featured: String::new(),
         is_favorite: id
             .parse::<u64>()
             .map(crate::fav_cache_qt::contains_track)

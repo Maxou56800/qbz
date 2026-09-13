@@ -41,6 +41,9 @@ const RELEASE_PAGE_SIZE: u32 = 20;
 
 #[derive(Clone, Default, Serialize)]
 pub struct TrackRow {
+    /// Featured performers already joined ("X, Y"); "" when none.
+    #[serde(rename = "featured")]
+    pub featured: String,
     pub id: String,
     pub number: String,
     pub title: String,
@@ -509,6 +512,15 @@ fn build_credits(album: &Album) -> Vec<(String, String, String)> {
 }
 
 /// album.rs `map_track` (with work headers for classical albums).
+/// "X, Y" for the row's `feat.` suffix (empty = nothing to add). Qobuz rows
+/// only — local / media-server rows never carry `performers`.
+pub(crate) fn featured_join(performers: Option<&str>, artist: &str, title: &str) -> String {
+    let Some(performers) = performers else {
+        return String::new();
+    };
+    qbz_qobuz::performers::featured_artists(performers, artist, title).join(", ")
+}
+
 fn map_track(track: &Track) -> TrackRow {
     let work = track
         .work
@@ -536,6 +548,7 @@ fn map_track(track: &Track) -> TrackRow {
         .map(|p| (p.name.clone(), p.id.to_string()))
         .unwrap_or_default();
     TrackRow {
+        featured: featured_join(track.performers.as_deref(), &artist, &track.title),
         is_favorite: crate::fav_cache_qt::contains_track(track.id),
         id: track.id.to_string(),
         number: track.track_number.to_string(),
