@@ -67,7 +67,7 @@ use qconnect_app::{
     QconnectSessionState, QueueCommandType, RendererPlaybackSnapshot, RendererReport,
     RendererReportType, SessionLoopHost,
 };
-use qconnect_lan::EndpointPolicy;
+use qconnect_lan::{EndpointPolicy, HandoffBody, LanTokenOut};
 use qconnect_transport_ws::{NativeWsTransport, WsTransportConfig};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
@@ -275,6 +275,38 @@ pub(crate) mod publish {
         /// Icon key from `device_icon_key`: "mobile" | "web" | "computer" |
         /// "speaker".
         pub icon: &'static str,
+        /// The cloud's device uuid, when it carries one — what lets a LAN
+        /// candidate drop out of the picker once the session lists it.
+        pub device_uuid: Option<String>,
+    }
+
+    /// The session rows as last published, kept so a LAN change can
+    /// republish the merged list without waiting for a cloud event.
+    static LAST_SESSION_ROWS: std::sync::Mutex<Vec<QconnectDeviceRow>> =
+        std::sync::Mutex::new(Vec::new());
+    /// Renderers on this network, from the LAN controller half.
+    static LAN_ROWS: std::sync::Mutex<Vec<crate::qconnect_lan_qt::LanPickerRow>> =
+        std::sync::Mutex::new(Vec::new());
+
+    fn lan_icon(device_type: qconnect_lan::DeviceType) -> &'static str {
+        use qconnect_lan::DeviceType;
+        match device_type {
+            DeviceType::Phone | DeviceType::Tablet => "mobile",
+            DeviceType::Computer => "computer",
+            _ => "speaker",
+        }
+    }
+
+    /// The LAN half's rows changed: store them and republish the merged list.
+    pub(crate) fn set_lan_rows(rows: Vec<crate::qconnect_lan_qt::LanPickerRow>) {
+        if let Ok(mut slot) = LAN_ROWS.lock() {
+            *slot = rows;
+        }
+        let session_rows = LAST_SESSION_ROWS
+            .lock()
+            .map(|rows| rows.clone())
+            .unwrap_or_default();
+        devices(session_rows);
     }
 
     /// `NowPlayingState.qconnect-connected` -> `QbzQConnect.qconnect_connected`
@@ -290,21 +322,48 @@ pub(crate) mod publish {
     /// these keys — the full contract is documented in qconnect_bridge.rs):
     /// `[{ renderer_id, name, is_local, is_active, icon }]`.
     pub(crate) fn devices(rows: Vec<QconnectDeviceRow>) {
-        let json = serde_json::to_string(
-            &rows
-                .iter()
-                .map(|row| {
-                    serde_json::json!({
-                        "renderer_id": row.renderer_id,
-                        "name": row.name,
-                        "is_local": row.is_local,
-                        "is_active": row.is_active,
-                        "icon": row.icon,
-                    })
+        if let Ok(mut slot) = LAST_SESSION_ROWS.lock() {
+            *slot = rows.clone();
+        }
+        // Session rows first, then the LAN candidates the session does not
+        // list yet (`lan: true`, `lan_uuid`): once a paired device is
+        // announced by the cloud its LAN row disappears by uuid.
+        let mut entries: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                serde_json::json!({
+                    "renderer_id": row.renderer_id,
+                    "name": row.name,
+                    "is_local": row.is_local,
+                    "is_active": row.is_active,
+                    "icon": row.icon,
                 })
-                .collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|_| "[]".to_string());
+            })
+            .collect();
+        let in_session: std::collections::HashSet<String> = rows
+            .iter()
+            .filter_map(|row| row.device_uuid.clone())
+            .collect();
+        if let Ok(lan) = LAN_ROWS.lock() {
+            entries.extend(
+                lan.iter()
+                    .filter(|row| !in_session.contains(&row.device_uuid))
+                    .map(|row| {
+                        serde_json::json!({
+                            "renderer_id": -1,
+                            "name": row.name,
+                            "is_local": false,
+                            "is_active": false,
+                            "icon": lan_icon(row.device_type),
+                            "lan": true,
+                            "lan_uuid": row.device_uuid,
+                            "brand": row.brand,
+                            "model": row.model,
+                        })
+                    }),
+            );
+        }
+        let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
         crate::qconnect_bridge::ui(move |mut b| {
             b.as_mut().set_devices_json(QString::from(json.as_str()));
         });
@@ -748,6 +807,9 @@ pub struct QtQconnectService {
     coordinator: QtDelegationCoordinator,
     lan: Mutex<Option<QtLanRuntime>>,
     lan_lifecycle: LanRuntimeLifecycle<QtLanRuntime>,
+    /// The QWS endpoint the live transport uses — the fallback endpoint for
+    /// a delegated QWS token the cloud returns without one (LAN pairing).
+    lan_qws_endpoint: Mutex<Option<String>>,
     lifecycle_gate: Mutex<()>,
     /// Controller-mode mirror of the local queue's manual block (#442 "Play
     /// later"): steers `insert_after` for play-later routing. See the struct
@@ -1261,6 +1323,7 @@ impl QtQconnectService {
             lan_lifecycle: LanRuntimeLifecycle::new(|runtime: &mut QtLanRuntime| {
                 runtime.shutdown_blocking()
             }),
+            lan_qws_endpoint: Mutex::new(None),
             lifecycle_gate: Mutex::new(()),
             controller_manual: Mutex::new(ControllerManualBlock::default()),
             teardown_incomplete: AtomicBool::new(false),
@@ -1445,6 +1508,7 @@ impl QtQconnectService {
         let endpoint_policy =
             EndpointPolicy::from_trusted_endpoints(qbz_qobuz::endpoints::BASE_URL, qws_endpoint)
                 .map_err(|_| "qconnect-lan-endpoint-policy-invalid".to_string())?;
+        *self.lan_qws_endpoint.lock().await = Some(qws_endpoint.to_string());
         let app_id = self
             .await_while_enabled(enable_token, self.owner_app_id())
             .await??;
@@ -1549,6 +1613,85 @@ impl QtQconnectService {
             }
         }
         Err("qconnect-lan-disabled-or-owner-superseded".to_string())
+    }
+
+    /// Pair a renderer found on this network into the account's session —
+    /// the step the official apps take when a LAN-only receiver (a BluOS
+    /// player, another QBZ) is picked: `/qws/delegateAuth` for its app id,
+    /// then the LAN handoff carrying OUR session uuid and `become_active`.
+    /// From there the cloud announces it like any other renderer. Never
+    /// account-less: the delegated pair is minted from the owner's session.
+    /// Returns the renderer's friendly name.
+    pub async fn pair_lan(&self, device_uuid: &str) -> Result<String, String> {
+        let (candidate, probe, lan_client) = {
+            let lan = self.lan.lock().await;
+            let runtime = lan
+                .as_ref()
+                .ok_or_else(|| "Qobuz Connect is not running".to_string())?;
+            runtime
+                .lan_candidate(device_uuid)
+                .ok_or_else(|| "That device is no longer on this network".to_string())?
+        };
+        let sync_state = self
+            .inner
+            .lock()
+            .map_err(|_| "Qobuz Connect state is poisoned".to_string())?
+            .runtime
+            .as_ref()
+            .map(|rt| Arc::clone(&rt.sync_state))
+            .ok_or_else(|| "Qobuz Connect is not connected".to_string())?;
+        let session_id = sync_state
+            .lock()
+            .await
+            .session
+            .session_uuid
+            .clone()
+            .ok_or_else(|| "Qobuz Connect has no session yet".to_string())?;
+        let qws_endpoint = self.lan_qws_endpoint.lock().await.clone();
+        let qobuz = self
+            .runtime
+            .core()
+            .client()
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "Not signed in".to_string())?;
+        let delegated = qobuz
+            .delegate_qconnect_auth(&probe.connect.app_id)
+            .await
+            .map_err(|e| format!("qws/delegateAuth failed: {e}"))?;
+        let (api_endpoint, api_exp, api_jwt) = delegated.jwt_api.into_parts();
+        let (qws_ep, qws_exp, qws_jwt) = delegated.jwt_qws.into_parts();
+        let api_endpoint =
+            api_endpoint.unwrap_or_else(|| qbz_qobuz::endpoints::BASE_URL.to_string());
+        let qws_ep = qws_ep
+            .or(qws_endpoint)
+            .ok_or_else(|| "the QWS endpoint is unknown".to_string())?;
+        let body = HandoffBody {
+            session_id,
+            jwt_api: LanTokenOut {
+                endpoint: api_endpoint,
+                exp: api_exp,
+                jwt: api_jwt,
+            },
+            jwt_qconnect: LanTokenOut {
+                endpoint: qws_ep,
+                exp: qws_exp,
+                jwt: qws_jwt,
+            },
+            become_active: true,
+        };
+        lan_client
+            .hand_off(&candidate, &probe.address, &body)
+            .await
+            .map_err(|e| format!("connect-to-qconnect failed: {e}"))?;
+        log::info!(
+            "[QConnect LAN] paired {} ({} {}) into the session; waiting for the cloud to list it",
+            probe.display.friendly_name,
+            probe.display.brand_display_name,
+            probe.display.model_display_name
+        );
+        Ok(probe.display.friendly_name.clone())
     }
 
     async fn stop_lan(&self) -> Result<(), String> {

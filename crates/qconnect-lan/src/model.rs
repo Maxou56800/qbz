@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+// `Deserialize` (2026-09-13) is the controller half reading another
+// renderer's answers; a value this build does not know collapses to
+// `Unknown` instead of failing the probe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MaxAudioQuality {
     MP3,
     #[serde(rename = "UP_TO_CD")]
@@ -12,11 +15,11 @@ pub enum MaxAudioQuality {
     UpToHires192,
     #[serde(rename = "UP_TO_HIRES_384")]
     UpToHires384,
-    #[serde(rename = "UNKNOWN")]
+    #[serde(rename = "UNKNOWN", other)]
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceType {
     Phone,
     Speaker,
@@ -27,10 +30,11 @@ pub enum DeviceType {
     Headset,
     Tablet,
     GoogleCast,
+    #[serde(other)]
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisplayInfo {
     pub friendly_name: String,
     pub serial_number: String,
@@ -39,10 +43,12 @@ pub struct DisplayInfo {
     pub max_audio_quality: MaxAudioQuality,
     #[serde(rename = "type")]
     pub device_type: DeviceType,
+    /// Optional on the wire (Electron carries it, Android does not).
+    #[serde(default)]
     pub software_version: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectInfo {
     pub app_id: String,
     pub current_session_id: Option<String>,
