@@ -67,6 +67,10 @@ pub struct PlaylistTrackRow {
     /// playlists — what remove_tracks_from_playlist takes).
     #[serde(rename = "playlistTrackId")]
     pub playlist_track_id: u64,
+    /// The row's slot in the LOADED order (the API's insertion order — what
+    /// "Default" restores and "Date added" reads, 2026-09-13). Not serialised.
+    #[serde(skip)]
+    pub position: i32,
     pub title: String,
     pub artist: String,
     #[serde(rename = "artistId")]
@@ -554,7 +558,7 @@ pub fn teardown() {
 /// `Option`: `delete_by_id`'s ownership test would otherwise read
 /// "unauthenticated" as "owns nothing", which is right, and "owns playlist 0",
 /// which is not.
-fn current_user_id() -> Option<u64> {
+pub(crate) fn current_user_id() -> Option<u64> {
     match USER_ID.load(std::sync::atomic::Ordering::SeqCst) {
         0 => None,
         id => Some(id),
@@ -865,6 +869,7 @@ pub(crate) fn map_track(track: &Track) -> PlaylistTrackRow {
         .map(|p| (p.name, p.id.to_string()))
         .unwrap_or_default();
     PlaylistTrackRow {
+        position: 0,
         featured: crate::album_qt::featured_list(track.performers.as_deref(), &artist, &track.title, &[]),
         // Heart state at build time, from the favourite-id cache — the same
         // O(1) read `album_qt` / `artist_qt` / `label_qt` rows use. It was
@@ -1305,6 +1310,7 @@ pub async fn load(
         doc.covers = covers;
         doc.has_custom_cover = has_custom_cover;
         doc.tracks = rows;
+        stamp_positions(&mut doc.tracks);
         doc.track_count = track_count;
         doc.total_duration = total_duration;
         doc.is_owner = is_owner;
@@ -1373,6 +1379,13 @@ pub async fn load(
 // Sort + search (PlaylistActions.set-sort / filter_tracks)
 // ---------------------------------------------------------------------------
 
+/// Record the loaded order once, before any sort touches the rows.
+pub(crate) fn stamp_positions(rows: &mut [PlaylistTrackRow]) {
+    for (i, row) in rows.iter_mut().enumerate() {
+        row.position = i as i32;
+    }
+}
+
 fn apply_sort(doc: &mut PlaylistDoc, field: &str, asc: bool) {
     doc.sort_field = field.to_string();
     doc.sort_asc = asc;
@@ -1397,16 +1410,16 @@ fn apply_sort(doc: &mut PlaylistDoc, field: &str, asc: bool) {
         // the interleave computed, which is the order the user actually chose.
         "custom" if !doc.is_mixed => apply_custom_order(doc),
         "custom" => {}
-        // "default" / "added": the API insertion order is the natural
-        // order; "added" starts newest-first (asc=false reverses).
-        _ => {}
+        // "default" / "added": the API insertion order IS the added order
+        // (a track is appended when it is added), so both sort by the slot
+        // stamped at load — an actual order, not a reversal of whatever the
+        // rows happened to be in after a Title sort (issue: the direction
+        // toggle needed two clicks and switching fields kept the old order).
+        _ => doc.tracks.sort_by_key(|t| t.position),
     }
-    // Canonical ascending, then reverse for the other direction
-    // (library_all.rs derive; default/added keep model order).
-    if matches!(field, "title" | "artist" | "album" | "duration") && !asc {
-        doc.tracks.reverse();
-    }
-    if field == "added" && asc {
+    // Canonical ascending (oldest-added first for default/added), then
+    // reverse for the other direction. Custom keeps its stored order.
+    if field != "custom" && !asc {
         doc.tracks.reverse();
     }
 }
@@ -1482,10 +1495,12 @@ pub fn set_sort(field: &str) {
     let doc = with_doc(|d| {
         // Re-pick flips direction for the sortable fields; a new field
         // resets to its natural default (Library All parity).
+        // A new field starts at its natural direction: "added" newest
+        // first, everything else ascending.
         let asc = if d.sort_field == field {
             !d.sort_asc
         } else {
-            !matches!(field, "added")
+            field != "added"
         };
         apply_sort(d, field, asc);
         (d.clone(), d.is_local_playlist)
