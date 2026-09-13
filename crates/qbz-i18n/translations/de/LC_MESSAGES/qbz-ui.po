@@ -7520,10 +7520,6 @@ msgstr "Schleifenende setzen (B)"
 msgid "Clear loop"
 msgstr "Schleife aufheben"
 
-#: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
-msgstr "Führt die Gastinterpreten des Titels nach dem Hauptkünstler in den Qobuz-Titelzeilen auf, durch Kommas getrennt. Standardmäßig aus."
-
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "COVER-CACHE"
@@ -7555,3 +7551,7 @@ msgstr "Speicher"
 #: qbz-qt/qml/settings/StorageSettings.qml
 msgid "PLEX CACHE"
 msgstr "PLEX-CACHE"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Führt die Gastinterpreten des Titels nach dem Hauptkünstler in den Qobuz-Titelzeilen auf, durch Kommas getrennt. Jeder Name ist ein Link. Standardmäßig an."

@@ -7501,10 +7501,6 @@ msgstr "ループの終了点を設定 (B)"
 msgid "Clear loop"
 msgstr "ループを解除"
 
-#: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
-msgstr "Qobuz のトラック行で、メインアーティストの後にフィーチャリングされた演奏者をカンマ区切りで表示します。既定ではオフです。"
-
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "アートワークキャッシュ"
@@ -7536,3 +7532,7 @@ msgstr "ストレージ"
 #: qbz-qt/qml/settings/StorageSettings.qml
 msgid "PLEX CACHE"
 msgstr "PLEX キャッシュ"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Qobuz のトラック行で、メインアーティストの後にフィーチャリングされた演奏者をカンマ区切りで表示します。各名前はリンクです。既定ではオンです。"

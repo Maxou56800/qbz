@@ -2743,7 +2743,7 @@ pub async fn publish_snapshot() {
             library_track_artwork: pref_bool("library_track_artwork", false),
             local_library_track_artwork: pref_bool("local_library_track_artwork", false),
             play_indicator_animation: pref_bool("play_indicator_animation", false),
-            show_featured_artists: pref_bool("show_featured_artists", false),
+            show_featured_artists: pref_bool("show_featured_artists", true),
             seekbar_waveform: seekbar_waveform(),
             invert_swipe_navigation: pref_bool("invert_swipe_navigation", false),
             in_app_toasts: pref_bool("in_app_toasts", true),

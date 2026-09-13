@@ -507,17 +507,19 @@ Rectangle {
         }
         return false
     }
-    // "Show featured artists in track rows" (AppearanceSettings). Same read
-    // as playIndicatorAnim: the settings document republishes on every
+    // "Show featured artists in track rows" (AppearanceSettings), ON by
+    // default: only an explicit false turns it off, so the rows never flash
+    // without names before the first settings snapshot lands. Same read as
+    // playIndicatorAnim otherwise: the settings document republishes on every
     // settings write, which is the only time this re-evaluates.
     readonly property bool showFeaturedArtists: {
         var raw = QbzBridge.settingsJson
         if (raw && raw.length > 2) {
             try {
-                return JSON.parse(raw).showFeaturedArtists === true
+                return JSON.parse(raw).showFeaturedArtists !== false
             } catch (e) { /* fall through */ }
         }
-        return false
+        return true
     }
     // The animated eq bars carry the playing state in the play cell when the
     // pref is ON (TrackPlayCell.slint:99-100 `show-bars`): only while this

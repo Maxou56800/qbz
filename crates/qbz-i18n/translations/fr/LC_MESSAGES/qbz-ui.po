@@ -7518,10 +7518,6 @@ msgstr "Définir la fin de la boucle (B)"
 msgid "Clear loop"
 msgstr "Supprimer la boucle"
 
-#: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
-msgstr "Liste les interprètes invités du morceau après l'artiste principal sur les lignes de piste Qobuz, séparés par des virgules. Désactivé par défaut."
-
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "CACHE DES POCHETTES"
@@ -7553,3 +7549,7 @@ msgstr "Stockage"
 #: qbz-qt/qml/settings/StorageSettings.qml
 msgid "PLEX CACHE"
 msgstr "CACHE PLEX"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Liste les interprètes invités du morceau après l'artiste principal sur les lignes de piste Qobuz, séparés par des virgules. Chaque nom est un lien. Activé par défaut."
