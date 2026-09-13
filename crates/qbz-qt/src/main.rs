@@ -2578,6 +2578,10 @@ pub(crate) fn transport_seek(frac: f32) {
     spawn(async move { playback_qt::seek_frac(&runtime, frac).await });
 }
 
+pub(crate) fn transport_seek_by(delta_secs: i32) {
+    hotkeys_bridge::seek_relative(delta_secs);
+}
+
 pub(crate) fn transport_set_volume(volume: f32) {
     // Local model first (instant UI), then the engine.
     now_playing::set_volume(volume);

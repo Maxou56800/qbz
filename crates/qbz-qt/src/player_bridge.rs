@@ -181,6 +181,10 @@ pub mod qbz_player {
         fn previous(self: Pin<&mut QbzPlayer>);
         #[qinvokable]
         fn seek(self: Pin<&mut QbzPlayer>, frac: f32);
+        /// Relative seek in whole seconds (the ±10 s buttons); clamps to the
+        /// track and to the buffered edge like the seekbars do.
+        #[qinvokable]
+        fn seek_by(self: Pin<&mut QbzPlayer>, delta_secs: i32);
         #[qinvokable]
         fn set_volume(self: Pin<&mut QbzPlayer>, volume: f32);
         /// Persist the SETTLED volume (drag-end only — see QbzSlider.released).
@@ -462,6 +466,10 @@ impl qbz_player::QbzPlayer {
 
     pub fn seek(self: Pin<&mut Self>, frac: f32) {
         crate::transport_seek(frac);
+    }
+
+    pub fn seek_by(self: Pin<&mut Self>, delta_secs: i32) {
+        crate::transport_seek_by(delta_secs);
     }
 
     pub fn persist_volume(self: Pin<&mut Self>, fraction: f32) {

@@ -296,6 +296,11 @@ pub(crate) fn position() -> (i32, i32) {
     with_model(|m| (m.elapsed_secs, m.duration_secs)).0
 }
 
+/// The published seek lock (`np_seekable_max`, 0.0 = not yet published).
+pub(crate) fn seekable_max() -> f32 {
+    with_model(|m| m.seekable_max).0
+}
+
 /// (artist_id, title) of the current track — the read the immersive
 /// Suggestions loader makes off the Slint `NowPlayingState`
 /// (`main.rs:16699-16702`: the panel only has the track id, the seed artist
