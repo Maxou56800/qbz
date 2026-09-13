@@ -4247,6 +4247,14 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             };
             save_pref("startup_page", serde_json::json!(v));
         }
+        "image-cache-max" => {
+            let Some(mb) = offline::IMAGE_CACHE_MB.get(index) else {
+                return;
+            };
+            save_pref("image_cache_max_mb", serde_json::json!(mb));
+            // A smaller budget applies right away, not at the next boot.
+            crate::artwork_qt::trim_shared_now();
+        }
         "genre-filters-position" => {
             let Some(v) = LOCAL_GENRE_FILTER_POSITION_VALUES.get(index) else {
                 return;
@@ -4533,6 +4541,7 @@ pub async fn settings_string(key: &str, value: String) {
         "plex-clear-cache" => library::plex_clear_cache().await,
         // --- Offline --------------------------------------------------------
         "lyrics-cache-clear" => offline::clear_lyrics_cache().await,
+        "image-cache-clear" => offline::clear_image_cache().await,
         // Offline > "Check now": nudge the connectivity actor. The status it
         // publishes flows back through offline_fwd's forwarder, so there is
         // nothing to await and nothing to republish here.

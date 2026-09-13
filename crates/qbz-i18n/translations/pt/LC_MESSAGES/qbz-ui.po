@@ -7521,3 +7521,23 @@ msgstr "Remover loop"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
 msgstr "Lista os intérpretes convidados da faixa após o artista principal nas linhas de faixa do Qobuz, separados por vírgulas. Desligado por padrão."
+
+#: qbz-qt/qml/settings/OfflineSettings.qml
+msgid "ARTWORK CACHE"
+msgstr "CACHE DE CAPAS"
+
+#: qbz-qt/qml/settings/OfflineSettings.qml
+msgid "Maximum size"
+msgstr "Tamanho máximo"
+
+#: qbz-qt/qml/settings/OfflineSettings.qml
+msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
+msgstr "As imagens de álbuns e artistas ficam no disco até este limite; as menos recentemente mostradas são descartadas primeiro, durante o uso e no arranque."
+
+#: qbz-qt/qml/settings/OfflineSettings.qml
+msgid "Clear artwork cache"
+msgstr "Limpar cache de capas"
+
+#: qbz-qt/qml/settings/OfflineSettings.qml
+msgid "{} images using {}"
+msgstr "{} imagens ocupando {}"
