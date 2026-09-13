@@ -26,7 +26,7 @@ Column {
         // ADR-010: only mounted when navigation is NOT in the sidebar.
         visible: root.doc.navInSidebar !== true
         label: QbzSession.tr("Compact header navigation", QbzSession.trRev)
-        description: QbzSession.tr("Use the icon-only section navigation in the header even while the sidebar is open.", QbzSession.trRev)
+        description: QbzSession.tr("Always use the icon-only section navigation in the header. When off, the text tabs turn into icons only when they no longer fit next to the search box.", QbzSession.trRev)
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.doc.navHeaderCompact === true
             onToggled: function (v) { QbzBridge.settingsBool("nav-header-compact", v) }

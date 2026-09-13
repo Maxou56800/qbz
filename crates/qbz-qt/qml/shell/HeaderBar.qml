@@ -5,13 +5,15 @@
 // (HeaderBar.slint:858 / :974 — the two blocks are mutually exclusive):
 //
 //   navInSidebar ON   -> the sections live in Sidebar.qml. The header shows
-//                        the COMPACT icon nav only while the sidebar is fully
+//                        the section nav only while the sidebar is fully
 //                        closed (state 2), plus the separator + playlists
 //                        flyout button, so nothing is unreachable.
-//   navInSidebar OFF  -> the sections live HERE. Full text tabs while the
-//                        sidebar is not fully closed and navHeaderCompact is
-//                        OFF; the compact icon form when navHeaderCompact is
-//                        ON, or whenever the sidebar is fully closed.
+//   navInSidebar OFF  -> the sections live HERE.
+//   The FORM (2026-09-13) is a fit decision, agnostic of the sidebar state:
+//   full text tabs while they fit beside the search box, the compact icon
+//   form when they do not — or always when navHeaderCompact is ON. A closed
+//   sidebar no longer forces the compact form; it only adds the playlists
+//   button to the row, and that button is part of the measure.
 //
 // The search field gives up 60px whenever the nav is in the header, and
 // re-centers with a 220ms animation (HeaderBar.slint:569).
@@ -228,20 +230,49 @@ Rectangle {
     // 6 px gap above the 1140 px breakpoint, and the Row's 2 px spacing.
     readonly property real navTabsChrome:
         root.navTabCount * ((root.width >= 1140 ? 9 + 14 + 6 : 11) + 11 + 2)
+    TextMetrics {
+        id: navMetrics11
+        font.pixelSize: 11
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    // Where the section nav starts inside leftControls: right after the
+    // third sacred button. Read off that button, not off the tab row itself,
+    // because a Row leaves a hidden child's x wherever it last was — a room
+    // measured from the hidden form would feed the form decision below.
+    readonly property real navOriginX: fwdBtn.x + fwdBtn.width + leftControls.spacing
     // Room between the tabs' left edge and the (centred) search box.
-    readonly property real navTabsRoom: searchBox.x - (leftControls.x + fullTabs.x) - 16
+    readonly property real navTabsRoom: searchBox.x - (leftControls.x + root.navOriginX) - 16
+    // What trails the tabs in either form (the downloads ring, the playlists
+    // button of a closed sidebar) plus the Row gap before it — measured off
+    // the mounted group, which does not depend on the form.
+    readonly property real navTrailingWidth:
+        navTrailing.visible ? leftControls.spacing + navTrailing.width : 0
+    // The text tabs fit when every label at the 11 px floor, the per-tab
+    // chrome and the trailing group all sit left of the search box.
+    readonly property bool navTabsFit:
+        navMetrics11.advanceWidth + root.navTabsChrome + root.navTrailingWidth <= root.navTabsRoom
     readonly property int navLabelPx:
         !root.headerTabsOn ? 11
         : navMetrics13.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 13
         : navMetrics12.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 12
         : 11
 
-    // Which of the two header forms is mounted (mutually exclusive, and both
-    // off while the nav lives in the sidebar and the sidebar is not closed).
-    readonly property bool headerTabsOn: !QbzShell.navInSidebar
-        && QbzShell.sidebarState !== 2 && !QbzShell.navHeaderCompact
-    readonly property bool headerCompactOn: QbzShell.sidebarState === 2
-        || (!QbzShell.navInSidebar && QbzShell.navHeaderCompact)
+    // Whether the section nav is up here at all: the nav lives in the header,
+    // or it lives in the sidebar and the sidebar is fully closed (so the
+    // sections stay reachable).
+    readonly property bool headerNavOn: !QbzShell.navInSidebar || QbzShell.sidebarState === 2
+
+    // Which of the two header forms is mounted (mutually exclusive). The form
+    // is a FIT decision (2026-09-13), agnostic of the sidebar state: text tabs
+    // while they fit beside the search box, icon-only glyphs when they do not
+    // — or always when "Compact header navigation" is on. A closed sidebar
+    // used to force the compact form by itself; it now only adds the
+    // playlists button to the measure, so a window with room keeps its tabs.
+    readonly property bool headerTabsOn: root.headerNavOn
+        && !QbzShell.navHeaderCompact && root.navTabsFit
+
+    readonly property bool headerCompactOn: root.headerNavOn && !root.headerTabsOn
 
     // Purchases downloading now (see Sidebar.qml's twin block).
     readonly property var activeDownloads: {
@@ -426,7 +457,14 @@ Rectangle {
             cursorShape: Qt.PointingHandCursor
             // Icon-only buttons do NOT name their section, so their dropdown
             // is headed by the section name + hairline (HeaderBar.slint:223).
-            onClicked: navFlyout.openUnder(cnb, cnb.section, true)
+            // The click also lands on the section's first entry under the
+            // same opt-in the text tabs and the sidebar rows honour
+            // (NavFlyout.sectionClicked) — the compact form used to be the
+            // one host that ignored it.
+            onClicked: {
+                navFlyout.openUnder(cnb, cnb.section, true)
+                navFlyout.sectionClicked(cnb.section)
+            }
             onContainsMouseChanged: {
                 if (containsMouse) {
                     navFlyout.triggerHovered = true
@@ -460,14 +498,15 @@ Rectangle {
             onClicked: QbzShell.navigateBack()
         }
         QbzNavButton {
+            id: fwdBtn
             name: "chevron-right"
             anchors.verticalCenter: parent.verticalCenter
             btnEnabled: QbzShell.canForward
             onClicked: QbzShell.navigateForward()
         }
 
-        // Full section nav (text tabs) — nav in the header, sidebar not fully
-        // closed, compact form OFF. Sits AFTER the three sacred buttons so it
+        // Full section nav (text tabs) — the section nav is up here and the
+        // tabs fit (headerTabsOn). Sits AFTER the three sacred buttons so it
         // can never overlap them (HeaderBar.slint:853).
         Row {
             id: fullTabs
@@ -499,9 +538,9 @@ Rectangle {
             }
         }
 
-        // Compact section nav — while the sidebar is fully closed (so the
-        // sections stay reachable), or always when the nav is in the header
-        // and "Compact header navigation" is ON (HeaderBar.slint:974).
+        // Compact section nav — the icon-only form: when the text tabs do not
+        // fit beside the search box, or always when "Compact header
+        // navigation" is ON (HeaderBar.slint:974).
         Row {
             visible: root.headerCompactOn
             height: parent.height
@@ -524,6 +563,20 @@ Rectangle {
                 compact: true
                 anchors.verticalCenter: parent.verticalCenter
             }
+        }
+
+        // What trails the section nav in EITHER form (2026-09-13): the
+        // downloads ring and, while the sidebar is really closed, the
+        // separator + playlists flyout button. One group, mounted once, so a
+        // closed sidebar with room for text tabs keeps its playlists entry.
+        // Hidden outright when it has nothing to show, so the Row gap before
+        // it (and the fit measure above) only counts when something is there.
+        Row {
+            id: navTrailing
+            visible: root.headerNavOn
+                && (root.activeDownloads.length > 0 || QbzShell.sidebarState === 2)
+            height: parent.height
+            spacing: 2
             // Purchases downloading now, as one ring (the sidebar is closed
             // or the nav lives up here, so there is no row to list them in);
             // the per-album detail is the hover bubble. Absent while idle.

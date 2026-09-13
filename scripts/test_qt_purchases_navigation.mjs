@@ -23,17 +23,19 @@ assert.equal(slots.length, 2, 'full and compact purchases entries');
 assert.match(header, /onClicked: QbzShell.navigateTo\("purchases"\)/);
 assert.match(sidebar, /id: navColumn[\s\S]*?visible: QbzShell.navInSidebar/);
 let cases = 0;
-for (let bits = 0; bits < 64; bits++) {
+for (let bits = 0; bits < 128; bits++) {
     const [showPurchases, offline, navInSidebar, navHeaderCompact,
-        systemTitleBar, hideTitleBar] = Array.from({length: 6}, (_, i) => !!(bits & (1 << i)));
+        systemTitleBar, hideTitleBar, navTabsFit] = Array.from({length: 7}, (_, i) => !!(bits & (1 << i)));
     for (const sidebarState of [0, 1, 2]) {
         const ctx = vm.createContext({
-            root: {settingsDoc: {showPurchases}},
+            // navTabsFit is the measured "text tabs fit beside the search box"
+            // bit: the form is a fit decision, agnostic of the sidebar state.
+            root: {settingsDoc: {showPurchases}, navTabsFit},
             QbzShell: {navInSidebar, navHeaderCompact, sidebarState, systemTitleBar, hideTitleBar},
             QbzSession: {offline},
         });
         const evaluate = expression => vm.runInContext(expression, ctx);
-        for (const property of ['headerTabsOn', 'headerCompactOn', 'purchasesInHeader'])
+        for (const property of ['headerNavOn', 'headerTabsOn', 'headerCompactOn', 'purchasesInHeader'])
             ctx.root[property] = evaluate(binding(header, property));
         const headerCount = slots.reduce((count, expression, index) => count + Number(evaluate(expression)
             && (index === 0 ? ctx.root.headerTabsOn : ctx.root.headerCompactOn)), 0);
@@ -45,7 +47,8 @@ for (let bits = 0; bits < 64; bits++) {
         cases++;
     }
 }
-console.log(`Purchases navigation PASS: ${cases} combinations, full/compact/closed sidebar, title bars, opt-in and offline`);
+assert.equal(cases, 128 * 3);
+console.log(`Purchases navigation PASS: ${cases} combinations, full/compact/closed sidebar, tabs fit or not, title bars, opt-in and offline`);
 
 const shell = read('crates/qbz-qt/qml/shell/AppShell.qml');
 // The bar's z is mode-aware since the 2.1.2 stabilization: Small's seek thumb

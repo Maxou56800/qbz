@@ -4486,8 +4486,9 @@ msgstr "Modo de barra de título cambiado — reinicia QBZ para aplicar"
 msgid "Compact header navigation"
 msgstr "Navegación compacta en el encabezado"
 
-msgid "Use the icon-only section navigation in the header even while the sidebar is open."
-msgstr "Usa la navegación de secciones de solo iconos en el encabezado aunque la barra lateral esté abierta."
+#: crates/qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Always use the icon-only section navigation in the header. When off, the text tabs turn into icons only when they no longer fit next to the search box."
+msgstr "Usa siempre la navegación de secciones de solo iconos en el encabezado. Apagado, las pestañas de texto pasan a iconos solo cuando ya no caben junto al cuadro de búsqueda."
 
 # DSD support Phase 1 (2026-07-03)
 msgid "DSD: {}"
