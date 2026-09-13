@@ -3137,3 +3137,15 @@ msgstr "Back 10 seconds"
 #: qbz-qt/qml/shell/TransportControls.qml
 msgid "Forward 10 seconds"
 msgstr "Forward 10 seconds"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "Set loop start (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "Set loop end (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "Clear loop"

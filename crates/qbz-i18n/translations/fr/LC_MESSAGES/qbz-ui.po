@@ -7509,3 +7509,15 @@ msgstr "Reculer de 10 secondes"
 #: qbz-qt/qml/shell/TransportControls.qml
 msgid "Forward 10 seconds"
 msgstr "Avancer de 10 secondes"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "Définir le début de la boucle (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "Définir la fin de la boucle (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "Supprimer la boucle"

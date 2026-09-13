@@ -532,6 +532,20 @@ Rectangle {
     // idiom: a raw JSON.parse in a binding throws on the pre-publish frame and
     // takes the whole bar down with it.
     readonly property var settingsDoc: parseSettings()
+    // A-B loop entries for the "+" menu (see PlayerBar.abEntries): local
+    // playback only.
+    function abEntries() {
+        if (QbzPlayer.npIsRemote || QbzPlayer.npCastActive)
+            return []
+        var m = [{ "sep": true }]
+        if (QbzPlayer.abState === 0)
+            m.push({ "label": QbzSession.tr("Set loop start (A)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        else if (QbzPlayer.abState === 1)
+            m.push({ "label": QbzSession.tr("Set loop end (B)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        if (QbzPlayer.abState !== 0)
+            m.push({ "label": QbzSession.tr("Clear loop", QbzSession.trRev), "icon": "x", "action": "ab-clear" })
+        return m
+    }
     function parseSettings() {
         try {
             return JSON.parse(QbzBridge.settingsJson)
@@ -568,7 +582,7 @@ Rectangle {
             m.push({ "label": QbzSession.tr("Play later", QbzSession.trRev), "icon": "list-plus", "action": "later" })
             m.push({ "label": QbzSession.tr("Play next", QbzSession.trRev), "icon": "list-start", "action": "next" })
             if (root.npEphemeral)
-                return m
+                return m.concat(root.abEntries())
             // "Add to playlist" is SECOND (TransportControls.slint:143 — the
             // full bar carries the rationale). Same `npSource` gate as the
             // mixtape entry: the picker's Qobuz arm takes catalog ids and an
@@ -597,7 +611,7 @@ Rectangle {
                     "action": "album-favorite"
                 })
             }
-            return m
+            return m.concat(root.abEntries())
         }
         onPicked: function (a) {
             var id = QbzPlayer.npTrackId
@@ -612,6 +626,10 @@ Rectangle {
             } else if (a === "album-favorite") {
                 if (QbzPlayer.npAlbumId !== "")
                     QbzLibrary.libraryToggleFavorite("album", QbzPlayer.npAlbumId)
+            } else if (a === "ab-mark") {
+                QbzPlayer.abMark()
+            } else if (a === "ab-clear") {
+                QbzPlayer.abClear()
             } else if (a === "mixtape") {
                 // MyQBZ AddItem, built here from the now-playing state:
                 // `npArtworkPath` is a file:// CACHE path, so it is NOT the

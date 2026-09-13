@@ -126,6 +126,20 @@ Rectangle {
     // AppearanceState.show-volume-steppers (PlayerBar.slint gates the −/+
     // pair on it; Tauri always showed them).
     readonly property bool showVolumeSteppers: settingsDoc.showVolumeSteppers === true
+    // A-B loop entries for the "+" menu: one contextual verb + clear. Local
+    // playback only — the loop cannot follow a cast / Connect renderer.
+    function abEntries() {
+        if (QbzPlayer.npIsRemote || QbzPlayer.npCastActive)
+            return []
+        var m = [{ "sep": true }]
+        if (QbzPlayer.abState === 0)
+            m.push({ "label": QbzSession.tr("Set loop start (A)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        else if (QbzPlayer.abState === 1)
+            m.push({ "label": QbzSession.tr("Set loop end (B)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        if (QbzPlayer.abState !== 0)
+            m.push({ "label": QbzSession.tr("Clear loop", QbzSession.trRev), "icon": "x", "action": "ab-clear" })
+        return m
+    }
 
     // Favorite state of the now-playing track (Slint:
     // QueueState.now-playing-favorite). The queue document carries it on its
@@ -425,6 +439,32 @@ Rectangle {
                     color: theme.textPrimary
                     x: parent.width * seekRow.visualProgress - width / 2
                     anchors.verticalCenter: parent.verticalCenter
+                }
+                // A-B loop: the tinted section + two ticks. Static bindings only
+                // (no animation), so nothing here touches the repaint pulse.
+                Rectangle {
+                    visible: QbzPlayer.abState === 2 && QbzPlayer.npDurationSecs > 0
+                    x: parent.width * (QbzPlayer.abStartSecs / Math.max(QbzPlayer.npDurationSecs, 1))
+                    width: Math.max(2, parent.width
+                        * ((QbzPlayer.abEndSecs - QbzPlayer.abStartSecs) / Math.max(QbzPlayer.npDurationSecs, 1)))
+                    height: parent.height
+                    radius: 2
+                    color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.28)
+                }
+                Repeater {
+                    model: QbzPlayer.abState === 0 ? []
+                         : (QbzPlayer.abState === 1 ? [QbzPlayer.abStartSecs]
+                                                    : [QbzPlayer.abStartSecs, QbzPlayer.abEndSecs])
+                    Rectangle {
+                        required property int modelData
+                        visible: QbzPlayer.npDurationSecs > 0
+                        width: 2
+                        height: 10
+                        radius: 1
+                        color: theme.accent
+                        x: seekTrack.width * (modelData / Math.max(QbzPlayer.npDurationSecs, 1)) - 1
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                 }
             }
             Text {
@@ -887,7 +927,7 @@ Rectangle {
             m.push({ "label": QbzSession.tr("Play later", QbzSession.trRev), "icon": "list-plus", "action": "later" })
             m.push({ "label": QbzSession.tr("Play next", QbzSession.trRev), "icon": "list-start", "action": "next" })
             if (root.npEphemeral)
-                return m
+                return m.concat(root.abEntries())
             // "Add to playlist" sits SECOND in TransportControls.slint:143 —
             // spliced in there rather than appended, because the flyout's
             // order is part of the parity. It rides the SAME `npSource` gate
@@ -919,7 +959,7 @@ Rectangle {
                     "action": "album-favorite"
                 })
             }
-            return m
+            return m.concat(root.abEntries())
         }
         onPicked: function (a) {
             var id = QbzPlayer.npTrackId
@@ -934,6 +974,10 @@ Rectangle {
             } else if (a === "album-favorite") {
                 if (QbzPlayer.npAlbumId !== "")
                     QbzLibrary.libraryToggleFavorite("album", QbzPlayer.npAlbumId)
+            } else if (a === "ab-mark") {
+                QbzPlayer.abMark()
+            } else if (a === "ab-clear") {
+                QbzPlayer.abClear()
             } else if (a === "mixtape") {
                 // MyQBZ AddItem, built here from the now-playing state:
                 // `npArtworkPath` is a file:// CACHE path, so it is NOT the

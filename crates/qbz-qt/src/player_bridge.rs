@@ -161,6 +161,11 @@ pub mod qbz_player {
         // ui_prefs `show_skip_ten`, mirrored here so TransportControls reads
         // one property on every bar.
         #[qproperty(bool, show_skip_ten)]
+        // A-B loop (ab_loop_qt): 0 none / 1 A armed / 2 looping, plus the two
+        // marks in whole seconds for the seekbar.
+        #[qproperty(i32, ab_state)]
+        #[qproperty(i32, ab_start_secs)]
+        #[qproperty(i32, ab_end_secs)]
         type QbzPlayer = super::QbzPlayerRust;
 
         /// Registers this object's Qt-thread hop (Main.qml boots EVERY
@@ -189,6 +194,11 @@ pub mod qbz_player {
         /// track and to the buffered edge like the seekbars do.
         #[qinvokable]
         fn seek_by(self: Pin<&mut QbzPlayer>, delta_secs: i32);
+        /// A-B loop verb: arm A, then B, then clear (see ab_loop_qt).
+        #[qinvokable]
+        fn ab_mark(self: Pin<&mut QbzPlayer>);
+        #[qinvokable]
+        fn ab_clear(self: Pin<&mut QbzPlayer>);
         #[qinvokable]
         fn set_volume(self: Pin<&mut QbzPlayer>, volume: f32);
         /// Persist the SETTLED volume (drag-end only — see QbzSlider.released).
@@ -352,6 +362,9 @@ pub struct QbzPlayerRust {
     np_context_id: QString,
     show_context_icon: bool,
     show_skip_ten: bool,
+    ab_state: i32,
+    ab_start_secs: i32,
+    ab_end_secs: i32,
 }
 
 impl Default for QbzPlayerRust {
@@ -418,6 +431,9 @@ impl Default for QbzPlayerRust {
             // re-publishes it on shell entry and on the Settings toggle.
             show_context_icon: crate::settings_qt::show_context_icon(),
             show_skip_ten: crate::settings_qt::pref_bool("show_skip_ten", false),
+            ab_state: 0,
+            ab_start_secs: 0,
+            ab_end_secs: 0,
         }
     }
 }
@@ -476,6 +492,14 @@ impl qbz_player::QbzPlayer {
 
     pub fn seek_by(self: Pin<&mut Self>, delta_secs: i32) {
         crate::transport_seek_by(delta_secs);
+    }
+
+    pub fn ab_mark(self: Pin<&mut Self>) {
+        crate::ab_loop_mark();
+    }
+
+    pub fn ab_clear(self: Pin<&mut Self>) {
+        crate::ab_loop_clear();
     }
 
     pub fn persist_volume(self: Pin<&mut Self>, fraction: f32) {

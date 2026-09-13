@@ -7492,3 +7492,15 @@ msgstr "10秒戻る"
 #: qbz-qt/qml/shell/TransportControls.qml
 msgid "Forward 10 seconds"
 msgstr "10秒進む"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "ループの開始点を設定 (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "ループの終了点を設定 (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "ループを解除"

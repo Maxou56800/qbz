@@ -3603,6 +3603,19 @@ fn auto_skip_unavailable<'a>(
     })
 }
 
+/// The LOCAL tail of `seek_frac` (no cast / QConnect routing): the A-B loop's
+/// jump, which is only ever armed for local playback.
+pub(crate) async fn seek_local_secs(runtime: &Arc<AppRuntime<LoggingAdapter>>, target: u64) {
+    let Some(_transport_action) = begin_transport_action() else {
+        return;
+    };
+    if let Err(e) = runtime.core().seek(target) {
+        log::warn!("[qbz-qt] seek failed: {e}");
+        return;
+    }
+    crate::media_controls_qt::push_seeked(target);
+}
+
 pub async fn seek_frac(runtime: &Arc<AppRuntime<LoggingAdapter>>, frac: f32) {
     let Some(_transport_action) = begin_transport_action() else {
         return;
@@ -3677,6 +3690,7 @@ pub async fn seek_frac(runtime: &Arc<AppRuntime<LoggingAdapter>>, frac: f32) {
         return;
     }
     let target = (frac.clamp(0.0, 1.0) * event.duration as f32) as u64;
+    crate::ab_loop_qt::on_manual_seek(target);
     if let Err(e) = runtime.core().seek(target) {
         log::warn!("[qbz-qt] seek failed: {e}");
         return;
@@ -4697,6 +4711,7 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                     qbz_app::session_persist::capture_and_save(&runtime).await;
                 }
                 last_track_id = track_id;
+                crate::ab_loop_qt::on_track_changed(track_id);
                 // The engine may have reached this track through a GAPLESS
                 // hand-off, in which case the arming guard still names the
                 // track that just ended. Clear it so the NEW current track can

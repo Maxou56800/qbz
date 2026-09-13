@@ -139,6 +139,7 @@ mod kiosk_nav_qt;
 mod tray_bridge;
 // The kiosk profile itself (the same contract, §8): env/pref resolution, the
 // live Kiosk <-> Desktop toggle, and the boot decisions that follow from it.
+mod ab_loop_qt;
 mod artwork_qt;
 mod atmosphere_qt;
 mod kiosk_profile_qt;
@@ -2580,6 +2581,15 @@ pub(crate) fn transport_seek(frac: f32) {
 
 pub(crate) fn transport_seek_by(delta_secs: i32) {
     hotkeys_bridge::seek_relative(delta_secs);
+}
+
+pub(crate) fn ab_loop_mark() {
+    let runtime = app();
+    spawn(async move { ab_loop_qt::mark(runtime).await });
+}
+
+pub(crate) fn ab_loop_clear() {
+    ab_loop_qt::clear();
 }
 
 pub(crate) fn transport_set_volume(volume: f32) {
