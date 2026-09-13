@@ -290,6 +290,14 @@ Column {
         }
     }
     SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Show 10-second skip buttons", QbzSession.trRev)
+        description: QbzSession.tr("Add ±10 s buttons beside Previous and Next in the player bar.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.showSkipTen === true
+            onToggled: function (v) { QbzBridge.settingsBool("show-skip-ten", v) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Startup page", QbzSession.trRev)
         description: QbzSession.tr("Choose which page to show when the app starts", QbzSession.trRev)
         QbzSelect { kioskHost: root.kioskHost;
@@ -324,6 +332,14 @@ Column {
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.doc.playIndicatorAnimation === true
             onToggled: function (v) { QbzBridge.settingsBool("play-indicator-animation", v) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Show featured artists in track rows", QbzSession.trRev)
+        description: QbzSession.tr("List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.showFeaturedArtists === true
+            onToggled: function (v) { QbzBridge.settingsBool("show-featured-artists", v) }
         }
     }
     SettingRow { kioskHost: root.kioskHost;

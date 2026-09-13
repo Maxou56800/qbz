@@ -245,16 +245,36 @@ fn select_all_active() -> bool {
     true
 }
 
-/// §1.3 seek math, verbatim from keybindings.rs:572-581:
-/// `clamp(npElapsedSecs ± d, 0, npDurationSecs) / npDurationSecs`, same 1 Hz
-/// base (the now_playing model is fed by the poll pump — immersive D14).
-pub(crate) fn seek_relative(delta: i32) {
-    let (pos, duration) = crate::now_playing::position();
+/// §1.3 seek math (`clamp(npElapsedSecs ± d, 0, npDurationSecs) /
+/// npDurationSecs`) plus the clamp every seekbar applies on click/drag and the
+/// keyboard path never had: not past the buffered edge of a stream.
+pub(crate) fn relative_seek_fraction(
+    pos: i32,
+    duration: i32,
+    delta: i32,
+    seekable_max: f32,
+) -> Option<f32> {
     if duration <= 0 {
-        return;
+        return None;
     }
     let target = (pos + delta).clamp(0, duration);
-    crate::transport_seek(target as f32 / duration as f32);
+    let frac = target as f32 / duration as f32;
+    Some(if seekable_max > 0.0 {
+        frac.min(seekable_max)
+    } else {
+        frac
+    })
+}
+
+/// Same 1 Hz base as the seekbars (the now_playing model is fed by the poll
+/// pump — immersive D14). Shared by the hotkeys and the ±10 s buttons.
+pub(crate) fn seek_relative(delta: i32) {
+    let (pos, duration) = crate::now_playing::position();
+    if let Some(frac) =
+        relative_seek_fraction(pos, duration, delta, crate::now_playing::seekable_max())
+    {
+        crate::transport_seek(frac);
+    }
 }
 
 /// Keyboard volume step — the same 0.05 the player bars' +/- steppers use.
@@ -571,6 +591,19 @@ impl qbz_hotkeys::QbzHotkeys {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relative_seek_clamps_to_the_track_and_to_the_buffered_edge() {
+        use super::relative_seek_fraction as f;
+        assert_eq!(f(10, 100, 10, 1.0), Some(0.2));
+        assert_eq!(f(5, 100, -10, 1.0), Some(0.0));
+        assert_eq!(f(95, 100, 10, 1.0), Some(1.0));
+        // A stream with only half the track buffered: never past the edge.
+        assert_eq!(f(45, 100, 10, 0.5), Some(0.5));
+        // No seek lock published yet (0.0) means "no limit".
+        assert_eq!(f(95, 100, 10, 0.0), Some(1.0));
+        assert_eq!(f(10, 0, 10, 1.0), None);
+    }
 
     #[test]
     fn groups_default_is_full_shape() {

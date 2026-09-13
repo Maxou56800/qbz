@@ -197,6 +197,53 @@ impl ImageCacheService {
         Ok(batch)
     }
 
+    /// Delete `.img` files that have no row (a crash between `store`'s file
+    /// write and its insert, or a database that was lost), skipping anything
+    /// younger than `min_age` so a store in flight is never raced. Returns
+    /// (files removed, bytes freed).
+    pub fn sweep_orphans(&self, min_age: std::time::Duration) -> Result<(usize, u64), String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM cached_images")
+            .map_err(|e| format!("Failed to prepare orphan query: {}", e))?;
+        let tracked: std::collections::HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query tracked images: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+        let entries = std::fs::read_dir(&self.cache_dir)
+            .map_err(|e| format!("Failed to read image cache dir: {}", e))?;
+        let now = std::time::SystemTime::now();
+        let (mut files, mut bytes) = (0usize, 0u64);
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("img") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if tracked.contains(stem) {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            let young = meta
+                .modified()
+                .ok()
+                .and_then(|m| now.duration_since(m).ok())
+                .map(|age| age < min_age)
+                .unwrap_or(true);
+            if young {
+                continue;
+            }
+            if std::fs::remove_file(&path).is_ok() {
+                files += 1;
+                bytes += meta.len();
+            }
+        }
+        Ok((files, bytes))
+    }
+
     /// Get cache statistics.
     pub fn stats(&self) -> Result<ImageCacheStats, String> {
         let (total_bytes, file_count): (i64, i64) = self
@@ -294,6 +341,31 @@ mod tests {
         assert_eq!(cache.evict(0, 1).unwrap(), EvictBatch { freed_bytes: 100, evicted_entries: 1 });
         assert_eq!(cache.evict(0, 1).unwrap(), EvictBatch { freed_bytes: 100, evicted_entries: 1 });
         assert_eq!(cache.evict(0, 1).unwrap(), EvictBatch { freed_bytes: 0, evicted_entries: 0 });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sweep_orphans_removes_only_old_files_without_a_row() {
+        let dir = fresh_dir("orphans");
+        let cache = ImageCacheService::open_at(dir.clone()).unwrap();
+        let tracked = cache.store("https://img/tracked", &[0u8; 100]).unwrap();
+        let old_orphan = dir.join("0000000000000000000000000000dead.img");
+        std::fs::write(&old_orphan, [0u8; 300]).unwrap();
+        let two_hours_ago = filetime::FileTime::from_unix_time(
+            filetime::FileTime::now().unix_seconds() - 7_200,
+            0,
+        );
+        filetime::set_file_mtime(&old_orphan, two_hours_ago).unwrap();
+        let fresh_orphan = dir.join("000000000000000000000000000beef1.img");
+        std::fs::write(&fresh_orphan, [0u8; 50]).unwrap();
+
+        assert_eq!(
+            cache.sweep_orphans(std::time::Duration::from_secs(3_600)).unwrap(),
+            (1, 300)
+        );
+        assert!(tracked.exists(), "a tracked file is never swept");
+        assert!(!old_orphan.exists());
+        assert!(fresh_orphan.exists(), "a store in flight is never raced");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

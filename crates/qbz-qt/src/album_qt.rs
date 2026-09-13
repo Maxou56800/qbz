@@ -30,6 +30,7 @@ use std::time::Instant;
 use cxx_qt_lib::QString;
 use qbz_app::shell::AppRuntime;
 use qbz_core::LoggingAdapter;
+use qbz_models::types::AlbumArtist;
 use qbz_models::{Album, Track};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -41,6 +42,11 @@ const RELEASE_PAGE_SIZE: u32 = 20;
 
 #[derive(Clone, Default, Serialize)]
 pub struct TrackRow {
+    /// Featured performers, main artist excluded; `id` is the Qobuz artist id
+    /// when the album credits name the same person, "" otherwise (the row
+    /// then falls back to a search by name). Empty when none.
+    #[serde(rename = "featured")]
+    pub featured: Vec<FeaturedArtist>,
     pub id: String,
     pub number: String,
     pub title: String,
@@ -509,7 +515,42 @@ fn build_credits(album: &Album) -> Vec<(String, String, String)> {
 }
 
 /// album.rs `map_track` (with work headers for classical albums).
-fn map_track(track: &Track) -> TrackRow {
+/// One featured performer on a track row (see `TrackRow::featured`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct FeaturedArtist {
+    pub name: String,
+    /// Qobuz artist id as a string, "" when unknown.
+    pub id: String,
+}
+
+/// The row's featured performers (empty = nothing to add). Qobuz rows only —
+/// local / media-server rows never carry `performers`. `credits` are the
+/// album-level artists (id + roles) when the caller has them: a featured
+/// name that matches a credit gets that credit's id and links straight to
+/// the artist page; any other name links to a search.
+pub(crate) fn featured_list(
+    performers: Option<&str>,
+    artist: &str,
+    title: &str,
+    credits: &[AlbumArtist],
+) -> Vec<FeaturedArtist> {
+    let Some(performers) = performers else {
+        return Vec::new();
+    };
+    qbz_qobuz::performers::featured_artists(performers, artist, title)
+        .into_iter()
+        .map(|name| {
+            let id = credits
+                .iter()
+                .find(|c| qbz_qobuz::performers::same_artist_name(&c.name, &name))
+                .map(|c| c.id.to_string())
+                .unwrap_or_default();
+            FeaturedArtist { name, id }
+        })
+        .collect()
+}
+
+fn map_track(track: &Track, credits: &[AlbumArtist]) -> TrackRow {
     let work = track
         .work
         .as_ref()
@@ -536,6 +577,7 @@ fn map_track(track: &Track) -> TrackRow {
         .map(|p| (p.name.clone(), p.id.to_string()))
         .unwrap_or_default();
     TrackRow {
+        featured: featured_list(track.performers.as_deref(), &artist, &track.title, credits),
         is_favorite: crate::fav_cache_qt::contains_track(track.id),
         id: track.id.to_string(),
         number: track.track_number.to_string(),
@@ -666,10 +708,11 @@ pub async fn load_album(
     let booklet_url = pick_booklet_url(&album);
     set_booklet_stash(&title, &booklet_url);
 
+    let artist_credits: &[AlbumArtist] = album.artists.as_deref().unwrap_or(&[]);
     let tracks: Vec<TrackRow> = album
         .tracks
         .as_ref()
-        .map(|container| container.items.iter().map(map_track).collect())
+        .map(|container| container.items.iter().map(|t| map_track(t, artist_credits)).collect())
         .unwrap_or_default();
 
     // External links are built from the SAME artist/title the header shows.
@@ -1495,4 +1538,35 @@ fn spawn_deferred_rows(
         .collect();
         publish_row(generation, "similarAlbums", "similarLoading", &similar);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn credit(id: u64, name: &str, role: &str) -> AlbumArtist {
+        AlbumArtist {
+            id,
+            name: name.into(),
+            roles: Some(vec![role.into()]),
+        }
+    }
+
+    #[test]
+    fn featured_list_resolves_ids_from_the_album_credits_and_leaves_the_rest_searchable() {
+        let performers = "Alice, MainArtist - Bob, FeaturedArtist - Carol, Vocalist, FeaturedArtist";
+        let credits = [credit(1, "Alice", "main-artist"), credit(2, "bob", "featured-artist")];
+        assert_eq!(
+            featured_list(Some(performers), "Alice", "Song", &credits),
+            vec![
+                FeaturedArtist { name: "Bob".into(), id: "2".into() },
+                FeaturedArtist { name: "Carol".into(), id: String::new() },
+            ]
+        );
+        assert!(featured_list(None, "Alice", "Song", &credits).is_empty());
+        assert_eq!(
+            featured_list(Some(performers), "Alice", "Song", &[])[0],
+            FeaturedArtist { name: "Bob".into(), id: String::new() }
+        );
+    }
 }

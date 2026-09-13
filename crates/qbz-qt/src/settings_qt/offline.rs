@@ -30,7 +30,22 @@ pub struct Snapshot {
     pub lyrics_entries: i64,
     #[serde(rename = "lyricsSize")]
     pub lyrics_size: String,
+    /// Shared artwork cache (`~/.cache/qbz/images`): stats line + budget.
+    #[serde(rename = "imageCacheLoaded")]
+    pub image_cache_loaded: bool,
+    #[serde(rename = "imageCacheFiles")]
+    pub image_cache_files: i64,
+    #[serde(rename = "imageCacheSize")]
+    pub image_cache_size: String,
+    #[serde(rename = "imageCacheSizes")]
+    pub image_cache_sizes: Vec<String>,
+    #[serde(rename = "imageCacheSizeIndex")]
+    pub image_cache_size_index: i32,
 }
+
+/// Budget choices for the artwork cache, in MB (index 1 = the default).
+pub(crate) const IMAGE_CACHE_MB: &[u64] = &[100, 200, 500, 1000];
+const IMAGE_CACHE_LABELS: &[&str] = &["100 MB", "200 MB", "500 MB", "1 GB"];
 
 fn lyrics_db_path() -> Option<std::path::PathBuf> {
     let uid = qbz_app::user_data::UserDataPaths::load_last_user_id()?;
@@ -81,6 +96,17 @@ pub fn snapshot() -> Snapshot {
         _ => (false, 0, String::new()),
     };
 
+    let (image_cache_loaded, image_cache_files, image_cache_size) =
+        match crate::artwork_qt::shared_stats() {
+            Some((files, bytes)) => (true, files as i64, human_size(bytes)),
+            None => (false, 0, String::new()),
+        };
+    let budget_mb = crate::artwork_qt::shared_budget_bytes() / (1024 * 1024);
+    let image_cache_size_index = IMAGE_CACHE_MB
+        .iter()
+        .position(|mb| *mb == budget_mb)
+        .unwrap_or(1) as i32;
+
     Snapshot {
         mode_enabled: settings.manual_offline_mode,
         allow_immediate_scrobbling: settings.allow_immediate_scrobbling,
@@ -88,7 +114,21 @@ pub fn snapshot() -> Snapshot {
         lyrics_loaded,
         lyrics_entries,
         lyrics_size,
+        image_cache_loaded,
+        image_cache_files,
+        image_cache_size,
+        image_cache_sizes: IMAGE_CACHE_LABELS.iter().map(|l| l.to_string()).collect(),
+        image_cache_size_index,
     }
+}
+
+/// Settings > Offline > "Clear" on the artwork cache.
+pub async fn clear_image_cache() {
+    let _ = tokio::task::spawn_blocking(|| match crate::artwork_qt::clear_shared() {
+        Ok(freed) => log::info!("[qbz-qt] image cache cleared ({freed} B)"),
+        Err(e) => log::error!("[qbz-qt] image cache clear failed: {e}"),
+    })
+    .await;
 }
 
 pub fn set_allow_immediate_scrobbling(value: bool) -> Result<(), String> {

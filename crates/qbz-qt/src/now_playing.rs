@@ -198,6 +198,7 @@ pub fn publish_current() {
     publish(&snapshot);
     // The layers-glyph preference (see `publish_show_context_icon`).
     publish_show_context_icon();
+    publish_show_skip_ten();
     // Seed the two output LEDs + the volume-lock flag at shell entry too, so
     // the stamp is correct before the first track ever plays (the bridge
     // defaults are the unlit SYST/DEFAULT pair).
@@ -260,6 +261,13 @@ pub fn publish_show_context_icon() {
     crate::player_bridge::ui(move |mut b| b.as_mut().set_show_context_icon(show));
 }
 
+/// The ±10 s buttons preference (ui_prefs `show_skip_ten`), re-published on
+/// shell entry and from the Settings toggle.
+pub fn publish_show_skip_ten() {
+    let show = crate::settings_qt::pref_bool("show_skip_ten", false);
+    crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(show));
+}
+
 // --- Pure-UI toggles (mutate + republish) --------------------------------
 
 pub fn set_volume(volume: f32) {
@@ -294,6 +302,11 @@ pub fn repeat_mode() -> i32 {
 /// base is the Slint base (immersive contract D14).
 pub(crate) fn position() -> (i32, i32) {
     with_model(|m| (m.elapsed_secs, m.duration_secs)).0
+}
+
+/// The published seek lock (`np_seekable_max`, 0.0 = not yet published).
+pub(crate) fn seekable_max() -> f32 {
+    with_model(|m| m.seekable_max).0
 }
 
 /// (artist_id, title) of the current track — the read the immersive

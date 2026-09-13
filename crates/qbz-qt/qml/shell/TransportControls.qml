@@ -27,6 +27,10 @@ Row {
     property bool ephemeral: false
     /// AppShell's one shared hover-tooltip overlay.
     property var tooltip: null
+    /// A host whose zone cannot fit the ±10 s pair (see PlayerBar's column
+    /// budget) sets this; the pair then hides even with the pref on.
+    property bool compact: false
+    readonly property bool skipTenVisible: QbzPlayer.showSkipTen && !tc.compact
 
     /// Emitted by "+" with the button as anchor, so the flyout is owned
     /// by the bar (one menu, both mount points).
@@ -94,6 +98,16 @@ Row {
         }
     }
 
+    QbzIconButton {
+        visible: tc.skipTenVisible
+        name: "skip-back-10"
+        btnEnabled: QbzPlayer.npHasTrack
+        anchors.verticalCenter: parent.verticalCenter
+        onClicked: QbzPlayer.seekBy(-10)
+        tooltip: tc.tooltip
+        tooltipKey: "npb-skip-back-10"
+        tooltipText: QbzSession.tr("Back 10 seconds", QbzSession.trRev)
+    }
     QbzIconButton {
         name: "skip-back"
         btnEnabled: QbzPlayer.npHasTrack
@@ -165,6 +179,16 @@ Row {
         btnEnabled: QbzPlayer.npHasTrack
         anchors.verticalCenter: parent.verticalCenter
         onClicked: QbzPlayer.next()
+    }
+    QbzIconButton {
+        visible: tc.skipTenVisible
+        name: "skip-forward-10"
+        btnEnabled: QbzPlayer.npHasTrack
+        anchors.verticalCenter: parent.verticalCenter
+        onClicked: QbzPlayer.seekBy(10)
+        tooltip: tc.tooltip
+        tooltipKey: "npb-skip-forward-10"
+        tooltipText: QbzSession.tr("Forward 10 seconds", QbzSession.trRev)
     }
     QbzIconButton {
         name: QbzPlayer.npRepeatMode === 2 ? "repeat-1" : "repeat"

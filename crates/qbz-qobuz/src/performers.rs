@@ -198,6 +198,86 @@ pub fn group_credits_ordered(performers: &[Performer]) -> Vec<(String, Vec<Strin
         .collect()
 }
 
+/// Names to append as "feat. …" after a row's artist line: every performer
+/// credited `FeaturedArtist` or `MainArtist` in `performers`, in string
+/// order, deduplicated, minus anyone the row already names (`row_artist` and
+/// its `&` / `,` / ` and ` / ` x ` / ` feat. ` parts) and minus anyone the
+/// title already credits ("Song (feat. X)"). Empty when there is nothing to
+/// add. Pure; the row producers join the result with ", ".
+pub fn featured_artists(performers: &str, row_artist: &str, title: &str) -> Vec<String> {
+    let already: Vec<String> = split_credit_names(row_artist).map(normalize_name).collect();
+    let title_norm = normalize_name(title);
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for p in parse_performers(performers) {
+        let credited = p.roles.iter().any(|r| {
+            let k = role_key(r);
+            k == "featuredArtist" || k == "mainArtist"
+        });
+        if !credited {
+            continue;
+        }
+        let key = normalize_name(&p.name);
+        if key.is_empty() || seen.contains(&key) {
+            continue;
+        }
+        seen.push(key.clone());
+        if already.iter().any(|a| a == &key) {
+            continue;
+        }
+        if !title_norm.is_empty() && title_norm.contains(&key) {
+            continue;
+        }
+        out.push(p.name);
+    }
+    out
+}
+
+/// "Is this the same person" for two credited names (the row's featured
+/// performer vs. an album credit that carries an id).
+pub fn same_artist_name(a: &str, b: &str) -> bool {
+    let (a, b) = (normalize_name(a), normalize_name(b));
+    !a.is_empty() && a == b
+}
+
+/// Lower-case, Latin-1 diacritics folded, apostrophes dropped, whitespace
+/// collapsed — the comparison key for "is this the same person".
+fn normalize_name(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars().flat_map(char::to_lowercase) {
+        let c = match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            'ý' | 'ÿ' => 'y',
+            '\'' | '’' | '`' => continue,
+            c if c.is_whitespace() => ' ',
+            c => c,
+        };
+        if c == ' ' && out.ends_with(' ') {
+            continue;
+        }
+        out.push(c);
+    }
+    out.trim().to_string()
+}
+
+/// The individual names a row's artist string spells out ("A & B", "A, B",
+/// "A and B", "A x B", "A feat. B").
+fn split_credit_names(s: &str) -> impl Iterator<Item = &str> {
+    s.split(|c: char| c == '&' || c == ',' || c == '/' || c == '+')
+        .flat_map(|part| part.split(" and "))
+        .flat_map(|part| part.split(" x "))
+        .flat_map(|part| part.split(" feat. "))
+        .flat_map(|part| part.split(" ft. "))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,6 +331,43 @@ mod tests {
         assert_eq!(grouped.get("Saxophone").unwrap().len(), 2);
         assert_eq!(grouped.get("Vocals").unwrap().len(), 1);
     }
+
+    const NOTHING_ELSE_MATTERS: &str = "Watt, FeaturedArtist - Robert Trujillo, Bass, FeaturedArtist - Elton John, Piano, FeaturedArtist - ALAN MOULDER, MixingEngineer - Paul Lamalfa, Engineer - Yo-Yo Ma, Cello, FeaturedArtist - Miley Cyrus, Vocalist, MainArtist - Chad Smith, FeaturedArtist, DrumKit - James Hetfield, ComposerLyricist - Lars Ulrich, ComposerLyricist - Mike Block, StringArranger - Andrew Watt, Producer, Guitar, StringArranger - Caesar Edmunds, MixingSecondEngineer - Randy Merrill, MasteringEngineer";
+
+    /// The real search sample: MainArtist mid-string, featured artists with
+    /// instruments, crew roles to ignore.
+    #[test]
+    fn featured_artists_keeps_featured_and_extra_mains_in_string_order_minus_the_row_artist() {
+        assert_eq!(
+            featured_artists(NOTHING_ELSE_MATTERS, "Miley Cyrus", "Nothing Else Matters"),
+            vec!["Watt", "Robert Trujillo", "Elton John", "Yo-Yo Ma", "Chad Smith"]
+        );
+    }
+
+    #[test]
+    fn featured_artists_skips_names_the_row_or_the_title_already_credits() {
+        let p = "Alice, MainArtist - Bob, MainArtist - Carol, FeaturedArtist";
+        assert_eq!(featured_artists(p, "Alice & Bob", "Song"), vec!["Carol"]);
+        assert_eq!(featured_artists(p, "Alice", "Song (feat. Carol)"), vec!["Bob"]);
+        assert!(featured_artists(p, "Alice, Bob & Carol", "Song").is_empty());
+    }
+
+    #[test]
+    fn same_artist_name_folds_case_diacritics_and_apostrophes() {
+        assert!(same_artist_name("Émilie D'Angelo", "emilie dangelo"));
+        assert!(same_artist_name("Yo-Yo Ma", "YO-YO  MA"));
+        assert!(!same_artist_name("Watt", "Andrew Watt"));
+        assert!(!same_artist_name("", ""));
+    }
+
+    #[test]
+    fn featured_artists_dedupes_case_and_diacritics_and_ignores_crew() {
+        let p = "Émilie, FeaturedArtist - emilie, Vocalist, FeaturedArtist - Dan, Producer - Main, MainArtist";
+        assert_eq!(featured_artists(p, "Main", ""), vec!["Émilie"]);
+        assert!(featured_artists("", "Main", "").is_empty());
+        assert!(featured_artists("Solo, MainArtist", "Solo", "Song").is_empty());
+    }
+
 }
 pub(crate) static PERFORMER_ROLE_LABELS: &[(&str, &str)] = &[
     ("a&R", "Artists and Repertoire"),

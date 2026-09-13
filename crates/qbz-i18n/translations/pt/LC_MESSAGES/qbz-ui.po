@@ -4638,10 +4638,6 @@ msgid "Random"
 msgstr "Aleatório"
 
 
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "Libera dados em cache. Seus álbuns baixados são mantidos — remova-os no gerenciador offline acima."
-
 msgid "Couldn't clear the cache"
 msgstr "Não foi possível limpar o cache"
 
@@ -7485,3 +7481,95 @@ msgstr "Estas opções não se aplicam enquanto Apenas streaming estiver ativado
 
 msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
 msgstr "Reproduz o comportamento de streaming dos clientes oficiais com menor uso de memória. Ignora o cache de reprodução e sua proteção contra interrupções de rede: o cache do QBZ prepara o próximo áudio para uma reprodução mais confiável e repetição imediata."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "Mostrar artistas convidados nas linhas de faixa"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Mostrar botões de salto de 10 segundos"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Adiciona botões de ±10 s ao lado de Anterior e Seguinte na barra do reprodutor."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "Recuar 10 segundos"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "Avançar 10 segundos"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "Definir início do loop (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "Definir fim do loop (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "Remover loop"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "ARTWORK CACHE"
+msgstr "CACHE DE CAPAS"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Maximum size"
+msgstr "Tamanho máximo"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
+msgstr "As imagens de álbuns e artistas ficam no disco até este limite; as menos recentemente mostradas são descartadas primeiro, durante o uso e no arranque."
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Clear artwork cache"
+msgstr "Limpar cache de capas"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "{} images using {}"
+msgstr "{} imagens ocupando {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Acrescenta \"feat. …\" com os intérpretes convidados da faixa à linha do artista nas linhas de faixa do Qobuz. Desligado por padrão."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Armazenamento"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "CACHE DO PLEX"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Lista os intérpretes convidados da faixa após o artista principal nas linhas de faixa do Qobuz, separados por vírgulas. Cada nome é um link. Ligado por padrão."
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "Aplicar o limite de tamanho"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "Abrir a pasta do cache"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "Limpar todo o cache offline…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "Limpar o cache offline?"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "Remove tudo o que está salvo para ouvir offline: {} ocupando {}. As compras baixadas na sua pasta de música são mantidas; o que for removido precisará ser baixado de novo para tocar offline."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Avançado"

@@ -1048,6 +1048,7 @@ fn to_row(track: &Track) -> TrackRow {
     let bit_depth = track.maximum_bit_depth;
     let sample_rate = track.maximum_sampling_rate;
     TrackRow {
+        featured: Vec::new(),
         id: track.id.to_string(),
         title,
         artist: track

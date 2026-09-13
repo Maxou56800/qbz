@@ -4650,10 +4650,6 @@ msgid "Random"
 msgstr "Willekeurig"
 
 
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "Maakt cachegegevens vrij. Je gedownloade albums blijven behouden — verwijder die via de offline manager hierboven."
-
 msgid "Couldn't clear the cache"
 msgstr "Kan de cache niet wissen"
 
@@ -7475,3 +7471,95 @@ msgstr "Deze opties zijn niet van toepassing zolang Alleen streamen is ingeschak
 
 msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
 msgstr "Bootst het streaminggedrag van de officiële clients na met minder geheugengebruik. Slaat de afspeelcache en de bescherming tegen netwerkonderbrekingen over: de cache van QBZ houdt komende audio gereed voor betrouwbaarder afspelen en direct opnieuw afspelen."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "Gastartiesten in trackregels tonen"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Knoppen voor 10 seconden springen tonen"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Voegt ±10 s-knoppen toe naast Vorige en Volgende in de spelerbalk."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "10 seconden terug"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "10 seconden vooruit"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "Loopbegin instellen (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "Loopeinde instellen (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "Loop wissen"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "ARTWORK CACHE"
+msgstr "ARTWORKCACHE"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Maximum size"
+msgstr "Maximale grootte"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
+msgstr "Album- en artiestafbeeldingen blijven op schijf tot dit budget; de minst recent getoonde worden het eerst verwijderd, tijdens gebruik en bij het opstarten."
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Clear artwork cache"
+msgstr "Artworkcache wissen"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "{} images using {}"
+msgstr "{} afbeeldingen, {} in gebruik"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Voegt \"feat. …\" met de gastartiesten van de track toe aan de artiestregel van Qobuz-trackregels. Standaard uit."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Opslag"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "PLEX-CACHE"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Toont de gastartiesten van de track na de hoofdartiest in Qobuz-trackregels, gescheiden door komma's. Elke naam is een link. Standaard aan."
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "Groottelimiet toepassen"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "Cachemap openen"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "Volledige offline cache wissen…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "Offline cache wissen?"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "Verwijdert alles wat voor offline luisteren is opgeslagen: {} met {}. Gekochte downloads in je muziekmap blijven staan; wat je wist moet opnieuw worden gedownload om offline af te spelen."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Geavanceerd"

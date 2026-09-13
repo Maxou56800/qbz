@@ -507,6 +507,20 @@ Rectangle {
         }
         return false
     }
+    // "Show featured artists in track rows" (AppearanceSettings), ON by
+    // default: only an explicit false turns it off, so the rows never flash
+    // without names before the first settings snapshot lands. Same read as
+    // playIndicatorAnim otherwise: the settings document republishes on every
+    // settings write, which is the only time this re-evaluates.
+    readonly property bool showFeaturedArtists: {
+        var raw = QbzBridge.settingsJson
+        if (raw && raw.length > 2) {
+            try {
+                return JSON.parse(raw).showFeaturedArtists !== false
+            } catch (e) { /* fall through */ }
+        }
+        return true
+    }
     // The animated eq bars carry the playing state in the play cell when the
     // pref is ON (TrackPlayCell.slint:99-100 `show-bars`): only while this
     // row's track is actually PLAYING, at rest (hover reveals the pause
@@ -966,17 +980,66 @@ Rectangle {
                 }
             }
             Text {
+                id: artistLine
                 width: parent.width
                 visible: (root.item.artist || "") !== ""
-                text: root.item.artist || ""
+                // Main artist first, then the featured performers, one comma
+                // separated list. Local / media-server rows carry no
+                // `featured` and stay as they are. With links enabled and
+                // featured names present, every name is its own StyledText
+                // link: the main artist opens its page as before; a featured
+                // name opens its page when the album credits gave it an id
+                // and the search for that name otherwise. StyledText elides
+                // like plain text (probed: truncated stays true on one line).
+                readonly property var featured: root.showFeaturedArtists ? (root.item.featured || []) : []
+                readonly property bool linkMode: root.artistLink && featured.length > 0
+                function esc(s) {
+                    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                }
+                function hex(c) {
+                    return "#" + [c.r, c.g, c.b].map(function (v) {
+                        return ("0" + Math.round(v * 255).toString(16)).slice(-2)
+                    }).join("")
+                }
+                function link(href, name) {
+                    var hot = artistLine.hoveredLink === href
+                    return '<a href="' + href + '"><font color="'
+                        + hex(hot ? theme.textPrimary : theme.textMuted) + '">' + esc(name) + '</font></a>'
+                }
+                textFormat: linkMode ? Text.StyledText : Text.PlainText
+                text: {
+                    var names = featured.map(function (f) { return f.name })
+                    if (!linkMode)
+                        return (root.item.artist || "") + (names.length ? ", " + names.join(", ") : "")
+                    var parts = [root.item.artistId ? link("main", root.item.artist) : esc(root.item.artist)]
+                    for (var i = 0; i < featured.length; i++)
+                        parts.push(link("f:" + i, featured[i].name))
+                    return parts.join(", ")
+                }
+                linkColor: theme.textMuted
                 color: root.artistLink && root.item.artistId && artistLinkArea.containsMouse
                     ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 12
                 elide: Text.ElideRight
+                onLinkActivated: function (href) {
+                    if (href === "main") {
+                        if (root.routeGoToExternally) root.goToRequested("artist")
+                        else QbzArtist.openArtist(root.item.artistId)
+                        return
+                    }
+                    var f = featured[parseInt(href.slice(2))]
+                    if (!f) return
+                    if (f.id) QbzArtist.openArtist(f.id)
+                    else QbzSearch.searchSubmit(f.name)
+                }
+                HoverHandler {
+                    enabled: artistLine.linkMode
+                    cursorShape: artistLine.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                }
                 MouseArea {
                     id: artistLinkArea
                     anchors.fill: parent
-                    enabled: root.artistLink && !!root.item.artistId
+                    enabled: root.artistLink && !!root.item.artistId && !artistLine.linkMode
                     hoverEnabled: true
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     // Same routing as the menu's "Go to artist" — Slint drives

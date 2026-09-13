@@ -2196,6 +2196,8 @@ pub struct SettingsDoc {
     pub library_track_artwork: bool,
     #[serde(rename = "localLibraryTrackArtwork")]
     pub local_library_track_artwork: bool,
+    #[serde(rename = "showFeaturedArtists")]
+    pub show_featured_artists: bool,
     #[serde(rename = "playIndicatorAnimation")]
     pub play_indicator_animation: bool,
     #[serde(rename = "seekbarWaveform")]
@@ -2218,6 +2220,8 @@ pub struct SettingsDoc {
     pub wc_position_index: i32,
     #[serde(rename = "showWindowControls")]
     pub show_window_controls: bool,
+    #[serde(rename = "showSkipTen")]
+    pub show_skip_ten: bool,
     #[serde(rename = "showVolumeSteppers")]
     pub show_volume_steppers: bool,
     #[serde(rename = "miniDefaultViews")]
@@ -2739,6 +2743,7 @@ pub async fn publish_snapshot() {
             library_track_artwork: pref_bool("library_track_artwork", false),
             local_library_track_artwork: pref_bool("local_library_track_artwork", false),
             play_indicator_animation: pref_bool("play_indicator_animation", false),
+            show_featured_artists: pref_bool("show_featured_artists", true),
             seekbar_waveform: seekbar_waveform(),
             invert_swipe_navigation: pref_bool("invert_swipe_navigation", false),
             in_app_toasts: pref_bool("in_app_toasts", true),
@@ -2750,6 +2755,7 @@ pub async fn publish_snapshot() {
             wc_position_index: index_of(WC_POSITION_VALUES, &pref_str("wc_position", "right"), 1),
             show_window_controls: pref_bool("show_window_controls", true),
             show_volume_steppers: pref_bool("show_volume_steppers", false),
+            show_skip_ten: pref_bool("show_skip_ten", false),
             mini_default_views: MINI_VIEW_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             mini_default_view_index: index_of(
                 MINI_VIEW_VALUES,
@@ -3633,6 +3639,10 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             crate::local_album_actions::publish_track_artwork();
             Ok(Apply::None)
         }
+        "show-featured-artists" => {
+            save_pref("show_featured_artists", serde_json::json!(value));
+            Ok(Apply::None)
+        }
         "play-indicator-animation" => {
             save_pref("play_indicator_animation", serde_json::json!(value));
             Ok(Apply::None)
@@ -3685,6 +3695,13 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "show-window-controls" => {
             save_pref("show_window_controls", serde_json::json!(value));
             crate::shell_bridge::ui(move |mut b| b.as_mut().set_show_window_controls(value));
+            Ok(Apply::None)
+        }
+        "show-skip-ten" => {
+            save_pref("show_skip_ten", serde_json::json!(value));
+            // Live mirror on the domain bridge (the §5.6 pattern): the bar
+            // reads QbzPlayer.showSkipTen, not the settings document.
+            crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(value));
             Ok(Apply::None)
         }
         "show-volume-steppers" => {
@@ -4230,6 +4247,14 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             };
             save_pref("startup_page", serde_json::json!(v));
         }
+        "image-cache-max" => {
+            let Some(mb) = offline::IMAGE_CACHE_MB.get(index) else {
+                return;
+            };
+            save_pref("image_cache_max_mb", serde_json::json!(mb));
+            // A smaller budget applies right away, not at the next boot.
+            crate::artwork_qt::trim_shared_now();
+        }
         "genre-filters-position" => {
             let Some(v) = LOCAL_GENRE_FILTER_POSITION_VALUES.get(index) else {
                 return;
@@ -4516,6 +4541,7 @@ pub async fn settings_string(key: &str, value: String) {
         "plex-clear-cache" => library::plex_clear_cache().await,
         // --- Offline --------------------------------------------------------
         "lyrics-cache-clear" => offline::clear_lyrics_cache().await,
+        "image-cache-clear" => offline::clear_image_cache().await,
         // Offline > "Check now": nudge the connectivity actor. The status it
         // publishes flows back through offline_fwd's forwarder, so there is
         // nothing to await and nothing to republish here.
