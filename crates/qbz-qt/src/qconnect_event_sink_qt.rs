@@ -210,6 +210,7 @@ impl QtQconnectEventSink {
                     is_local: Some(r.renderer_id) == session.local_renderer_id,
                     is_active: Some(r.renderer_id) == session.active_renderer_id,
                     icon: device_icon_key(r.device_type, r.friendly_name.as_deref().unwrap_or("")),
+                    device_uuid: r.device_uuid.clone(),
                 })
                 .collect();
             (devices, session.active_renderer_id.unwrap_or(-1))

@@ -7624,3 +7624,11 @@ msgstr "Personalizado ({} LUFS)"
 #: qbz-qt/qml/settings/NavigationSettings.qml
 msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
 msgstr "Muestra la sección Compras junto a las demás secciones (en la barra lateral o en el encabezado, donde estén) para explorar y descargar tu música comprada"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "On this network"
+msgstr "En esta red"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "Pair"
+msgstr "Vincular"

@@ -49,7 +49,8 @@ Popup {
 
     // The parsed device document (QbzQConnect.devicesJson). Rows:
     // { renderer_id, name, is_local, is_active, icon } — the exact shape the
-    // bridge header documents.
+    // bridge header documents — plus, for a renderer seen on this network
+    // that the session does not list yet, `lan: true` and `lan_uuid`.
     readonly property var devices: {
         try {
             var d = JSON.parse(QbzQConnect.devicesJson || "[]")
@@ -58,6 +59,8 @@ Popup {
             return []
         }
     }
+    readonly property var sessionDevices: root.devices.filter(function (d) { return d.lan !== true })
+    readonly property var lanDevices: root.devices.filter(function (d) { return d.lan === true })
 
     readonly property var conflictPolicyOptions: [
         QbzSession.tr("Ask every time", QbzSession.trRev),
@@ -329,7 +332,7 @@ Popup {
                     spacing: 2
 
                     Repeater {
-                        model: root.devices
+                        model: root.sessionDevices
 
                         delegate: Rectangle {
                             id: deviceRow
@@ -394,6 +397,78 @@ Popup {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     QbzQConnect.setActive(deviceRow.modelData.renderer_id)
+                                    root.close()
+                                }
+                            }
+                        }
+                    }
+
+                    // Renderers on this network that the session does not
+                    // list yet (the controller's LAN half, 2026-09-13). The
+                    // official apps show these the same way; picking one
+                    // pairs it — delegated credentials over the LAN — and the
+                    // cloud then lists it above like any other renderer.
+                    Text {
+                        visible: root.lanDevices.length > 0
+                        width: devRows.width
+                        leftPadding: 8
+                        topPadding: 8
+                        bottomPadding: 2
+                        text: QbzSession.tr("On this network", QbzSession.trRev)
+                        color: theme.textMuted
+                        font.pixelSize: 11
+                        font.weight: theme.weightSemibold
+                    }
+                    Repeater {
+                        model: root.lanDevices
+
+                        delegate: Rectangle {
+                            id: lanRow
+                            required property var modelData
+
+                            width: devRows.width
+                            height: 34
+                            radius: theme.radiusSm
+                            color: lanArea.containsMouse ? theme.surfaceHover : "transparent"
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 8
+                                QbzIcon {
+                                    name: lanRow.modelData.icon === "mobile" ? "smartphone"
+                                        : lanRow.modelData.icon === "computer" ? "monitor"
+                                        : "speaker"
+                                    width: 14
+                                    height: 14
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    tintName: "secondary"
+                                }
+                                Text {
+                                    width: parent.width - 14 - 8 - pairLabel.implicitWidth - 8
+                                    text: lanRow.modelData.name || ""
+                                    color: theme.textSecondary
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                                Text {
+                                    id: pairLabel
+                                    text: QbzSession.tr("Pair", QbzSession.trRev)
+                                    color: theme.accent
+                                    font.pixelSize: 11
+                                    font.weight: theme.weightSemibold
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            MouseArea {
+                                id: lanArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    QbzQConnect.pairLan(lanRow.modelData.lan_uuid)
                                     root.close()
                                 }
                             }

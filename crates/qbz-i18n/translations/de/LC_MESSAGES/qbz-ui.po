@@ -7618,3 +7618,11 @@ msgstr "Benutzerdefiniert ({} LUFS)"
 #: qbz-qt/qml/settings/NavigationSettings.qml
 msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
 msgstr "Zeigt den Bereich Käufe neben den anderen Bereichen – in der Seitenleiste oder in der Kopfzeile, wo immer sie sind – zum Stöbern und Herunterladen deiner gekauften Musik"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "On this network"
+msgstr "In diesem Netzwerk"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "Pair"
+msgstr "Koppeln"

@@ -5,18 +5,20 @@
 //! admission slot on one dedicated thread. Cloud validation and transactional
 //! authority switching deliberately remain outside this adapter.
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use qbz_models::Quality;
 use qconnect_app::LanProjectionSlot;
 use qconnect_lan::{
-    ConnectInfo, DeviceType, DisplayInfo, EndpointPolicy, HandoffCandidate, LanError,
-    LanProjection, LanService, LanServiceConfig, MaxAudioQuality,
+    ConnectInfo, DeviceType, DisplayInfo, EndpointPolicy, HandoffCandidate, LanBrowseEvent,
+    LanBrowser, LanControllerClient, LanError, LanProjection, LanRendererCandidate,
+    LanRendererProbe, LanService, LanServiceConfig, MaxAudioQuality,
 };
 
 use crate::qconnect_transport_qt::default_qconnect_device_info;
@@ -140,10 +142,58 @@ fn build_projection(
 /// exact order observed from the latest-wins slot without blocking a Tokio
 /// worker or the Qt UI thread. The callback must provide its own bounded and
 /// cancellation-safe transaction semantics.
+/// A renderer seen on this network: the row the controller half adds to the
+/// picker (`lan: true`) until the cloud lists the device itself.
+#[derive(Debug, Clone)]
+pub(crate) struct LanPickerRow {
+    pub device_uuid: String,
+    pub name: String,
+    pub brand: String,
+    pub model: String,
+    pub device_type: DeviceType,
+}
+
+/// What the browser found and what the probe learned, by device uuid.
+#[derive(Default)]
+struct LanCandidates {
+    found: HashMap<String, LanRendererCandidate>,
+    probed: HashMap<String, LanRendererProbe>,
+    fullname_uuid: HashMap<String, String>,
+}
+
+impl LanCandidates {
+    fn rows(&self) -> Vec<LanPickerRow> {
+        let mut rows: Vec<LanPickerRow> = self
+            .probed
+            .iter()
+            .map(|(uuid, probe)| LanPickerRow {
+                device_uuid: uuid.clone(),
+                name: probe.display.friendly_name.clone(),
+                brand: probe.display.brand_display_name.clone(),
+                model: probe.display.model_display_name.clone(),
+                device_type: probe.display.device_type,
+            })
+            .collect();
+        rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        rows
+    }
+}
+
+fn publish_lan_rows(candidates: &StdMutex<LanCandidates>) {
+    let rows = candidates.lock().map(|c| c.rows()).unwrap_or_default();
+    crate::qconnect_qt::publish::set_lan_rows(rows);
+}
+
 pub struct QtLanRuntime {
     service: Option<LanService>,
     projection: LanProjection,
     admission_bridge: Option<JoinHandle<()>>,
+    /// The controller half (2026-09-13): browse + probe, same lifetime as
+    /// the receiver above. `None` when the browser could not start — the
+    /// receiver keeps working without it.
+    browser: Option<LanBrowser>,
+    candidates: Arc<StdMutex<LanCandidates>>,
+    client: Option<Arc<LanControllerClient>>,
 }
 
 impl QtLanRuntime {
@@ -160,11 +210,13 @@ impl QtLanRuntime {
         Fut: Future<Output = ()> + Send + 'static,
     {
         let identity = ExistingIdentity::resolve()?;
+        let own_device_uuid = identity.device_uuid.clone();
         let projection = build_projection(&identity, app_id, max_audio_quality, current_session_id);
         let config =
             LanServiceConfig::new(projection.clone(), endpoint_policy, identity.device_uuid);
         let (mut service, inbox) = LanService::start(config)?;
         let on_handoff = Arc::new(on_handoff);
+        let browse_handle = runtime_handle.clone();
 
         let admission_bridge = match std::thread::Builder::new()
             .name(ADMISSION_THREAD_NAME.to_string())
@@ -185,15 +237,94 @@ impl QtLanRuntime {
             }
         };
 
+        // The controller half: browse `_qobuz-connect._tcp`, probe every
+        // announcement that is not us, and offer what answers as picker rows.
+        // A failure here only costs the LAN candidates; the receiver stays.
+        let candidates: Arc<StdMutex<LanCandidates>> = Arc::default();
+        let client = match LanControllerClient::new() {
+            Ok(client) => Some(Arc::new(client)),
+            Err(error) => {
+                log::warn!("[QConnect LAN] controller client unavailable: {error}");
+                None
+            }
+        };
+        let browser = client.as_ref().and_then(|client| {
+            let client = Arc::clone(client);
+            let candidates = Arc::clone(&candidates);
+            match LanBrowser::start(Some(own_device_uuid), move |event| match event {
+                LanBrowseEvent::Found(candidate) => {
+                    if let Ok(mut c) = candidates.lock() {
+                        c.fullname_uuid
+                            .insert(candidate.fullname.clone(), candidate.device_uuid.clone());
+                        c.found
+                            .insert(candidate.device_uuid.clone(), candidate.clone());
+                    }
+                    let client = Arc::clone(&client);
+                    let candidates = Arc::clone(&candidates);
+                    browse_handle.spawn(async move {
+                        match client.probe(&candidate).await {
+                            Ok(probe) => {
+                                log::info!(
+                                    "[QConnect LAN] on this network: {} ({} {}) at {}",
+                                    probe.display.friendly_name,
+                                    probe.display.brand_display_name,
+                                    probe.display.model_display_name,
+                                    probe.address
+                                );
+                                if let Ok(mut c) = candidates.lock() {
+                                    c.probed.insert(candidate.device_uuid.clone(), probe);
+                                }
+                                publish_lan_rows(&candidates);
+                            }
+                            Err(error) => log::info!(
+                                "[QConnect LAN] {} did not answer the probe: {error}",
+                                candidate.instance
+                            ),
+                        }
+                    });
+                }
+                LanBrowseEvent::Lost(fullname) => {
+                    if let Ok(mut c) = candidates.lock() {
+                        if let Some(uuid) = c.fullname_uuid.remove(&fullname) {
+                            c.found.remove(&uuid);
+                            c.probed.remove(&uuid);
+                        }
+                    }
+                    publish_lan_rows(&candidates);
+                }
+            }) {
+                Ok(browser) => Some(browser),
+                Err(error) => {
+                    log::warn!("[QConnect LAN] browse unavailable: {error}");
+                    None
+                }
+            }
+        });
+
         Ok(Self {
             service: Some(service),
             projection,
             admission_bridge: Some(admission_bridge),
+            browser,
+            candidates,
+            client,
         })
     }
 
     pub fn projection(&self) -> LanProjection {
         self.projection.clone()
+    }
+
+    /// A probed candidate by device uuid, with the HTTP client to reach it.
+    pub(crate) fn lan_candidate(
+        &self,
+        device_uuid: &str,
+    ) -> Option<(LanRendererCandidate, LanRendererProbe, Arc<LanControllerClient>)> {
+        let client = Arc::clone(self.client.as_ref()?);
+        let c = self.candidates.lock().ok()?;
+        let candidate = c.found.get(device_uuid)?.clone();
+        let probe = c.probed.get(device_uuid)?.clone();
+        Some((candidate, probe, client))
     }
 
     pub fn port(&self) -> Option<u16> {
@@ -205,6 +336,13 @@ impl QtLanRuntime {
     /// bridge to exit. Callers in async or UI contexts must run this method on
     /// a blocking worker.
     pub fn shutdown_blocking(&mut self) {
+        if let Some(mut browser) = self.browser.take() {
+            browser.shutdown();
+            if let Ok(mut c) = self.candidates.lock() {
+                *c = LanCandidates::default();
+            }
+            crate::qconnect_qt::publish::set_lan_rows(Vec::new());
+        }
         if let Some(mut service) = self.service.take() {
             service.shutdown();
         }
