@@ -507,6 +507,18 @@ Rectangle {
         }
         return false
     }
+    // "Show featured artists in track rows" (AppearanceSettings). Same read
+    // as playIndicatorAnim: the settings document republishes on every
+    // settings write, which is the only time this re-evaluates.
+    readonly property bool showFeaturedArtists: {
+        var raw = QbzBridge.settingsJson
+        if (raw && raw.length > 2) {
+            try {
+                return JSON.parse(raw).showFeaturedArtists === true
+            } catch (e) { /* fall through */ }
+        }
+        return false
+    }
     // The animated eq bars carry the playing state in the play cell when the
     // pref is ON (TrackPlayCell.slint:99-100 `show-bars`): only while this
     // row's track is actually PLAYING, at rest (hover reveals the pause
@@ -968,7 +980,11 @@ Rectangle {
             Text {
                 width: parent.width
                 visible: (root.item.artist || "") !== ""
-                text: root.item.artist || ""
+                // "feat." is a music convention, not a translated word. Local /
+                // media-server rows carry no `featured` and stay as they are.
+                text: (root.item.artist || "")
+                    + (root.showFeaturedArtists && (root.item.featured || "") !== ""
+                        ? " feat. " + root.item.featured : "")
                 color: root.artistLink && root.item.artistId && artistLinkArea.containsMouse
                     ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 12

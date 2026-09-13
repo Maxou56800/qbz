@@ -7468,3 +7468,11 @@ msgstr "「ストリーミングのみ」が有効な間、これらの設定は
 
 msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
 msgstr "公式クライアントと同様のストリーミング動作でメモリ使用量を抑えます。再生キャッシュとそのネットワーク中断への保護を無効にします。QBZのキャッシュは次の音声を事前に用意し、より安定した再生と即座のリプレイを可能にします。"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "トラック行にフィーチャリングアーティストを表示"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Qobuz のトラック行のアーティスト欄に、フィーチャリングされた演奏者を「feat. …」として追加します。既定ではオフです。"

@@ -2196,6 +2196,8 @@ pub struct SettingsDoc {
     pub library_track_artwork: bool,
     #[serde(rename = "localLibraryTrackArtwork")]
     pub local_library_track_artwork: bool,
+    #[serde(rename = "showFeaturedArtists")]
+    pub show_featured_artists: bool,
     #[serde(rename = "playIndicatorAnimation")]
     pub play_indicator_animation: bool,
     #[serde(rename = "seekbarWaveform")]
@@ -2739,6 +2741,7 @@ pub async fn publish_snapshot() {
             library_track_artwork: pref_bool("library_track_artwork", false),
             local_library_track_artwork: pref_bool("local_library_track_artwork", false),
             play_indicator_animation: pref_bool("play_indicator_animation", false),
+            show_featured_artists: pref_bool("show_featured_artists", false),
             seekbar_waveform: seekbar_waveform(),
             invert_swipe_navigation: pref_bool("invert_swipe_navigation", false),
             in_app_toasts: pref_bool("in_app_toasts", true),
@@ -3631,6 +3634,10 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             // Republish so the local lists repaint live; the bridge property is
             // read at boot otherwise and the toggle would need a restart.
             crate::local_album_actions::publish_track_artwork();
+            Ok(Apply::None)
+        }
+        "show-featured-artists" => {
+            save_pref("show_featured_artists", serde_json::json!(value));
             Ok(Apply::None)
         }
         "play-indicator-animation" => {

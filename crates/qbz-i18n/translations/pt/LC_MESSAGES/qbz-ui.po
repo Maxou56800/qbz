@@ -7485,3 +7485,11 @@ msgstr "Estas opções não se aplicam enquanto Apenas streaming estiver ativado
 
 msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
 msgstr "Reproduz o comportamento de streaming dos clientes oficiais com menor uso de memória. Ignora o cache de reprodução e sua proteção contra interrupções de rede: o cache do QBZ prepara o próximo áudio para uma reprodução mais confiável e repetição imediata."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "Mostrar artistas convidados nas linhas de faixa"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Acrescenta \"feat. …\" com os intérpretes convidados da faixa à linha do artista nas linhas de faixa do Qobuz. Desligado por padrão."

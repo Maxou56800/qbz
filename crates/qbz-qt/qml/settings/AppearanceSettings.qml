@@ -327,6 +327,14 @@ Column {
         }
     }
     SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Show featured artists in track rows", QbzSession.trRev)
+        description: QbzSession.tr("Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.showFeaturedArtists === true
+            onToggled: function (v) { QbzBridge.settingsBool("show-featured-artists", v) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
         // Parked for a later visual pass. Keep the preference wiring intact so
         // restoring the experiment does not require a settings migration.
         visible: false

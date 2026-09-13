@@ -7506,3 +7506,11 @@ msgstr "Эти параметры не применяются, пока вклю
 
 msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
 msgstr "Повторяет поведение потокового воспроизведения официальных клиентов, используя меньше памяти. Отключает кэш воспроизведения и его защиту от перебоев сети: кэш QBZ заранее подготавливает аудио для более надёжного воспроизведения и мгновенного повтора."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "Показывать приглашённых артистов в строках треков"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Добавляет «feat. …» с приглашёнными исполнителями трека к строке артиста в строках треков Qobuz. По умолчанию выключено."
