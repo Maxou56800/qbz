@@ -7237,3 +7237,241 @@ msgstr "Systeem / handmatig"
 #: qbz-qt/qml/shell/UpdatesModal.qml
 msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
 msgstr "Update gereed. Sluit QBZ om de installatie te voltooien. Het wordt automatisch opnieuw geopend."
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "AFSPEELCACHE"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "Cache vergroten bij beschikbaar geheugen"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "Optioneel; aanbevolen voor lange Hi-Res-nummers. Het vaste budget blijft de aanbevolen standaard."
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "Minimaal cachebudget (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "Basisbudget zonder RAM te reserveren. Kan dalen bij geheugendruk. Laat leeg voor de aanbevolen waarde."
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "Maximaal cachebudget (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "Groeiplimiet; beschikbaar geheugen kan een lagere grens opleggen. Laat leeg voor automatisch."
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "Gebruik van geheugencache"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "Gebruikt / huidig budget: %1 / %2 MiB. Exclusief decodergeheugen en offline downloads."
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "Aanbevolen cachestandaarden"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "Standaardwaarden herstellen"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "De afspeelcachelimieten moeten tussen 16 en 16384 MiB liggen"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "Het minimale afspeelcachebudget mag het maximum niet overschrijden"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "Geheugenprofiel voor afspelen"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — aanbevolen"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — dynamisch"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — Pi-stijl"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "Auto kiest Desktop of Low op basis van het RAM. Vast cachebudget zonder dynamische groei. Aanbevolen standaardinstelling."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "High begint met een cachebudget van 400 MiB en groeit tot 1600 MiB als geheugen beschikbaar is. Het krimpt na inactiviteit of bij geheugendruk. Voor lange Hi-Res-nummers en computers met vrij RAM."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktop gebruikt een vast cachebudget van 400 MiB en normaal vooraf laden. Grotere nummers gebruiken buffers op schijf."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Low gebruikt een cachebudget van 50 MiB, kleinere startbuffers en minder vooraf laden. Grote nummers gebruiken de schijf; speculatief vooraf laden van Hi-Res wordt overgeslagen. Handig op Raspberry Pi of om RAM te besparen."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "Aangepast gebruikt de onderstaande cachegrenzen en groeivoorkeur. Vooraf laden volgt de gedetecteerde geheugenklasse. Een voorinstelling bewerken schakelt naar Aangepast."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "Dezelfde audiokwaliteit in elk profiel"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "Profielen regelen het afspeelgeheugen, niet de audiokwaliteit of het totale RAM van de app. De schijfcache blijft actief behalve bij Alleen streamen. Wijzigingen gelden voor nieuwe buffers; het huidige nummer speelt door."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "Laat de cache tot het ingestelde maximum groeien wanneer RAM beschikbaar is. High schakelt dit automatisch in. Deze optie bewerken schakelt naar Aangepast."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "Onbekend afspeelgeheugenprofiel"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "Het afspeelgeheugenprofiel conflicteert met aangepaste cachegrenzen"
+
+msgid "Apply playback memory profile?"
+msgstr "Geheugenprofiel voor afspelen toepassen?"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "De afspeelbuffers worden vrijgegeven. Tijdens het afspelen stopt het huidige nummer en begint het opnieuw vanaf het begin. Bij pauze blijft het gestopt op 0:00. Je wachtrij en schijfcache blijven behouden."
+
+msgid "Apply & free memory"
+msgstr "Toepassen en geheugen vrijmaken"
+
+msgid "Rebuild playback buffers"
+msgstr "Afspeelbuffers opnieuw opbouwen"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "Het profiel geldt al voor nieuwe buffers. Pas het nu toe om bestaande afspeelbuffers en de geheugencache vrij te geven. Het geheugengebruik kan weer toenemen tijdens het afspelen."
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "Het geheugenprofiel kan alleen worden toegepast op afspelen op dit apparaat."
+
+msgid "Playback is not ready yet."
+msgstr "Afspelen is nog niet gereed."
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "Afspelen is bezig. Probeer het geheugenprofiel opnieuw toe te passen."
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "Het afspelen is gewijzigd. Pas opnieuw toe om het huidige nummer te bevestigen."
+
+msgid "Visual resource profile"
+msgstr "Profiel voor visuele bronnen"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Low gebruikt de kleine speler en compacte koppen, zonder dynamische achtergrond, kleurverloop, spectrum, bewegende afspeelindicator, collages of optionele hoesjes per nummer. Default herstelt deze standaardwaarden. Wijzigingen kiezen Custom. Audiokwaliteit en afspeelgeheugen staan hier los van."
+
+msgid "Compare memory profiles"
+msgstr "Geheugenprofielen vergelijken"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto: vast 400 MiB of 50 MiB afhankelijk van het RAM; grotere nummers gebruiken schijfopslag."
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High: dynamisch 400–1600 MiB; meer RAM voor grote nummers en minder behoefte aan schijfgebufferde weergave."
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop: vast 400 MiB; verdeelt het gebruik tussen RAM en schijf voor grotere nummers."
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low: vast 50 MiB en minder vooraf laden; minder RAM, meer lezen en schrijven op schijf bij grote nummers."
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom: je RAM-limieten en groei-instelling bepalen wanneer schijfopslag nodig is."
+
+msgid "RAM and storage trade-off"
+msgstr "Afweging tussen RAM en opslag"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "Alle profielen behouden de audiokwaliteit en kunnen schijfcache gebruiken. Minder RAM vraagt meer van opslagsnelheid en schrijfwerk; meer RAM kan dit verminderen. Nummers in de schijfcache worden ook bij High van schijf gelezen. Kies opslag die bij je gebruik past."
+
+msgid "Playback storage folder"
+msgstr "Opslagmap voor afspelen"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "Kies een bestaande map op het gewenste station. QBZ bewaart afspeelcache en tijdelijke buffers in de submap qbz-playback. Offline downloads staan hier los van. Laat leeg voor de standaardlocatie."
+
+msgid "Current playback storage"
+msgstr "Huidige afspeelopslag"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "De nieuwe map wordt na een herstart van QBZ gebruikt. Bestaande cachebestanden blijven op de oude locatie; ze worden niet automatisch verplaatst of verwijderd."
+
+msgid "Could not use this playback storage folder:"
+msgstr "Deze afspeelopslagmap kon niet worden gebruikt:"
+
+msgid "Folder access"
+msgstr "Maptoegang"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "Als de sandbox deze map blokkeert, voer je de onderstaande opdracht uit in een hostterminal, herstart je QBZ en kies je de map opnieuw. Verleen alleen toegang tot de gewenste map."
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snap heeft toegang tot ondersteunde persoonlijke mappen en verwisselbare opslag onder /mnt, /media of /run/media. Verbind hiervoor de onderstaande interface en probeer opnieuw. Snap kan willekeurige mappen niet via een Flatpak-achtige override toestaan."
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "Kies een absoluut mappad voor afspeelopslag."
+
+msgid "The folder is accessible and visible in the library."
+msgstr "De map is toegankelijk en zichtbaar in de bibliotheek."
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "De map is toegankelijk, maar door je instelling verborgen."
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "Het pad bestaat niet meer. Verbind de map opnieuw, wijzig het pad of verwijder de map uit de bibliotheek."
+
+msgid "A connection failure prevents access to this storage."
+msgstr "Een verbindingsfout verhindert toegang tot deze opslag."
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "QBZ heeft geen toestemming om deze map te openen."
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "De map kon niet worden geopend. De controle duurde te lang of gaf een andere toegangsfout."
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "De toegang wordt gecontroleerd of is nog niet gecontroleerd."
+
+msgid "Local folder"
+msgstr "Lokale map"
+
+msgid "Access denied"
+msgstr "Toegang geweigerd"
+
+msgid "Missing"
+msgstr "Ontbreekt"
+
+msgid "Actions"
+msgstr "Acties"
+
+msgid "Low"
+msgstr "Laag"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "Deze opties zijn niet van toepassing zolang Alleen streamen is ingeschakeld. Schakel dit uit om een geheugenprofiel voor afspelen te kiezen en wijzigingen toe te passen."
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "Bootst het streaminggedrag van de officiële clients na met minder geheugengebruik. Slaat de afspeelcache en de bescherming tegen netwerkonderbrekingen over: de cache van QBZ houdt komende audio gereed voor betrouwbaarder afspelen en direct opnieuw afspelen."

@@ -42,8 +42,9 @@ pub struct FolderRow {
     pub enabled: bool,
     #[serde(rename = "isNetwork")]
     pub is_network: bool,
-    /// Network folders only: whether the mount answers right now.
-    pub accessible: bool,
+    /// None until probed; local and network folders share the same status.
+    pub accessible: Option<bool>,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -116,6 +117,7 @@ pub struct MediaServerFields {
 #[derive(Clone, Default, Serialize)]
 pub struct Snapshot {
     pub folders: Vec<FolderRow>,
+    pub picked_path: String,
     pub scanning: bool,
     pub processed: i32,
     pub total: i32,
@@ -217,7 +219,7 @@ static CLEANUP_STATUS: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(Str
 static CLEARING: AtomicBool = AtomicBool::new(false);
 static STATUS: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
-/// Last known accessibility per NETWORK folder id, filled by
+/// Last known accessibility per folder id and path, filled by
 /// [`spawn_accessibility_probes`].
 ///
 /// It exists because the probe cannot run where it used to. `snapshot()` is
@@ -228,8 +230,34 @@ static STATUS: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new
 /// reference never had that: it publishes `accessible: true` optimistically
 /// and updates each row from a spawned probe with a 6 s ceiling
 /// (`crates/qbz/src/local_library_settings.rs:212-236`).
-static ACCESSIBLE: LazyLock<Mutex<std::collections::HashMap<i64, bool>>> =
+static ACCESSIBLE: LazyLock<Mutex<std::collections::HashMap<(i64, String), FolderAccess>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FolderAccess { Available, Missing, Disconnected, Denied, Unavailable }
+impl FolderAccess {
+    fn from_error(error: std::io::ErrorKind) -> Self {
+        use std::io::ErrorKind::*;
+        match error {
+            NotFound | NotADirectory => Self::Missing,
+            PermissionDenied => Self::Denied,
+            NotConnected | ConnectionAborted | ConnectionReset | ConnectionRefused
+                | NetworkUnreachable | HostUnreachable => Self::Disconnected,
+            _ => Self::Unavailable,
+        }
+    }
+    fn label(self, enabled: bool) -> &'static str {
+        match self {
+            Self::Available if enabled => "active",
+            Self::Available => "hidden",
+            Self::Missing => "missing",
+            Self::Disconnected => "disconnected",
+            Self::Denied => "denied",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+static PICKED_PATH: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 fn set_status(text: String) {
     *STATUS.lock().unwrap_or_else(|e| e.into_inner()) = text;
@@ -268,20 +296,10 @@ pub fn snapshot() -> Snapshot {
         .unwrap_or_default()
         .into_iter()
         .map(|f| {
-            // Cache lookup only — NEVER touch the filesystem here. Unknown
-            // (not probed yet) reads as accessible, so a fresh publish shows
-            // the folder as fine and the probe demotes it a moment later
-            // rather than flashing a false "unavailable" on every open.
-            let accessible = if f.is_network {
-                ACCESSIBLE
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(&f.id)
-                    .copied()
-                    .unwrap_or(true)
-            } else {
-                true
-            };
+            // Do not block settings publication on filesystem I/O. Unknown
+            // paths remain visibly unchecked until the background probe finishes.
+            let accessible = ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner())
+                .get(&(f.id, f.path.clone())).copied();
             FolderRow {
                 display_name: match f.alias.as_deref() {
                     Some(a) if !a.is_empty() => a.to_string(),
@@ -292,7 +310,8 @@ pub fn snapshot() -> Snapshot {
                 last_scan: f.last_scan.unwrap_or(0),
                 enabled: f.enabled,
                 is_network: f.is_network,
-                accessible,
+                accessible: accessible.map(|a| a == FolderAccess::Available),
+                status: accessible.map(|a| a.label(f.enabled)).unwrap_or("checking"),
             }
         })
         .collect();
@@ -303,6 +322,7 @@ pub fn snapshot() -> Snapshot {
     let plex_cfg = crate::local_plex::settings();
     Snapshot {
         folders,
+        picked_path: PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         scanning: progress.running,
         processed: progress.processed as i32,
         total: progress.total as i32,
@@ -391,30 +411,25 @@ pub async fn open_folder_edit(id: i64) {
         if !st.open || st.folder_id != id {
             return;
         }
-        st.accessible = accessible;
+        st.accessible = accessible == FolderAccess::Available;
         st.checking_accessible = false;
     }
-    record_accessible(id, accessible);
+    record_accessible(id, &path, accessible);
     super::publish_snapshot().await;
 }
 
-/// The shared probe: `exists()` first, then a `read_dir` under a 6 s ceiling,
-/// falling back to `exists()` on timeout (a slow mount that IS there must not
-/// be reported dead).
-async fn probe_path(path: &str) -> bool {
-    if !std::path::Path::new(path).exists() {
-        return false;
-    }
-    let p = path.to_string();
-    let res = tokio::time::timeout(
+/// All filesystem access stays on the blocking pool, including local paths
+/// that may actually sit on a stale mount. Failure/timeout means unavailable
+/// now, never proof that a folder should be removed from the library.
+async fn probe_path(path: &str) -> FolderAccess {
+    let path = path.to_owned();
+    match tokio::time::timeout(
         std::time::Duration::from_secs(6),
-        tokio::task::spawn_blocking(move || std::fs::read_dir(&p).is_ok()),
-    )
-    .await;
-    match res {
-        Ok(Ok(ok)) => ok,
-        Ok(Err(_)) => false,
-        Err(_) => std::path::Path::new(path).exists(),
+        tokio::task::spawn_blocking(move || std::fs::read_dir(path).map(|_| ())),
+    ).await {
+        Ok(Ok(Ok(()))) => FolderAccess::Available,
+        Ok(Ok(Err(error))) => FolderAccess::from_error(error.kind()),
+        _ => FolderAccess::Unavailable,
     }
 }
 
@@ -516,10 +531,11 @@ pub async fn change_folder_path(id: i64) {
 
     let path = EDIT.lock().unwrap_or_else(|e| e.into_inner()).path.clone();
     let accessible = probe_path(&path).await;
+    record_accessible(id, &path, accessible);
     {
         let mut st = EDIT.lock().unwrap_or_else(|e| e.into_inner());
         if st.open && st.folder_id == id {
-            st.accessible = accessible;
+            st.accessible = accessible == FolderAccess::Available;
             st.checking_accessible = false;
         }
     }
@@ -531,17 +547,8 @@ pub async fn change_folder_path(id: i64) {
 // Folder CRUD
 // ---------------------------------------------------------------------------
 
-/// Probe every NETWORK folder's mount off the publish path and republish if
-/// anything changed.
-///
-/// Shape taken from the reference's `check_accessible`: an `exists()`
-/// shortcut first (cheap, and a missing mount point answers immediately),
-/// then a `read_dir` on the blocking pool under a 6 s timeout. A timeout is
-/// NOT automatically "inaccessible" — it falls back to `exists()`, because a
-/// slow mount that is genuinely there should not be marked dead.
-///
-/// Only republishes when a value actually moved, so the common case (nothing
-/// changed) costs one publish less than an unconditional refresh.
+/// Probe every configured folder off the publish path. Keep missing rows
+/// so the user can reconnect storage, change the path or explicitly remove it.
 pub async fn spawn_accessibility_probes() {
     let folders = tokio::task::spawn_blocking(|| {
         crate::local_state::with_db(|db| db.get_folders_with_metadata()).unwrap_or_default()
@@ -549,40 +556,22 @@ pub async fn spawn_accessibility_probes() {
     .await
     .unwrap_or_default();
 
-    let mut changed = false;
-    for f in folders.into_iter().filter(|f| f.is_network) {
-        let path = f.path.clone();
-        if !std::path::Path::new(&path).exists() {
-            changed |= record_accessible(f.id, false);
-            continue;
+    for f in folders {
+        let accessible = probe_path(&f.path).await;
+        if record_accessible(f.id, &f.path, accessible) {
+            super::publish_snapshot().await;
         }
-        let p = path.clone();
-        let res = tokio::time::timeout(
-            std::time::Duration::from_secs(6),
-            tokio::task::spawn_blocking(move || std::fs::read_dir(&p).is_ok()),
-        )
-        .await;
-        let accessible = match res {
-            Ok(Ok(ok)) => ok,
-            Ok(Err(_)) => false,
-            Err(_) => std::path::Path::new(&path).exists(),
-        };
-        changed |= record_accessible(f.id, accessible);
-    }
-    if changed {
-        super::publish_snapshot().await;
     }
 }
 
 /// Store one probe result; `true` when it differs from what was cached.
-fn record_accessible(id: i64, accessible: bool) -> bool {
+fn record_accessible(id: i64, path: &str, accessible: FolderAccess) -> bool {
     let mut map = ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner());
-    map.insert(id, accessible) != Some(accessible)
+    map.insert((id, path.to_owned()), accessible) != Some(accessible)
 }
 
-/// The folder BUTTON next to the path field: raise the native chooser and
-/// feed whatever comes back into [`add_folder`], so both routes share one
-/// validation, one network probe and one insert.
+/// The folder button fills the draft path. Both typed and browsed paths are
+/// registered only when Add is pressed.
 ///
 /// The reference does the same thing with the same crate
 /// (`crates/qbz/src/local_library_settings.rs` -> `rfd::AsyncFileDialog`).
@@ -597,12 +586,14 @@ pub async fn pick_and_add_folder() {
     else {
         return;
     };
-    add_folder(dir.path().to_string_lossy().to_string()).await;
+    *PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()) = dir.path().to_string_lossy().to_string();
+    super::publish_snapshot().await;
 }
 
 /// "Add folder": canonicalize once and let Local Library decide whether to
 /// add, refresh, reuse an ancestor, or reject an overlap.
 pub async fn add_folder(path: String) {
+    PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let path = path.trim().to_string();
     if path.is_empty() {
         return;
@@ -631,6 +622,7 @@ pub async fn add_folder(path: String) {
     })
     .await;
     refresh_browse();
+    spawn_accessibility_probes().await;
 }
 
 /// Remove folders (their indexed tracks go with them — `remove_folder_with_tracks`).
@@ -708,7 +700,7 @@ pub fn scan(folder_id: Option<i64>) -> bool {
     let Some(host) = crate::local_service_qt::current() else {
         return false;
     };
-    scan_for(host, folder_id)
+    scan_for(host, folder_id, false)
 }
 
 /// Background observers carry the same captured binding as their root IDs.
@@ -716,17 +708,25 @@ pub fn scan(folder_id: Option<i64>) -> bool {
 pub(crate) fn scan_for(
     host: std::sync::Arc<crate::local_service_qt::DesktopLibrary>,
     folder_id: Option<i64>,
+    background: bool,
 ) -> bool {
     if !crate::local_service_qt::is_current(&host) {
         return false;
     }
     let before = host.service.snapshot();
-    match host.service.scan(folder_id) {
+    let requested = if background {
+        host.service.scan_background(folder_id)
+    } else {
+        host.service.scan(folder_id)
+    };
+    match requested {
         Ok(true) => {}
         Ok(false) => return false,
         Err(error) => {
             log::error!("[qbz-qt] library scan start failed: {error}");
-            set_status(qbz_i18n::t("Scan failed."));
+            if !background {
+                set_status(qbz_i18n::t("Scan failed."));
+            }
             return false;
         }
     }
@@ -734,19 +734,23 @@ pub(crate) fn scan_for(
         return true;
     }
     crate::spawn(async move {
-        let mut revision = before.revision;
-        let mut completed = before.last_scan.map(|s| s.job).unwrap_or(0);
+        let mut revision = before.content_revision;
+        let mut completed = before.last_requested_scan.map(|s| s.job).unwrap_or(0);
         loop {
             if !crate::local_service_qt::is_current(&host) {
                 break;
             }
             let snapshot = host.service.snapshot();
-            if let Some(result) = snapshot.last_scan.as_ref().filter(|s| s.job > completed) {
+            if let Some(result) = snapshot
+                .last_requested_scan
+                .as_ref()
+                .filter(|s| s.job > completed)
+            {
                 completed = result.job;
                 scan_finished(result);
             }
-            if snapshot.revision != revision {
-                revision = snapshot.revision;
+            if snapshot.content_revision != revision {
+                revision = snapshot.content_revision;
                 crate::local_catalog_qt::request_catch_up();
                 refresh_browse();
             }
@@ -771,6 +775,15 @@ pub(crate) fn scan_for(
 
 fn scan_finished(result: &qbz_library::service::ScanCompletion) {
     use qbz_library::service::ScanOutcome;
+    if result.background {
+        log::debug!(
+            "[local-scan] background job {} settled: {:?}, {} skipped",
+            result.job,
+            result.outcome,
+            result.skipped
+        );
+        return;
+    }
     if CLEANING.load(Ordering::SeqCst) {
         *CLEANUP_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = match result.outcome {
             ScanOutcome::Complete => qbz_i18n::t("Scan complete"),
@@ -809,6 +822,7 @@ pub fn reset_profile_state() {
         .clear();
     STATUS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clear();
     *EDIT.lock().unwrap_or_else(|e| e.into_inner()) = FolderEdit::default();
 }
 

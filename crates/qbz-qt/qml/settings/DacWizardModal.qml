@@ -668,6 +668,8 @@ Item {
                             border.color: manualInput.activeFocus ? theme.accent : theme.borderSubtle
 
                             TextInput {
+
+                                QbzTextEditMenu { }
                                 id: manualInput
                                 anchors.fill: parent
                                 anchors.leftMargin: 12

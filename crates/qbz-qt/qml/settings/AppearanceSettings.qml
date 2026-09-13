@@ -56,6 +56,17 @@ Column {
     spacing: 4
 
     // --- Theme row state (theme_qt.rs via the bridge) --------------------
+    SettingRow { kioskHost: root.kioskHost;
+        fitDescription: true
+        label: QbzSession.tr("Visual resource profile", QbzSession.trRev)
+        description: QbzSession.tr("Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent.", QbzSession.trRev)
+        QbzSelect { kioskHost: root.kioskHost;
+            menuWidth: 240
+            options: [QbzSession.tr("Low", QbzSession.trRev), QbzSession.tr("Default", QbzSession.trRev), QbzSession.tr("Custom", QbzSession.trRev)]
+            currentIndex: Math.max(0, ["low", "default", "custom"].indexOf(root.doc.appearanceProfile || "default"))
+            onSelected: function(i) { QbzBridge.settingsString("appearance-profile", ["low", "default", "custom"][i]) }
+        }
+    }
     readonly property var themeEntries: {
         try {
             return JSON.parse(QbzShell.themeListJson)

@@ -14,12 +14,14 @@ Item {
     property string label: ""
     property string description: ""
     property bool rowEnabled: true
+    property bool fitDescription: false
     default property alias control: controlHost.data
 
     QbzTheme { id: theme }
 
     width: parent ? parent.width : 0
-    height: kioskHost ? labelColumn.height + controlHost.height + 24 : (description === "" ? 52 : 64)
+    height: kioskHost ? labelColumn.height + controlHost.height + 24
+        : Math.max(description === "" ? 52 : 64, fitDescription ? labelColumn.height + 16 : 0)
 
     Column {
         id: labelColumn

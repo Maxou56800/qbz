@@ -803,7 +803,6 @@ pub async fn run_driver<A: FrontendAdapter + Send + Sync + 'static>(
                     log::info!(
                         "[qbzd] driver: fetching gapless track {successor_id} after {predecessor_id}"
                     );
-                    let cached = player.is_track_cached(successor_id);
                     gapless_fetches.spawn(async move {
                         let Some(_permit) = task_readmit_owner_action(&task_owner_token) else {
                             return (
@@ -817,37 +816,21 @@ pub async fn run_driver<A: FrontendAdapter + Send + Sync + 'static>(
                             );
                         };
                         let core = task_runtime.core();
-                        // COLD successor: append its initial CMAF buffer as an
-                        // incremental source (the desktop's streaming
-                        // hand-off) instead of materializing the whole file —
-                        // a Hi-Res track cannot reliably download inside the
-                        // 10 s window on a Pi, and the whole-file `Vec` is
-                        // exactly what a 1 GB box cannot afford. Cached
-                        // successors keep the byte path (no network at all).
-                        if !cached {
+                        // L2 successors keep their open file; cold successors
+                        // use bounded disk spools when they exceed the RAM budget.
+                        // A failed setup must not fall back to a full-file Vec.
+                        if task_owner_actions_allowed() {
                             match core.queue_gapless_streaming(successor_id, quality).await {
-                                Ok(()) => {
-                                    return (
-                                        task_owner_token,
-                                        GaplessFetchResult {
-                                            predecessor_id,
-                                            successor_id,
-                                            bytes: None,
-                                            streamed: true,
-                                        },
-                                    )
-                                }
+                                Ok(()) => return (
+                                    task_owner_token,
+                                    GaplessFetchResult { predecessor_id, successor_id, bytes: None, streamed: true },
+                                ),
                                 Err(error) => log::warn!(
-                                    "[qbzd] driver: gapless stream setup for {successor_id} failed: {error}; trying byte fallback"
+                                    "[qbzd] driver: gapless setup for {successor_id} failed: {error}; normal advance remains available"
                                 ),
                             }
                         }
-                        let bytes = if task_owner_actions_allowed() {
-                            core.fetch_for_gapless_resolved(successor_id, quality, None, None)
-                                .await
-                        } else {
-                            None
-                        };
+                        let bytes = None;
                         (
                             task_owner_token,
                             GaplessFetchResult {
@@ -1037,15 +1020,15 @@ async fn prefetch_successors<A: FrontendAdapter + Send + Sync + 'static>(
         log::debug!("[qbzd] driver: prefetch skipped — memory-pressure halt active");
         return;
     }
-    let profile = qbz_core::system_capabilities::memory_profile();
     let core = runtime.core();
+    let profile = core.player().playback_prefetch_policy();
     // Depth honors the profile's prefetch_count cap. The daemon's
     // historical depth is 1 successor per advance, which is within BOTH
     // classes' caps (LowMemory 1, Normal 5), so this changes nothing today
     // and clamps automatically if the depth ever grows. There is no
     // concurrency loop here — the single prefetch below is awaited — so
     // max_concurrent_prefetch (>= 1 in both classes) is trivially honored.
-    let depth = 1usize.min(profile.prefetch_count);
+    let depth = 1usize.min(profile.lookahead);
     let upcoming = core.peek_upcoming(depth).await;
     let Some(next) = upcoming.into_iter().next() else {
         return;
@@ -1070,8 +1053,13 @@ async fn prefetch_successors<A: FrontendAdapter + Send + Sync + 'static>(
     // HiRes prefetch on low-pressure ticks. This caps only the warm-ahead
     // copy — playback of the user's selected quality is unaffected.
     let allow_hires =
-        profile.allow_hires_prefetch && !crate::memory_watchdog::hires_prefetch_paused();
+        profile.allow_hires && !crate::memory_watchdog::hires_prefetch_paused();
     let prefetch_quality = cap_prefetch_quality(quality, allow_hires);
+    if prefetch_quality != quality {
+        // Do not warm a CD copy that will be rejected at a Hi-Res transition.
+        // The on-demand gapless spool retains the requested format.
+        return;
+    }
     if !owner_actions_allowed() {
         return;
     }

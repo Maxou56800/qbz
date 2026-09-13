@@ -75,8 +75,34 @@ cargo test \
   --no-fail-fast \
   "$@"
 
+say "gate: playback memory profiles, persistence and live growth"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-models --lib -- --list profile_tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 3 ] || { say "FAIL: playback memory profile regressions missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list memory_profile_tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 1 ] || { say "FAIL: live profile budget regression missing"; exit 1; }
+
+say "gate: playback cache policy and streaming-promotion regressions"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list playback_policy_tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 8 ] || { say "FAIL: playback cache policy regressions missing ($n < 8)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list promotion_keeps_24bit_192khz 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 1 ] || { say "FAIL: Hi-Res promotion regression missing"; exit 1; }
+
+say "gate: bounded disk playback regressions"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list disk_reader_tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 3 ] || { say "FAIL: disk reader/atomic replacement regressions missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list disk_ 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 5 ] || { say "FAIL: disk streaming/seek/cancellation regressions missing"; exit 1; }
+
 say "gate: one-line installer (isolated fixture homes)"
 python3 scripts/test-installer.py
+
+say "gate: watcher recovery regressions"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-library --lib -- --list watcher::tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 4 ] || { say "FAIL: watcher retry/recovery/read-feedback regressions missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-library --lib -- --list scan_changes::tests:: 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 2 ] || { say "FAIL: scan content invalidation regressions missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-library --lib -- --list unchanged_and_missing_scans_complete_without_catalog_invalidation 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 1 ] || { say "FAIL: unchanged scan service regression missing"; exit 1; }
 
 say "gate: signed updater regression suite present"
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-updater --lib -- --list 2>/dev/null | grep -c ': test$' || true)
@@ -96,7 +122,7 @@ n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-library --lib -- --list 
 (( n >= 4 )) || { echo "Library source search suite has $n tests (expected >= 4)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-library --lib -- --list service::tests:: 2>/dev/null \
     | grep -c ': test$' || true)
-(( n >= 7 )) || { echo "Library service suite has $n tests (expected >= 7)"; exit 1; }
+(( n >= 9 )) || { echo "Library service suite has $n tests (expected >= 9)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-control --test library_hosts -- --list 2>/dev/null \
     | grep -c ': test$' || true)
 (( n >= 2 )) || { echo "Orbit library HTTP suite has $n tests (expected >= 2)"; exit 1; }

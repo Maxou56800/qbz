@@ -446,6 +446,7 @@ Item {
                                 PlaybackSettings { kioskHost: root.kioskHost;
                                     width: parent.width
                                     doc: root.doc
+                                    confirmHost: settingsConfirmHost
                                 }
                             }
                         }

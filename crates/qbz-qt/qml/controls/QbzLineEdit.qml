@@ -224,6 +224,7 @@ Rectangle {
                 // No clip: TextInput scissors itself (:207) and the
                 // placeholder elides. A redundant second scissor.
                 TextInput {
+                    QbzTextEditMenu { }
                     id: input
                     anchors.fill: parent
                     color: theme.textPrimary

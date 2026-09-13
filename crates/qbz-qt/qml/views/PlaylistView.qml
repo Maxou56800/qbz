@@ -737,6 +737,7 @@ Rectangle {
                             spacing: 6
                             QbzIcon { name: "search"; width: 13; height: 13; anchors.verticalCenter: parent.verticalCenter; tintName: "muted" }
                             TextInput {
+                                QbzTextEditMenu { }
                                 width: parent.width - 19
                                 height: parent.height
                                 color: theme.textPrimary

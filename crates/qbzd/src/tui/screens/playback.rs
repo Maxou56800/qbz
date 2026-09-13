@@ -70,11 +70,7 @@ pub fn row_state(field: PField, p: &StagedPlayback) -> (bool, bool, Option<&'sta
             true,
             if p.limit_to_device { None } else { Some(s::R_LIMIT_OFF) },
         ),
-        Gapless => (
-            true,
-            !p.streaming_only,
-            if p.streaming_only { Some(s::R_STREAMING_ONLY_ON) } else { None },
-        ),
+        Gapless => (true, true, None),
         Resume => (
             true,
             p.restore_session,
@@ -529,12 +525,12 @@ mod tests {
     }
 
     #[test]
-    fn gapless_disabled_while_streaming_only_on() {
+    fn gapless_enabled_while_streaming_only_on() {
         let mut p = base();
         p.streaming_only = true;
         let (shown, enabled, reason) = row_state(PField::Gapless, &p);
-        assert!(shown && !enabled);
-        assert_eq!(reason, Some(s::R_STREAMING_ONLY_ON));
+        assert!(shown && enabled);
+        assert_eq!(reason, None);
     }
 
     #[test]

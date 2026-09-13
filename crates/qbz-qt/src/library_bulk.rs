@@ -167,12 +167,20 @@ fn albums_action(ids: Vec<String>, action: &str) {
             crate::spawn(async move {
                 let mut queue: Vec<QueueTrack> = Vec::new();
                 for id in &ids {
-                    // A local / Plex group key is not a catalog id — the album
-                    // bar only ever holds Qobuz favourites (the Albums tab
-                    // keeps `group === "favorites"`), but the guard is what
-                    // stops a widened filter from 404-ing later.
+                    // Releases includes the same local/download/server groups
+                    // as All. Resolve those keys locally before the catalog arm.
                     if library_qt::is_local_album_key(id) {
-                        log::info!("[qbz-qt] library bulk albums: skipping local key {id}");
+                        let key = id.clone();
+                        let tracks = tokio::task::spawn_blocking(move || {
+                            let mut rows = crate::local_albums::fetch_album_tracks_blocking(&key);
+                            crate::local_playback::fill_missing_covers(&mut rows);
+                            rows.iter()
+                                .map(crate::local_playback::local_queue_track)
+                                .collect()
+                        })
+                        .await
+                        .unwrap_or_default();
+                        queue.extend(playback_qt::stamped(tracks, PlayContext::album(id)));
                         continue;
                     }
                     match playback_qt::fetch_album_queue(&runtime, id).await {
@@ -239,8 +247,15 @@ fn remove_favorites(kind: &str, ids: Vec<String>) {
     let runtime = crate::app();
     crate::spawn(async move {
         for id in &ids {
+            if library_qt::is_local_feed_id(&kind, id) {
+                if library_qt::is_favorite(&kind, id) {
+                    library_qt::toggle_favorite(&runtime, &kind, id).await;
+                }
+                continue;
+            }
             if let Err(e) = runtime.core().remove_favorite(&kind, id).await {
                 log::error!("[qbz-qt] library bulk remove {kind}:{id} failed: {e}");
+                continue;
             }
             crate::fav_cache_qt::set(&kind, id, false);
             crate::library_qt::set_feed_favorite(&kind, id, false);

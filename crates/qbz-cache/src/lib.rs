@@ -56,9 +56,10 @@
 //! ```
 
 mod audio_cache;
+mod memory;
 mod image_cache;
 mod playback_cache;
 
-pub use audio_cache::{AudioCache, CacheStats, CachedTrack};
+pub use audio_cache::{AudioCache, CacheStats, CachedTrack, CacheAdmission};
 pub use image_cache::{ImageCacheService, ImageCacheStats};
 pub use playback_cache::{PlaybackCache, PlaybackCacheStats};

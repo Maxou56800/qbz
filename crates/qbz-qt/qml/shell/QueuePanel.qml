@@ -434,7 +434,7 @@ Rectangle {
                 // visible queue row.
                 RoundedImage {
                     anchors.fill: parent
-                    source: root.coverMap[row.artUrl] || ""
+                    source: qrRoot.artworkLeading ? (root.coverMap[row.artUrl] || "") : ""
                     radius: 4
                 }
                 // Per-item: this thumbnail clears when ITS cover lands, so
@@ -1358,6 +1358,7 @@ Rectangle {
                                     border.color: customInput.activeFocus ? theme.accent : theme.borderSubtle
                                     color: theme.surfaceElevated
                                     TextInput {
+                                        QbzTextEditMenu { }
                                         id: customInput
                                         anchors.fill: parent
                                         anchors.leftMargin: 9

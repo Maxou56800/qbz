@@ -1308,6 +1308,8 @@ pub(crate) fn reload_sidebar_including_local() {
 /// the only refresh that is correct offline AND does not cost a round trip
 /// (contract D10).
 pub(crate) fn publish_sidebar() {
+    let deletion_revision = library_qt::playlist_deletion_revision();
+    let insertion_revision = sidebar_qt::insertion_revision();
     let entries = sidebar_qt::rebuild();
     let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into());
     log::debug!(
@@ -1317,6 +1319,11 @@ pub(crate) fn publish_sidebar() {
     );
     let (sort_by, sort_asc) = sidebar_qt::sort_state();
     shell_bridge::ui(move |mut b| {
+        if deletion_revision != library_qt::playlist_deletion_revision()
+            || insertion_revision != sidebar_qt::insertion_revision()
+        {
+            return;
+        }
         b.as_mut().set_sidebar_json(QString::from(json.as_str()));
         b.as_mut()
             .set_sidebar_sort_by(QString::from(sort_by.as_str()));
@@ -3054,6 +3061,7 @@ pub(crate) fn reload_library() {
         let t = std::time::Instant::now();
         match library_qt::load_library(&runtime).await {
             Ok(total) => {
+                let deletion_revision = library_qt::playlist_deletion_revision();
                 let t_ser = std::time::Instant::now();
                 let (feed_json, counts_json) = library_qt::with_library(|d| {
                     (
@@ -3072,6 +3080,10 @@ pub(crate) fn reload_library() {
                     t.elapsed(),
                 );
                 library_bridge::ui(move |mut b| {
+                    if deletion_revision != library_qt::playlist_deletion_revision() {
+                        b.as_mut().set_library_loading(false);
+                        return;
+                    }
                     b.as_mut()
                         .set_library_json(QString::from(feed_json.as_str()));
                     b.as_mut()
@@ -3110,6 +3122,7 @@ pub(crate) fn reload_library() {
 ///
 /// No-op before the Library has ever loaded (`with_library` -> `None`).
 pub(crate) fn publish_library_document() {
+    let deletion_revision = library_qt::playlist_deletion_revision();
     let Some((feed_json, counts_json)) = library_qt::with_library(|d| {
         (
             serde_json::to_string(&d.feed).unwrap_or_else(|_| "[]".into()),
@@ -3119,6 +3132,9 @@ pub(crate) fn publish_library_document() {
         return;
     };
     library_bridge::ui(move |mut b| {
+        if deletion_revision != library_qt::playlist_deletion_revision() {
+            return;
+        }
         b.as_mut()
             .set_library_json(QString::from(feed_json.as_str()));
         b.as_mut()

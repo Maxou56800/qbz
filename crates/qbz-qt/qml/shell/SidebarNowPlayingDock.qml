@@ -121,7 +121,7 @@ Item {
         RoundedImage {
             visible: QbzPlayer.npHasTrack
             anchors.fill: parent
-            source: QbzPlayer.npArtworkPath
+            source: root.visible && QbzPlayer.npHasTrack ? QbzPlayer.npArtworkPath : ""
             radius: theme.radiusMd
         }
         QbzIcon {

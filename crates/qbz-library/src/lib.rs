@@ -46,6 +46,7 @@ mod remote_tag_sidecar;
 mod sacd;
 pub mod sacd_scan;
 mod scan;
+mod scan_changes;
 mod scanner;
 pub mod search;
 pub mod service;

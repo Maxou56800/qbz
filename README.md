@@ -493,6 +493,51 @@ Multi-device playback control using Qobuz's real-time streaming protocol. Full
 - **Offline mode** usable without ever logging into Qobuz, with fully offline
   playlists and automatic reconnection
 
+### Playback memory cache
+
+In **Settings → Playback → Playback cache**, choose a playback memory profile:
+
+| Profile | Cache and prefetch behavior |
+| --- | --- |
+| **Auto — recommended** | Fixed 400 MiB on normal-memory hosts or 50 MiB below 2 GiB RAM. |
+| **High — dynamic** | Starts at 400 MiB and can grow to 1600 MiB when RAM is available. |
+| **Desktop** | Fixed 400 MiB with normal prefetch. |
+| **Low — Pi style** | Fixed 50 MiB, smaller initial buffers and reduced prefetch; skips speculative Hi-Res warm-up. |
+| **Custom** | Manual base/maximum and dynamic growth; prefetch follows the detected host class. |
+
+Editing a preset's limits or growth toggle switches to Custom. Existing manual
+cache settings are preserved as Custom. Restore defaults returns to Auto.
+Profiles are shared by qbz and qbzd and preserve the requested audio quality.
+
+Dynamic growth requires measured memory headroom. The cache shrinks after two
+minutes without new demand and can fall below its base under memory pressure.
+These budgets cover cached audio, not reserved RAM or the whole application's
+memory. New buffers follow the selected profile; an existing track continues
+with its current storage. Changing the profile does not restart the DAC.
+
+L2 disk cache remains enabled unless **Streaming only** is selected. Tracks
+outside the memory budget stream through temporary files; L2 playback and
+catalog gapless read files without loading entire tracks into RAM. Keep the
+cache directory on real storage when saving RAM: tmpfs consumes RAM too.
+Offline downloads retain their separate settings. Streaming only keeps gapless
+available, uses less memory and skips cache-based protection against network
+interruptions and instant replay.
+
+```bash
+qbzd settings set audio.playback_memory_profile high
+qbzd status --json
+qbzd settings set audio.playback_memory_profile low
+qbzd settings set audio.playback_memory_profile auto
+```
+
+The CLI also accepts `desktop` and `custom`. Advanced keys remain
+`audio.playback_cache_dynamic`, `audio.playback_cache_min_mib` and
+`audio.playback_cache_max_mib`; editing them selects Custom. Use `none` for an
+automatic limit. Custom dynamic mode defaults to a ceiling four times the base,
+capped at 16384 MiB. `status.playback_cache` reports the active profile, usage,
+and effective/base/maximum budgets in bytes.
+
+
 ## Headless daemon (qbzd)
 
 <p align="center">

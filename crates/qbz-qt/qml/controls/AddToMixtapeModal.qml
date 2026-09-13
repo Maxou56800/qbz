@@ -230,6 +230,8 @@ Item {
                     border.color: searchInput.activeFocus ? theme.accent : theme.borderSubtle
 
                     TextInput {
+
+                        QbzTextEditMenu { }
                         id: searchInput
                         anchors.fill: parent
                         anchors.leftMargin: 12
@@ -413,6 +415,8 @@ Item {
                         border.color: nameInput.activeFocus ? theme.accent : theme.borderSubtle
 
                         TextInput {
+
+                            QbzTextEditMenu { }
                             id: nameInput
                             anchors.fill: parent
                             anchors.leftMargin: 12

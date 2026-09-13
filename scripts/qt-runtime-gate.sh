@@ -5,8 +5,14 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 export QBZ_PREBUILT_SHADERS=1
 bash scripts/test-search-local-qml.sh
 bash scripts/test-updates-qml.sh
+bash scripts/test-playback-cache-qml.sh
+bash scripts/test-text-edit-menu-qml.sh
+bash scripts/test-compact-seek-qml.sh
+bash scripts/test-library-folders-qml.sh
 bash scripts/test-orbit-qml.sh
 node scripts/test_qt_local_views.mjs
+node scripts/test_qt_library.mjs
+node scripts/test_qt_purchases_navigation.mjs
 node scripts/test_qt_kiosk_art.mjs
 node scripts/test_qt_kiosk_navigation.mjs
 node scripts/test_qt_kiosk_feedback.mjs

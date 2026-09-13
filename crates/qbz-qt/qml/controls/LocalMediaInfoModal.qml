@@ -208,6 +208,7 @@ Popup {
                                 font.pixelSize: theme.fontLegal
                             }
                             TextEdit {
+                                QbzTextEditMenu { }
                                 id: factValue
                                 x: 154
                                 width: parent.width - x
@@ -256,6 +257,7 @@ Popup {
                                 font.weight: theme.weightSemibold
                             }
                             TextEdit {
+                                QbzTextEditMenu { }
                                 x: 12
                                 y: 28
                                 width: parent.width - 92

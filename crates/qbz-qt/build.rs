@@ -580,6 +580,7 @@ fn main() {
                 "qml/controls/QbzEmptyState.qml",
                 "qml/controls/QbzIconButton.qml",
                 "qml/controls/QbzLineEdit.qml",
+                "qml/controls/QbzTextEditMenu.qml",
                 "qml/controls/InputFocusDismiss.qml",
                 "qml/controls/QbzLoadingDots.qml",
                 "qml/controls/QbzLoadMore.qml",
@@ -605,6 +606,7 @@ fn main() {
                 "qml/controls/QbzTooltip.qml",
                 "qml/controls/PanelResizeHandle.qml",
                 "qml/controls/QbzProgressRing.qml",
+                "qml/controls/QbzCompactSeekBar.qml",
                 // Applied-filters tooltip: the trigger a filter control mounts
                 // beside itself (it writes the shell channel QbzTooltip reads).
                 "qml/controls/QbzFilterTip.qml",

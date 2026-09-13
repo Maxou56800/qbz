@@ -1,5 +1,7 @@
 # CI for the crates/ workspace on the integration branch.
 #
+# Playback memory presets: shared persistence/migration, live budgets and growth;
+# Qt profile descriptions/selection are covered by the shared QML runtime gate.
 # Three jobs, three economies:
 #   test      — validate all eight gettext catalogs, then `cargo test` on
 #               every crate that needs no Qt (scripts/cargo-test.sh:
@@ -38,7 +40,18 @@
 # and preference preservation; qt-runtime-gate.sh covers the update UI.
 # Shared cargo-test.sh also gates Orbit HTTP host isolation, library profiles
 # and the SSE public-identity projection. No separate test command to drift.
+# Qt runtime gate includes Library source/count regressions and the Rust
+# playlist-deletion/creation/offline-gapless and maintenance retry regressions.
+# The shared library service gate preserves manual scan feedback while keeping
+# background completions silent, including coalesced work and unavailable roots.
+# Watcher read-feedback and no-op content invalidation are in cargo-test.sh;
+# Library folders status/action layout and tooltips are in qt-runtime-gate.sh.
 name: test-crates
+
+# Shared playback-cache gate covers #774 sealed buffers, Hi-Res decode continuity,
+# memory policy admission/pressure, persistence and qbzd settings round trips.
+# Purchases navigation placement matrix; missing-root watcher retry/recovery.
+# Disk-backed streaming, 24/192 seek, cache reader leases and cancelled prefetch.
 
 on:
   pull_request:
@@ -50,6 +63,8 @@ on:
       - "scripts/cargo-test.sh"
       - "scripts/install.sh"
       - "scripts/test-installer.py"
+      - "scripts/test_qt_library.mjs"
+      - "scripts/test_qt_purchases_navigation.mjs"
       - "scripts/qt-*.py"
       - "scripts/qt-*.sh"
       - "scripts/test_qt_build_gates.py"
@@ -62,6 +77,10 @@ on:
       - "scripts/test-search-local-qml.sh"
       - "scripts/test-orbit-qml.sh"
       - "scripts/test-updates-qml.sh"
+      - "scripts/test-playback-cache-qml.sh"
+      - "scripts/test-text-edit-menu-qml.sh"
+      - "scripts/test-compact-seek-qml.sh"
+      - "scripts/test-library-folders-qml.sh"
       - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   push:
@@ -72,6 +91,8 @@ on:
       - "scripts/cargo-test.sh"
       - "scripts/install.sh"
       - "scripts/test-installer.py"
+      - "scripts/test_qt_library.mjs"
+      - "scripts/test_qt_purchases_navigation.mjs"
       - "scripts/qt-*.py"
       - "scripts/qt-*.sh"
       - "scripts/test_qt_build_gates.py"
@@ -84,6 +105,10 @@ on:
       - "scripts/test-search-local-qml.sh"
       - "scripts/test-orbit-qml.sh"
       - "scripts/test-updates-qml.sh"
+      - "scripts/test-playback-cache-qml.sh"
+      - "scripts/test-text-edit-menu-qml.sh"
+      - "scripts/test-compact-seek-qml.sh"
+      - "scripts/test-library-folders-qml.sh"
       - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   workflow_dispatch:

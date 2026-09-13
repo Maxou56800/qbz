@@ -190,6 +190,8 @@ Item {
                     border.color: queryInput.activeFocus ? theme.accent : theme.borderSubtle
 
                     TextInput {
+
+                        QbzTextEditMenu { }
                         id: queryInput
                         anchors.fill: parent
                         anchors.leftMargin: 12

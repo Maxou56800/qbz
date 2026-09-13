@@ -384,7 +384,11 @@ enum SidecarRemoval {
 /// fallback that lets a dead Plex/Jellyfin/Subsonic row be removed. Returns
 /// `None` for a Qobuz row (the caller falls through to the Qobuz arm) or when
 /// no ref can be derived.
-fn sidecar_removal(source: &str, row_id: &str, queue_ref: Option<String>) -> Option<SidecarRemoval> {
+fn sidecar_removal(
+    source: &str,
+    row_id: &str,
+    queue_ref: Option<String>,
+) -> Option<SidecarRemoval> {
     let strip = |prefix: &str| {
         queue_ref
             .as_deref()
@@ -588,29 +592,34 @@ static FOLLOWED_PLAYLISTS: std::sync::LazyLock<Mutex<std::collections::HashSet<u
 /// `(playlist id, owner id)` pairs. Callers pass pairs rather than the models
 /// so this stays independent of which of the two fetchers happens to run.
 pub fn set_user_playlists(pairs: &[(u64, u64)]) {
-    let uid = USER_ID.load(std::sync::atomic::Ordering::SeqCst);
-    let mut owned = std::collections::HashSet::new();
-    let mut followed = std::collections::HashSet::new();
-    for &(id, owner) in pairs {
-        // uid == 0 means "no session id yet" — claiming ownership on an id
-        // that has not been set would mark EVERY row owned.
-        if uid != 0 && owner == uid {
-            owned.insert(id);
-        } else {
-            followed.insert(id);
+    crate::library_qt::with_deleted_playlists(|deleted| {
+        let uid = USER_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let mut owned = std::collections::HashSet::new();
+        let mut followed = std::collections::HashSet::new();
+        for &(id, owner) in pairs {
+            if deleted.contains(&id.to_string()) {
+                continue;
+            }
+            // uid == 0 means "no session id yet" — claiming ownership on an id
+            // that has not been set would mark EVERY row owned.
+            if uid != 0 && owner == uid {
+                owned.insert(id);
+            } else {
+                followed.insert(id);
+            }
         }
-    }
-    log::info!(
-        "[qbz-qt] playlist ownership snapshot: {} owned / {} followed",
-        owned.len(),
-        followed.len()
-    );
-    if let Ok(mut g) = OWNED_PLAYLISTS.lock() {
-        *g = owned;
-    }
-    if let Ok(mut g) = FOLLOWED_PLAYLISTS.lock() {
-        *g = followed;
-    }
+        log::info!(
+            "[qbz-qt] playlist ownership snapshot: {} owned / {} followed",
+            owned.len(),
+            followed.len()
+        );
+        if let Ok(mut g) = OWNED_PLAYLISTS.lock() {
+            *g = owned;
+        }
+        if let Ok(mut g) = FOLLOWED_PLAYLISTS.lock() {
+            *g = followed;
+        }
+    });
 }
 
 /// Is the session user id known yet? Ownership answers are meaningless (all
@@ -1883,16 +1892,27 @@ pub async fn delete_by_id(
         if owned { "deleted" } else { "unsubscribed" }
     );
     if owned {
+        crate::library_qt::playlist_deleted(&pid.to_string());
+        OWNED_PLAYLISTS.lock().unwrap().remove(&pid);
+        mark_following(pid, false);
+        crate::fav_cache_qt::set("playlist", &pid.to_string(), false);
+        crate::sidebar_qt::remove_qobuz_entry(pid);
+        crate::playlist_manager_qt::playlist_deleted(pid);
+        crate::publish_sidebar();
+        crate::publish_library_document();
         // Leave the membership index's target set now instead of waiting out
         // the authoritative-list retirement grace.
         let _ = tokio::task::spawn_blocking(move || {
             crate::library_db_qt::with_db(true, |db| {
+                db.delete_playlist_settings(pid)?;
                 Ok(db.with_connection(|conn| {
                     qbz_library::qobuz_playlist_snapshot::mark_inactive(conn, pid)
                 }))
             })
         })
         .await;
+    } else {
+        follow_settled(pid, false, None);
     }
     Ok(())
 }

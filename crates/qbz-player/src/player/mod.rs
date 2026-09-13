@@ -12,6 +12,7 @@
 
 mod playback_engine;
 mod streaming_source;
+mod disk_playback;
 
 pub mod memory_tuning;
 
@@ -92,7 +93,7 @@ enum AudioCommand {
     /// Resume playback
     Resume,
     /// Stop playback
-    Stop,
+    Stop { completed: Option<tokio::sync::oneshot::Sender<()>> },
     /// Set volume (0.0 - 1.0)
     SetVolume(f32),
     /// Seek to position in seconds
@@ -150,7 +151,7 @@ enum AudioCommand {
 
 /// Pending gapless track data (queued for seamless transition)
 enum GaplessMedia {
-    Buffered(Vec<u8>),
+    Buffered(Arc<Vec<u8>>),
     Streaming(Arc<BufferedMediaSource>),
     Direct(DirectDsdMedia),
 }
@@ -2333,7 +2334,7 @@ impl Player {
 
             let mut current_engine: Option<PlaybackEngine> = None;
             // Store audio data for seeking (we need to re-decode from the beginning)
-            let mut current_audio_data: Option<Vec<u8>> = None;
+            let mut current_audio_data: Option<Arc<Vec<u8>>> = None;
             // Store streaming source for resume (when download completes, we can get the data)
             let mut current_streaming_source: Option<Arc<BufferedMediaSource>> = None;
             // Direct DSD bypasses rodio and therefore has no cached PCM/audio
@@ -2348,11 +2349,6 @@ impl Player {
             let mut last_empty_check = Instant::now();
             // #660: when the last wedged-stream rebuild happened (backoff input).
             let mut last_wedge_rebuild: Option<Instant> = None;
-            // Latch so the low-memory oversized-track promotion skip logs
-            // once per track instead of on every 500 ms idle tick. Reset
-            // whenever the streaming source is absent or still downloading
-            // (i.e. the next track re-arms the log).
-            let mut low_mem_promotion_skip_logged = false;
             // Current track's normalization gain factor (stored for reuse on resume/seek)
             let mut current_normalization_gain: Option<f32> = None;
             // Current track's dynamic gain atomic (shared with DynamicAmplify + LoudnessAnalyzer)
@@ -2368,7 +2364,7 @@ impl Player {
             let handle_command =
                 |command: AudioCommand,
                  current_engine: &mut Option<PlaybackEngine>,
-                 current_audio_data: &mut Option<Vec<u8>>,
+                 current_audio_data: &mut Option<Arc<Vec<u8>>>,
                  current_streaming_source: &mut Option<Arc<BufferedMediaSource>>,
                  current_direct_dsd: &mut Option<DirectDsdMedia>,
                  stream_opt: &mut Option<StreamType>,
@@ -2733,7 +2729,7 @@ impl Player {
                             }
                             thread_state.set_hardware_volume_active(false);
 
-                            *current_audio_data = Some(data.clone());
+                            *current_audio_data = Some(Arc::new(data.clone()));
                             *current_streaming_source = None; // Clear streaming source for non-streaming playback
                             thread_state.set_loaded_audio(true);
 
@@ -3394,7 +3390,7 @@ impl Player {
 
                             // Create incremental streaming source - this starts playback IMMEDIATELY
                             // while continuing to decode/download in background
-                            let incremental_source =
+                            let mut incremental_source =
                                 match IncrementalStreamingSource::new_for_play(
                                     source.clone(),
                                     PlaybackBufferReporter::new(
@@ -3476,6 +3472,15 @@ impl Player {
                             *current_gain_atomic = gain_atomic.clone();
                             thread_state.set_normalization_gain(normalization);
 
+                            let disk_resume = source.is_file_backed() && source.is_complete()
+                                && start_position_secs > 0;
+                            if disk_resume {
+                                if let Err(error) = incremental_source.seek_to(Duration::from_secs(start_position_secs)) {
+                                    log::error!("Cached disk resume seek failed: {error}");
+                                    thread_state.record_stream_error("Cached disk resume seek failed");
+                                    return;
+                                }
+                            }
                             // Box the incremental source to match the expected type
                             let mut source_to_play: Box<dyn Source<Item = f32> + Send> =
                                 Box::new(incremental_source);
@@ -3486,7 +3491,7 @@ impl Player {
                             // would underrun the audio device for multi-second
                             // offsets. The buffer wait above guarantees
                             // there's enough downloaded data to feed this loop.
-                            if start_position_secs > 0 {
+                            if start_position_secs > 0 && !disk_resume {
                                 let target_samples: u64 = (start_position_secs)
                                     .saturating_mul(actual_sr as u64)
                                     .saturating_mul(actual_ch as u64);
@@ -3942,14 +3947,19 @@ impl Player {
                             *pause_suspend_deadline = None;
                             if current_engine.is_none() {
                                 // Try to get audio data from regular storage or streaming source
-                                let audio_data: Vec<u8> = if let Some(ref data) =
+                                let disk_source = current_streaming_source.as_ref()
+                                    .filter(|source| source.is_complete() && source.is_file_backed())
+                                    .cloned();
+                                let audio_data: Arc<Vec<u8>> = if disk_source.is_some() {
+                                    Arc::new(Vec::new())
+                                } else if let Some(ref data) =
                                     *current_audio_data
                                 {
                                     data.clone()
                                 } else if let Some(ref streaming_src) = *current_streaming_source {
                                     // Try to get complete data from streaming source
                                     if streaming_src.is_complete() {
-                                        match streaming_src.take_complete_data() {
+                                        match streaming_src.complete_data_shared() {
                                             Some(data) => {
                                                 log::info!("Resume: using complete streaming data ({} bytes)", data.len());
                                                 // Store it in current_audio_data for future use
@@ -4029,12 +4039,19 @@ impl Player {
                                     f32::from_bits(thread_state.volume.load(Ordering::SeqCst));
                                 apply_engine_volume(&stream_opt, &engine, volume);
 
-                                let source = match decode_with_fallback(&audio_data) {
-                                    Ok(s) => s,
-                                    Err(e) => {
-                                        log::error!("Failed to decode audio for resume: {}", e);
-                                        return;
-                                    }
+                                let resume_pos = thread_state.position.load(Ordering::SeqCst);
+                                let source: Result<Box<dyn Source<Item = f32> + Send>, String> =
+                                    if let Some(disk) = disk_source.as_ref() {
+                                        IncrementalStreamingSource::new(disk.clone()).and_then(|mut source| {
+                                            if resume_pos > 0 { source.seek_to(Duration::from_secs(resume_pos))?; }
+                                            Ok(Box::new(source) as _)
+                                        })
+                                    } else {
+                                        decode_with_fallback(&audio_data)
+                                    };
+                                let source = match source {
+                                    Ok(source) => source,
+                                    Err(error) => { log::error!("Failed to decode audio for resume: {error}"); return; }
                                 };
 
                                 // A Resume that rebuilds from completed streaming data
@@ -4052,9 +4069,8 @@ impl Player {
                                     }
                                 }
 
-                                let resume_pos = thread_state.position.load(Ordering::SeqCst);
                                 let skipped_source: Box<dyn Source<Item = f32> + Send> =
-                                    if resume_pos > 0 {
+                                    if resume_pos > 0 && disk_source.is_none() {
                                         Box::new(
                                             source.skip_duration(Duration::from_secs(resume_pos)),
                                         )
@@ -4094,7 +4110,7 @@ impl Player {
                                 log::info!("Audio thread: resumed");
                             }
                         }
-                        AudioCommand::Stop => {
+                        AudioCommand::Stop { completed } => {
                             if let Some(engine) = current_engine.take() {
                                 engine.stop();
                             }
@@ -4142,6 +4158,9 @@ impl Player {
                             #[cfg(target_os = "linux")]
                             qbz_audio::pipewire_backend::PipeWireBackend::reset_pipewire_clock();
                             log::info!("Audio thread: stopped");
+                            if let Some(completed) = completed {
+                                let _ = completed.send(());
+                            }
                         }
                         AudioCommand::SetVolume(volume) => {
                             let reported_volume = reported_volume_after_command(
@@ -4429,7 +4448,7 @@ impl Player {
                                 let audio_data = current_audio_data
                                     .as_ref()
                                     .expect("current_audio_data was checked Some above");
-                                match InMemorySource::new(audio_data.clone()) {
+                                match InMemorySource::from_shared(audio_data.clone()) {
                                     Ok(mut s) => match s.seek_to(skip_duration) {
                                         Ok(()) => Box::new(s),
                                         Err(e) => {
@@ -4745,7 +4764,7 @@ impl Player {
                                 track_id,
                                 play_generation: thread_state.current_play_generation(),
                                 duration_secs: actual_duration,
-                                media: GaplessMedia::Buffered(data),
+                                media: GaplessMedia::Buffered(Arc::new(data)),
                                 sample_rate,
                                 channels,
                                 bit_depth,
@@ -5029,59 +5048,21 @@ impl Player {
                                 if let Some(streaming_src) = current_streaming_source.as_ref() {
                                     if streaming_src.is_complete() {
                                         if current_audio_data.is_none() {
-                                            // Low-memory profile + oversized
-                                            // track: skip the promotion clone
-                                            // (take_complete_data copies the
-                                            // whole buffer — a persistent 2x
-                                            // RSS for the rest of the track)
-                                            // and KEEP the streaming source:
-                                            // seek/resume then read the
-                                            // single buffered copy. The
-                                            // gapless pre-queue gate below
-                                            // requires the source cleared, so
-                                            // such a track transitions with a
-                                            // small gap instead of gapless —
-                                            // accepted trade vs. an OOM kill
-                                            // on 1 GB hosts (issue #660). The
-                                            // L2 disk copy is written by the
-                                            // CMAF feeder task, off this
-                                            // thread.
-                                            let skip_promotion =
-                                                memory_tuning::is_low_memory_class()
-                                                    && memory_tuning::oversized_for_l1(
-                                                        streaming_src.buffer_size(),
-                                                        memory_tuning::audio_cache_l1_max_bytes(),
-                                                    );
-                                            if skip_promotion {
-                                                if !low_mem_promotion_skip_logged {
-                                                    low_mem_promotion_skip_logged = true;
-                                                    log::info!(
-                                                        "Streaming promotion skipped (low-memory host): {} bytes exceeds the oversized threshold — keeping the single buffered copy",
-                                                        streaming_src.buffer_size()
-                                                    );
-                                                }
-                                            } else {
-                                                if let Some(full_data) =
-                                                    streaming_src.take_complete_data()
-                                                {
-                                                    log::info!(
-                                                        "Streaming promotion: full track buffered ({} bytes), enabling cached transition path",
-                                                        full_data.len()
-                                                    );
-                                                    current_audio_data = Some(full_data);
-                                                }
+                                            // The sealed source shares its allocation with the
+                                            // active decoder. Promotion is constant-time even
+                                            // for a track larger than the entire L1 budget.
+                                            if let Some(full_data) = streaming_src.complete_data_shared() {
+                                                log::info!(
+                                                    "Streaming promotion: sharing full track ({} bytes), enabling cached transition path",
+                                                    full_data.len()
+                                                );
+                                                current_audio_data = Some(full_data);
                                                 clear_streaming_source = true;
                                             }
                                         } else {
                                             clear_streaming_source = true;
                                         }
-                                    } else {
-                                        // Still downloading: re-arm the
-                                        // skip log for the next track.
-                                        low_mem_promotion_skip_logged = false;
                                     }
-                                } else {
-                                    low_mem_promotion_skip_logged = false;
                                 }
                                 if clear_streaming_source {
                                     current_streaming_source = None;
@@ -5453,7 +5434,17 @@ impl Player {
         // 40 % of RAM (issue #660). A disk-cache failure degrades to
         // L1-only rather than aborting player creation.
         let l1_max_bytes = memory_tuning::audio_cache_l1_max_bytes();
-        let audio_cache = match qbz_cache::PlaybackCache::new(800 * 1024 * 1024) {
+        let storage_directory = settings.lock().ok()
+            .and_then(|s| s.playback_cache.disk_directory.clone());
+        let disk_cache = match storage_directory {
+            Some(parent) => std::fs::read_dir(&parent)
+                .map_err(|e| format!("Selected playback storage is unavailable: {e}"))
+                .and_then(|_| qbz_cache::PlaybackCache::with_path(
+                    std::path::PathBuf::from(parent).join("qbz-playback"), 800 * 1024 * 1024,
+                )),
+            None => qbz_cache::PlaybackCache::new(800 * 1024 * 1024),
+        };
+        let audio_cache = match disk_cache {
             Ok(pc) => Arc::new(qbz_cache::AudioCache::with_playback_cache(
                 l1_max_bytes,
                 Arc::new(pc),
@@ -5463,6 +5454,14 @@ impl Player {
                 Arc::new(qbz_cache::AudioCache::new(l1_max_bytes))
             }
         };
+
+        if let Ok(config) = settings.lock() {
+            set_max_initial_buffer_bytes(config.playback_cache.prefetch_policy(l1_max_bytes).initial_buffer_cap);
+            if let Err(error) = audio_cache.configure(config.playback_cache.clone()) {
+                log::warn!("Invalid playback cache policy, using defaults: {error}");
+            }
+        }
+        qbz_cache::AudioCache::start_maintenance(&audio_cache);
 
         Self {
             tx,
@@ -5555,6 +5554,13 @@ impl Player {
                 }
                 return r;
             }
+        }
+
+        if let Some((source, meta, duration)) = self.cached_disk_source(track_id, quality)? {
+            if self.is_current_play(gen) {
+                return self.apply_completed_source(source, meta, duration, track_id, start_position_secs);
+            }
+            return Ok(());
         }
 
         // `streaming_only` suppresses writing the track into the cache.
@@ -5720,32 +5726,14 @@ impl Player {
 
         log::info!("Player: Got stream URL (format: {})", stream_url.mime_type);
 
-        // Download the audio data
-        log::info!("Player: Starting audio caching...");
-        let audio_data = self.download_audio(&stream_url.url).await.map_err(|e| {
-            log::error!("Player: Caching failed: {}", e);
-            e
-        })?;
-        log::info!("Player: Cached {} bytes of audio data", audio_data.len());
-
-        if !self.is_current_play(gen) {
-            log::info!(
-                "Player: legacy play for track {track_id} superseded after download (gen {gen})"
-            );
-            return Ok(());
-        }
-
-        // Store the legacy download in the cache for instant replay.
+        let (source, writer) = self.download_buffered(&stream_url.url).await?;
+        if !self.is_current_play(gen) { return Ok(()); }
         if !skip_cache {
-            self.audio_cache.insert(track_id, audio_data.clone());
+            Self::persist_stream(self.audio_cache.clone(), writer, track_id).await?;
         }
-
-        // Send to audio thread (do not re-bump generation)
-        let r = self.apply_play_data(audio_data, track_id);
-        if r.is_ok() && start_position_secs > 0 && self.is_current_play(gen) {
-            let _ = self.seek(start_position_secs);
-        }
-        r
+        if !self.is_current_play(gen) { return Ok(()); }
+        let (meta, duration) = disk_playback::source_metadata(&source)?;
+        self.apply_completed_source(source, meta, duration, track_id, start_position_secs)
     }
 
     /// Queue a cold Qobuz successor as an incremental source. This is the
@@ -5759,7 +5747,36 @@ impl Player {
         quality: Quality,
     ) -> Result<(), String> {
         let gen = self.state.current_play_generation();
-        let cmaf_info = qbz_qobuz::cmaf::setup_streaming(client, track_id, quality).await?;
+        if let Some((source, meta, duration_secs)) = self.cached_disk_source(track_id, quality)? {
+            self.tx.send(AudioCommand::PlayNextStreaming {
+                source, track_id, sample_rate: meta.sample_rate, channels: meta.channels,
+                bit_depth: meta.bit_depth.unwrap_or(16), duration_secs,
+            }).map_err(|error| format!("failed to queue cached disk source: {error}"))?;
+            return Ok(());
+        }
+
+        if let Some(cached) = self.audio_cache.get(track_id) {
+            if !cached_quality_below_requested(&cached.data, quality) {
+                return self.play_next(cached.data, track_id);
+            }
+        }
+        let cmaf_info = match qbz_qobuz::cmaf::setup_streaming(client, track_id, quality).await {
+            Ok(info) => info,
+            Err(error) => {
+                log::warn!("[GAPLESS-STREAM] CMAF setup failed: {error}; trying buffered legacy source");
+                let url = client.get_stream_url_with_fallback(track_id, quality).await.map_err(|e| e.to_string())?;
+                let (source, writer) = self.download_buffered(&url.url).await?;
+                if !self.is_current_play(gen) { return Err("gapless legacy fetch superseded".into()); }
+                let skip_cache = self.audio_settings.lock().map(|s| s.streaming_only).unwrap_or(false);
+                if !skip_cache { Self::persist_stream(self.audio_cache.clone(), writer, track_id).await?; }
+                if !self.is_current_play(gen) { return Err("gapless legacy fetch superseded".into()); }
+                let (meta, duration_secs) = disk_playback::source_metadata(&source)?;
+                return self.tx.send(AudioCommand::PlayNextStreaming {
+                    source, track_id, sample_rate: meta.sample_rate, channels: meta.channels,
+                    bit_depth: meta.bit_depth.unwrap_or(16), duration_secs,
+                }).map_err(|e| e.to_string());
+            }
+        };
         if !self.is_current_play(gen) {
             return Err("current track changed during gapless stream setup".to_string());
         }
@@ -5799,7 +5816,7 @@ impl Player {
             .max(user_floor)
             .clamp(256 * 1024, 8 * 1024 * 1024);
 
-        let (source, writer) = BufferedMediaSource::new(config, Some(total_flac_size));
+        let (source, writer) = self.streaming_buffer(config, Some(total_flac_size))?;
         let source = Arc::new(source);
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         if !self.state.register_gapless_stream_feeder(
@@ -5816,6 +5833,7 @@ impl Player {
         let flac_header = cmaf_info.flac_header;
         let n_segments = cmaf_info.n_segments;
         let cache = self.audio_cache.clone();
+        let skip_cache = self.audio_settings.lock().map(|settings| settings.streaming_only).unwrap_or(false);
         tokio::spawn(async move {
             match Self::cmaf_stream_segments(
                 &url_template,
@@ -5825,7 +5843,7 @@ impl Player {
                 writer,
                 track_id,
                 cache,
-                true,
+                skip_cache,
                 total_flac_size,
                 cancel_rx,
             )
@@ -5891,8 +5909,8 @@ impl Player {
     /// successor after its initial buffer. This method remains the prefetch
     /// primitive the controller drives for the next 1-2 queue tracks.
     ///
-    /// Mirrors the Tauri V2 prefetch download: CMAF `download_full` first
-    /// (Akamai CDN), legacy `/track/getFileUrl` full download as fallback.
+    /// CMAF segments and legacy HTTP bodies stream into the selected storage;
+    /// oversized tracks never materialize a whole-file Vec for prefetch.
     /// No-ops when `streaming_only` is set, when the track is already
     /// cached, or when another fetch for the same id is in flight.
     pub async fn prefetch_into_cache(
@@ -5937,41 +5955,42 @@ impl Player {
             return Ok(());
         }
 
-        self.audio_cache.mark_fetching(track_id);
+        if self.audio_cache.get_playback_cache().is_some_and(|cache| cache.contains(track_id)) {
+            return Ok(());
+        }
+        let _fetching = disk_playback::PrefetchGuard::new(self.audio_cache.clone(), track_id);
         log::info!("[PREFETCH] Prefetching track {track_id} at {quality:?}");
 
-        // Try CMAF full download first (Akamai CDN), legacy full download
-        // as fallback (nginx CDN).
-        let result = match qbz_qobuz::cmaf::download_full(client, track_id, quality).await {
-            Ok(data) => Ok(data),
-            Err(e) => {
-                log::warn!(
-                    "[PREFETCH] CMAF failed for track {track_id}: {e}, trying legacy"
-                );
-                match client.get_stream_url_with_fallback(track_id, quality).await {
-                    Ok(stream_url) => self.download_audio(&stream_url.url).await,
-                    Err(e) => Err(format!("Failed to get stream URL: {e}")),
-                }
+        let cmaf_result = async {
+            let info = qbz_qobuz::cmaf::setup_streaming(client, track_id, quality).await?;
+            let size = info.flac_header.len() as u64 + info.segment_table.iter()
+                .map(|segment| segment.byte_len as u64).sum::<u64>();
+            let (_source, writer) = self.streaming_buffer(StreamingConfig::fast_start(), Some(size))?;
+            let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            Self::cmaf_stream_segments(&info.url_template, info.n_segments, info.content_key,
+                info.flac_header, writer, track_id, self.audio_cache.clone(), false, size, cancel_rx).await?;
+            Ok::<(), String>(())
+        }.await;
+        let result = match cmaf_result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                log::warn!("[PREFETCH] CMAF failed for {track_id}: {error}; trying legacy");
+                async {
+                    let url = client.get_stream_url_with_fallback(track_id, quality).await.map_err(|e| e.to_string())?;
+                    let (_source, writer) = self.download_buffered(&url.url).await?;
+                    Self::persist_stream(self.audio_cache.clone(), writer, track_id).await
+                }.await
             }
         };
-
         match result {
-            Ok(data) => {
-                // Brief delay before the cache write to avoid racing the
-                // audio thread, matching the Tauri prefetch path.
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                let len = data.len();
-                self.audio_cache.insert(track_id, data);
-                self.audio_cache.unmark_fetching(track_id);
+            Ok(()) => {
                 self.audio_cache.clear_failed(track_id);
-                log::info!("[PREFETCH] Complete for track {track_id} ({len} bytes)");
+                log::info!("[PREFETCH] Complete for track {track_id}");
                 Ok(())
             }
-            Err(e) => {
-                self.audio_cache.unmark_fetching(track_id);
+            Err(error) => {
                 self.audio_cache.mark_failed(track_id);
-                log::warn!("[PREFETCH] Failed for track {track_id}: {e}");
-                Err(e)
+                Err(error)
             }
         }
     }
@@ -6028,7 +6047,7 @@ impl Player {
                     "[GAPLESS] Track {track_id} from DISK cache ({} bytes)",
                     audio_data.len()
                 );
-                self.audio_cache.insert(track_id, audio_data.clone());
+                self.audio_cache.promote_from_disk(track_id, audio_data.clone());
                 return Some(audio_data);
             }
         }
@@ -6198,7 +6217,7 @@ impl Player {
                     "[CAST-FETCH] Track {track_id} from DISK cache ({} bytes)",
                     audio_data.len()
                 );
-                self.audio_cache.insert(track_id, audio_data.clone());
+                self.audio_cache.promote_from_disk(track_id, audio_data.clone());
                 return Some(ExternalStreamAsset {
                     bytes: audio_data,
                     content_type: "audio/flac".to_string(),
@@ -6282,12 +6301,8 @@ impl Player {
     /// the resulting FLAC frame data to the streaming buffer. The player
     /// starts playing as soon as enough data is buffered.
     ///
-    /// `expected_total_bytes` is the assembled FLAC size known from the
-    /// segment table; on a LowMemory host it decides up front whether the
-    /// track is oversized for the L1 budget, in which case NO parallel RAM
-    /// accumulator is built and the finished track goes straight to the L2
-    /// disk cache, streamed out of the playback buffer in chunks (issue
-    /// #660).
+    /// Completed RAM buffers are shared; disk spools are persisted in bounded
+    /// chunks outside the decoder lock, without a parallel RAM accumulator.
     ///
     /// `cancel_rx` flips to `true` when a newer play intent supersedes this
     /// stream (see `SharedState::cancel_stream_feeder`). Returns `Ok(true)`
@@ -6301,7 +6316,7 @@ impl Player {
         track_id: u64,
         cache: Arc<qbz_cache::AudioCache>,
         skip_cache: bool,
-        expected_total_bytes: u64,
+        _expected_total_bytes: u64,
         mut cancel_rx: tokio::sync::watch::Receiver<bool>,
     ) -> Result<bool, String> {
         struct FailGuard {
@@ -6335,24 +6350,6 @@ impl Player {
         }
 
         let mut total_written: u64 = flac_header.len() as u64;
-        // Accumulate the assembled FLAC (header + decrypted frames) so the
-        // finished track can be cached for instant replay. Empty when
-        // `skip_cache` (streaming_only) is set — and never built at all for
-        // an oversized track on a LowMemory host, where a second full copy
-        // of the track in RAM next to the playback buffer is the issue #660
-        // OOM recipe; that track goes to the L2 disk cache at the end.
-        let low_mem_oversized = !skip_cache
-            && memory_tuning::is_low_memory_class()
-            && memory_tuning::oversized_for_l1(
-                expected_total_bytes as usize,
-                memory_tuning::audio_cache_l1_max_bytes(),
-            );
-        let accumulate_cache = !skip_cache && !low_mem_oversized;
-        let mut cache_data: Vec<u8> = if accumulate_cache {
-            flac_header.clone()
-        } else {
-            Vec::new()
-        };
         let start = Instant::now();
 
         for seg_idx in 1..=n_segments {
@@ -6403,9 +6400,6 @@ impl Player {
                     let _ = writer.error(msg.clone());
                     return Err(msg);
                 }
-                if accumulate_cache {
-                    cache_data.extend_from_slice(&frame);
-                }
                 total_written += frame.len() as u64;
                 data_pos = frame_end;
             }
@@ -6417,9 +6411,6 @@ impl Player {
                     let msg = format!("Failed to push trailing data: {e}");
                     let _ = writer.error(msg.clone());
                     return Err(msg);
-                }
-                if accumulate_cache {
-                    cache_data.extend_from_slice(trailing);
                 }
                 total_written += trailing.len() as u64;
             }
@@ -6462,34 +6453,8 @@ impl Player {
             n_segments - 1
         );
 
-        // Cache the assembled FLAC (header + decrypted frames) for instant
-        // replay on the next play of this track.
-        if accumulate_cache && !cache_data.is_empty() {
-            let bytes = cache_data.len();
-            cache.insert(track_id, cache_data);
-            log::info!("[CMAF-STREAM] Track {} cached ({} bytes)", track_id, bytes);
-        } else if low_mem_oversized {
-            // Oversized track on a low-memory host: no RAM accumulator was
-            // built. Persist straight to the L2 disk playback cache,
-            // streamed out of the playback buffer in chunks — no second
-            // full in-RAM copy, and the per-chunk lock keeps the audio
-            // reader starved for at most ~1 MB of writes at a time.
-            if let Some(playback_cache) = cache.get_playback_cache() {
-                playback_cache.insert_from(track_id, total_written, |file| {
-                    writer.write_buffered_to(file)
-                });
-                log::info!(
-                    "[CMAF-STREAM] Track {} persisted to L2 disk cache only ({} bytes, low-memory oversized)",
-                    track_id,
-                    total_written
-                );
-            } else {
-                log::info!(
-                    "[CMAF-STREAM] Track {} ({} bytes) oversized for low-memory L1 and no disk cache available — not cached",
-                    track_id,
-                    total_written
-                );
-            }
+        if !skip_cache {
+            Self::persist_stream(cache, writer.clone(), track_id).await?;
         }
 
         Ok(true)
@@ -6889,7 +6854,7 @@ impl Player {
         // Use StreamingConfig::from_seconds for proper buffer sizing
         let config = StreamingConfig::from_seconds(buffer_seconds);
 
-        let (source, writer) = BufferedMediaSource::new(config, Some(content_length));
+        let (source, writer) = self.streaming_buffer(config, Some(content_length))?;
         let source = Arc::new(source);
         let play_gen = self.state.current_play_generation();
         self.state.begin_buffering(track_id, play_gen);
@@ -7012,7 +6977,7 @@ impl Player {
             );
         }
 
-        let (source, writer) = BufferedMediaSource::new(config, Some(content_length));
+        let (source, writer) = self.streaming_buffer(config, Some(content_length))?;
         let source = Arc::new(source);
         let play_gen = self.state.current_play_generation();
         self.state.begin_buffering(track_id, play_gen);
@@ -7113,8 +7078,24 @@ impl Player {
         // seal it so a reader parked on its condvar wakes to EOF.
         self.state.seal_stream_feeder();
         self.tx
-            .send(AudioCommand::Stop)
+            .send(AudioCommand::Stop { completed: None })
             .map_err(|e| format!("Failed to send stop command: {}", e))
+    }
+
+    /// Stop and wait until the audio thread has dropped current/gapless
+    /// readers before evicting L1. Callers first cancel speculative downloads.
+    /// Keep L2 and the selected memory policy; the next start builds new buffers.
+    pub async fn stop_and_evict_playback_memory(&self) -> Result<(), String> {
+        let _ = self.begin_play();
+        self.state.seal_stream_feeder();
+        let (completed, receiver) = tokio::sync::oneshot::channel();
+        self.tx.send(AudioCommand::Stop { completed: Some(completed) })
+            .map_err(|e| format!("Failed to send stop command: {e}"))?;
+        tokio::time::timeout(Duration::from_secs(10), receiver).await
+            .map_err(|_| "Timed out waiting for playback memory release".to_string())?
+            .map_err(|_| "Audio thread closed before playback memory release".to_string())?;
+        self.audio_cache.evict_all_memory();
+        Ok(())
     }
 
     /// Set volume (0.0 - 1.0)
@@ -7189,7 +7170,34 @@ impl Player {
 
     /// Reload audio settings from fresh config (e.g., after database update)
     /// Call this before reinit_device() to ensure Player uses latest settings
+    pub fn playback_cache_stats(&self) -> qbz_cache::CacheStats {
+        self.audio_cache.stats()
+    }
+
+    pub fn playback_storage_directory(&self) -> Option<std::path::PathBuf> {
+        self.audio_cache.get_playback_cache().map(|cache| cache.cache_dir().clone())
+    }
+
+    pub fn playback_prefetch_policy(&self) -> qbz_models::playback_cache::PlaybackPrefetchPolicy {
+        let policy = self.audio_settings.lock().map(|s| s.playback_cache.clone()).unwrap_or_default();
+        policy.prefetch_policy(self.audio_cache.stats().recommended_size_bytes)
+    }
+
+    /// Update only memory policy; never apply an unrelated pending output/DSD setting.
+    pub fn configure_playback_cache(
+        &self,
+        policy: qbz_models::playback_cache::PlaybackCacheSettings,
+    ) -> Result<(), String> {
+        let mut settings = self.audio_settings.lock().map_err(|_| "Failed to lock audio settings")?;
+        self.audio_cache.configure(policy.clone())?;
+        set_max_initial_buffer_bytes(policy.prefetch_policy(self.audio_cache.stats().recommended_size_bytes).initial_buffer_cap);
+        settings.playback_cache = policy;
+        Ok(())
+    }
+
     pub fn reload_settings(&self, settings: AudioSettings) -> Result<(), String> {
+        self.audio_cache.configure(settings.playback_cache.clone())?;
+        set_max_initial_buffer_bytes(settings.playback_cache.prefetch_policy(self.audio_cache.stats().recommended_size_bytes).initial_buffer_cap);
         if let Ok(mut current_settings) = self.audio_settings.lock() {
             *current_settings = settings;
             Ok(())

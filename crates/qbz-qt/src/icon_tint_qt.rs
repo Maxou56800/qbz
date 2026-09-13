@@ -274,6 +274,7 @@ const MASTERS: &[(&str, &str)] = &[
     ("search", include_str!("../qml/assets/icons/primary/search.svg")),
     // The GEAR. Distinct from settings-2 (two sliders) — the kiosk NavRail's
     // seventh tile uses this one (`shell/NavRail.slint:185`).
+    ("server", include_str!("../qml/assets/icons/primary/server.svg")),
     ("settings", include_str!("../qml/assets/icons/primary/settings.svg")),
     ("settings-2", include_str!("../qml/assets/icons/primary/settings-2.svg")),
     ("shopping-bag", include_str!("../qml/assets/icons/primary/shopping-bag.svg")),

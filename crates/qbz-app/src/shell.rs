@@ -76,6 +76,12 @@ impl<A: FrontendAdapter + Send + Sync + 'static> AppRuntime<A> {
         audio_settings: AudioSettings,
         visualizer_tap: Option<VisualizerTap>,
     ) -> Self {
+        let host = qbz_core::system_capabilities::memory_profile();
+        qbz_player::player::apply_memory_tuning(
+            host.class == qbz_core::system_capabilities::MemoryClass::LowMemory,
+            host.audio_cache_l1_max_bytes,
+            host.max_initial_buffer_bytes,
+        );
         let diagnostic = AudioDiagnostic::new();
         let player = Player::new(device_name, audio_settings, visualizer_tap, diagnostic);
         let core = QbzCore::new(adapter, player);

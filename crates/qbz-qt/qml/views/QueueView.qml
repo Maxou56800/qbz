@@ -692,6 +692,7 @@ Rectangle {
                                     border.color: customMinutes.activeFocus
                                         ? theme.accent : theme.borderSubtle
                                     TextInput {
+                                        QbzTextEditMenu { }
                                         id: customMinutes
                                         anchors.fill: parent
                                         anchors.leftMargin: 9

@@ -32,6 +32,8 @@ pub struct AudioSettings {
     pub stream_buffer_seconds: u8,
     /// When true, skip L1+L2 cache writes (streaming-only mode). Offline cache still works.
     pub streaming_only: bool,
+    #[serde(default)]
+    pub playback_cache: qbz_models::playback_cache::PlaybackCacheSettings,
     /// When true, cap the REQUESTED streaming quality tier at the local output
     /// device's detected ceiling (#638 fix 3; consumed by the desktop's
     /// request-time resolution, never by the audio backends). Applies to local
@@ -128,6 +130,7 @@ impl Default for AudioSettings {
             alsa_hardware_volume_controls: HashMap::new(),
             stream_first_track: true,          // On by default (opt-out)
             stream_buffer_seconds: 2,          // 2 seconds initial buffer
+            playback_cache: Default::default(),
             streaming_only: false, // Disabled by default (cache tracks for instant replay)
             limit_quality_to_device: false, // Opt-in. Off since 1.1.9 (#45); wired to the read-only probe in #638 fix 3
             device_max_sample_rate: None,   // Set when device is selected
@@ -201,6 +204,7 @@ impl AudioSettingsStore {
             "ALTER TABLE audio_settings ADD COLUMN stream_buffer_seconds INTEGER DEFAULT 2",
             [],
         );
+        let _ = conn.execute("ALTER TABLE audio_settings ADD COLUMN playback_cache TEXT NOT NULL DEFAULT '{}'", []);
         let _ = conn.execute(
             "ALTER TABLE audio_settings ADD COLUMN streaming_only INTEGER DEFAULT 0",
             [],
@@ -322,7 +326,7 @@ impl AudioSettingsStore {
     pub fn get_settings(&self) -> Result<AudioSettings, String> {
         self.conn
             .query_row(
-                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup, quality_fallback_behavior, skip_sink_switch, allow_quality_fallback, reserve_dac_while_running, dsd_mode, alsa_hardware_volume_controls FROM audio_settings WHERE id = 1",
+                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup, quality_fallback_behavior, skip_sink_switch, allow_quality_fallback, reserve_dac_while_running, dsd_mode, alsa_hardware_volume_controls, playback_cache FROM audio_settings WHERE id = 1",
                 [],
                 |row| {
                     // Parse backend_type from JSON string
@@ -360,6 +364,7 @@ impl AudioSettingsStore {
                         alsa_hardware_volume_controls,
                         stream_first_track: row.get::<_, Option<i64>>(7)?.unwrap_or(0) != 0,
                         stream_buffer_seconds: row.get::<_, Option<i64>>(8)?.unwrap_or(3) as u8,
+                        playback_cache: row.get::<_, Option<String>>(24)?.and_then(|s| serde_json::from_str::<qbz_models::playback_cache::PlaybackCacheSettings>(&s).ok()).filter(|p| p.validate().is_ok()).unwrap_or_default(),
                         streaming_only: row.get::<_, Option<i64>>(9)?.unwrap_or(0) != 0,
                         limit_quality_to_device: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
                         device_max_sample_rate: row.get::<_, Option<i64>>(11)?.map(|r| r as u32),
@@ -583,6 +588,14 @@ impl AudioSettingsStore {
                 params![clamped as i64],
             )
             .map_err(|e| format!("Failed to set stream buffer seconds: {}", e))?;
+        Ok(())
+    }
+
+    pub fn set_playback_cache(&self, policy: &qbz_models::playback_cache::PlaybackCacheSettings) -> Result<(), String> {
+        policy.validate()?;
+        let json = serde_json::to_string(policy).map_err(|e| e.to_string())?;
+        self.conn.execute("UPDATE audio_settings SET playback_cache = ?1 WHERE id = 1", params![json])
+            .map_err(|e| format!("Failed to save playback cache settings: {e}"))?;
         Ok(())
     }
 
@@ -839,7 +852,8 @@ impl AudioSettingsStore {
                     skip_sink_switch = ?19,
                     allow_quality_fallback = ?20,
                     reserve_dac_while_running = ?21,
-                    alsa_hardware_volume_controls = ?22
+                    alsa_hardware_volume_controls = ?22,
+                    playback_cache = '{}'
                 WHERE id = 1",
                 params![
                     defaults.output_device,
@@ -947,6 +961,28 @@ mod tests {
         let dir = unique_test_dir(name);
         let store = AudioSettingsStore::new_at(&dir).expect("open store in temp dir");
         (dir, store)
+    }
+
+    #[test]
+    fn playback_cache_persists_validates_and_resets_without_losing_other_settings() {
+        use qbz_models::playback_cache::PlaybackCacheSettings;
+        let (dir, store) = fresh_store("playback-cache");
+        let policy = PlaybackCacheSettings { dynamic: true, min_mib: Some(400), max_mib: Some(1600), ..Default::default() };
+        store.set_playback_cache(&policy).unwrap();
+        store.set_gapless_enabled(true).unwrap();
+        drop(store);
+        let store = AudioSettingsStore::new_at(&dir).unwrap();
+        assert_eq!(store.get_settings().unwrap().playback_cache, policy);
+        let invalid = PlaybackCacheSettings { max_mib: Some(100), ..policy.clone() };
+        assert!(store.set_playback_cache(&invalid).is_err());
+        assert_eq!(store.get_settings().unwrap().playback_cache, policy);
+        store.set_quality_fallback_behavior("always_skip").unwrap();
+        store.reset_all().unwrap();
+        let fresh = store.get_settings().unwrap();
+        assert_eq!(fresh.playback_cache, PlaybackCacheSettings::default());
+        assert_eq!(fresh.quality_fallback_behavior, "always_skip");
+        drop(store);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

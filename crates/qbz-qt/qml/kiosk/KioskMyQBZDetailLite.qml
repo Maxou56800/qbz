@@ -154,6 +154,7 @@ Rectangle {
             TouchButton { text: "⋯" + (root.doc.selectedCount > 0 ? " " + root.doc.selectedCount : ""); onClicked: root.showMenu() }
         }
         TextField {
+            QbzTextEditMenu { }
             y: root.compactHeader ? 70 : 124
             width: parent.width
             height: 48

@@ -190,11 +190,6 @@ pub fn cascade_on_toggle(a: &mut StagedAudio, field: AField) {
                 a.pw_force_bitperfect = false; // item 2
             }
         }
-        AField::StreamingOnly => {
-            if a.streaming_only {
-                a.gapless_enabled = false; // item 3
-            }
-        }
         _ => {}
     }
 }
@@ -1371,15 +1366,15 @@ mod tests {
     }
 
     #[test]
-    fn streaming_only_on_forces_gapless_off() {
+    fn streaming_only_preserves_gapless() {
         let mut a = base();
         a.gapless_enabled = true;
         a.streaming_only = true;
         cascade_on_toggle(&mut a, AField::StreamingOnly);
-        assert!(
-            !a.gapless_enabled,
-            "item 3: streaming-only ON forces gapless off"
-        );
+        assert!(a.gapless_enabled);
+        a.gapless_enabled = false;
+        cascade_on_toggle(&mut a, AField::StreamingOnly);
+        assert!(!a.gapless_enabled);
     }
 
     // ---- cascades §3.2.3 items 4-7 (backend switch) ----

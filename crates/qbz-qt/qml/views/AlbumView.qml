@@ -1484,6 +1484,7 @@ Rectangle {
                                     tintName: "muted"
                                 }
                                 TextInput {
+                                    QbzTextEditMenu { }
                                     width: parent.width - 21
                                     height: parent.height
                                     color: theme.textPrimary

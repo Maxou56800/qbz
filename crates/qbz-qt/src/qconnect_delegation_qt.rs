@@ -216,6 +216,22 @@ pub struct QtDelegationHost {
 }
 
 impl QtDelegationHost {
+    /// Serialize local memory maintenance with authority handoffs. Retain both
+    /// guards until restart completes, dropping the fence before the lane.
+    pub(crate) async fn playback_memory_fence(
+        &self,
+    ) -> Result<(OwnedMutexGuard<()>, OwnerActionFence), String> {
+        let lane = Arc::clone(&self.transition_gate).lock_owned().await;
+        if self.authority.current().is_some_and(|s| s.origin() != AuthorityOrigin::Owner) {
+            return Err("Playback memory can only be applied to local playback.".into());
+        }
+        let fence = OwnerActionFence::acquire_drained(
+            Arc::clone(&self.authority),
+            crate::playback_qt::cancel_owner_playback_tasks,
+        ).await;
+        Ok((lane, fence))
+    }
+
     pub fn new(
         runtime: Runtime,
         inner: Arc<StdMutex<QtQconnectInner>>,

@@ -243,6 +243,48 @@ pub struct LibraryData {
 
 static LIBRARY: Mutex<Option<LibraryData>> = Mutex::new(None);
 
+// Successful owned deletions are authoritative for this session, even when an
+// already running list request returns the old playlist afterwards. Lock order:
+// deleted IDs -> Library/sidebar/manager cache; never the reverse.
+static DELETED_PLAYLISTS: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+static PLAYLIST_DELETION_REVISION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn playlist_deletion_revision() -> u64 {
+    PLAYLIST_DELETION_REVISION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub(crate) fn with_deleted_playlists<R>(
+    f: impl FnOnce(&std::collections::HashSet<String>) -> R,
+) -> R {
+    f(&DELETED_PLAYLISTS.lock().unwrap())
+}
+
+fn exclude_deleted_playlists(data: &mut LibraryData, deleted: &std::collections::HashSet<String>) {
+    let before = data.feed.len();
+    let mut removed_favorites = std::collections::HashSet::new();
+    data.feed.retain(|row| {
+        let remove = row.kind == "playlist" && deleted.contains(&row.id);
+        if remove && (row.playlist_owned || row.is_favorite) {
+            removed_favorites.insert(row.id.clone());
+        }
+        !remove
+    });
+    data.counts.all = (data.counts.all - (before - data.feed.len()) as i64).max(0);
+    data.counts.playlists = (data.counts.playlists - removed_favorites.len() as i64).max(0);
+}
+
+pub(crate) fn playlist_deleted(id: &str) {
+    let mut deleted = DELETED_PLAYLISTS.lock().unwrap();
+    deleted.insert(id.to_string());
+    let mut library = LIBRARY.lock().unwrap();
+    if let Some(data) = library.as_mut() {
+        exclude_deleted_playlists(data, &deleted);
+    }
+    PLAYLIST_DELETION_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// The RAW local rows behind the feed's `source: "local" | "plex"` tracks,
 /// keyed by the same row id the feed row carries.
 ///
@@ -1064,8 +1106,11 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
     // refresh the mirror while it is in hand — the session seed was taken at
     // activation and a heart set from another surface since then would
     // otherwise only reach it through that surface's own write-through.
-    let fav_pl_ids = crate::library_db_qt::favorite_playlist_ids();
-    crate::fav_cache_qt::set_all_playlists(fav_pl_ids.iter().copied().collect());
+    let mut fav_pl_ids = crate::library_db_qt::favorite_playlist_ids();
+    with_deleted_playlists(|deleted| {
+        fav_pl_ids.retain(|id| !deleted.contains(&id.to_string()));
+        crate::fav_cache_qt::set_all_playlists(fav_pl_ids.iter().copied().collect());
+    });
     for fid in fav_pl_ids {
         if !seen.insert(fid) {
             continue;
@@ -1282,7 +1327,11 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
         labels: labels_total as i64,
         all: all_total,
     };
-    *LIBRARY.lock().unwrap() = Some(LibraryData { feed, counts });
+    with_deleted_playlists(|deleted| {
+        let mut data = LibraryData { feed, counts };
+        exclude_deleted_playlists(&mut data, deleted);
+        *LIBRARY.lock().unwrap() = Some(data);
+    });
     Ok(all_total as usize)
 }
 
@@ -1405,6 +1454,10 @@ fn all_local_feed_blocking() -> Vec<FeedItem> {
                 quality_detail: crate::local_rows::detail_of(&a.format, a.bit_depth, a.sample_rate),
                 bit_depth: a.bit_depth,
                 sample_rate: Some(khz(a.sample_rate)),
+                genre: a.genres.join(", "),
+                track_count: Some(a.track_count),
+                duration_secs: a.total_duration_secs.min(u32::MAX as u64) as u32,
+                duration: mmss(a.total_duration_secs.min(u32::MAX as u64) as u32),
                 is_favorite: hearted("album", &a.id),
                 release_sort_key: a
                     .year
@@ -1650,7 +1703,10 @@ async fn fetch_purchases(
                 genre: t.album.as_ref().and_then(|a| a.genre.as_ref())
                     .map(|genre| genre.name.clone()).unwrap_or_default(),
                 release_sort_key: qbz_text_utils::dates::release_sort_key(
-                    t.album.as_ref().and_then(|a| a.release_date_original.as_deref())),
+                    t.album
+                        .as_ref()
+                        .and_then(|a| a.release_date_original.as_deref()),
+                ),
                 album: alb,
                 album_id: aid,
                 album_artist_id,
@@ -1960,6 +2016,8 @@ pub fn teardown() {
     if let Ok(mut service) = LOCAL_FAVS.lock() {
         *service = None;
     }
+    DELETED_PLAYLISTS.lock().unwrap().clear();
+    PLAYLIST_DELETION_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     *LIBRARY.lock().unwrap() = None;
     LOCAL_RAW.lock().unwrap().clear();
     log::info!("[qbz-qt] library stores cleared (logout)");
@@ -3279,5 +3337,72 @@ mod tests {
         assert!(rows[0].is_favorite);
         assert_eq!(rows[1].id, "b");
         assert!(!rows[1].is_favorite);
+    }
+}
+
+#[cfg(test)]
+mod playlist_deletion_regressions {
+    use super::*;
+
+    fn snapshot() -> LibraryData {
+        let row = |id: &str, kind: &str, favorite: bool| FeedItem {
+            id: id.into(),
+            kind: kind.into(),
+            source: "qobuz".into(),
+            playlist_owned: kind == "playlist",
+            is_favorite: favorite,
+            ..Default::default()
+        };
+        LibraryData {
+            feed: vec![
+                row("42", "playlist", true),
+                row("42", "playlist", true),
+                row("43", "playlist", false),
+                row("42", "album", true),
+            ],
+            counts: LibraryCounts {
+                all: 4,
+                playlists: 2,
+                albums: 1,
+                tracks: 0,
+                artists: 0,
+                labels: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn owned_delete_removes_all_copies_even_if_hearted() {
+        let mut data = snapshot();
+        let deleted = HashSet::from(["42".to_string()]);
+        exclude_deleted_playlists(&mut data, &deleted);
+        assert_eq!(data.feed.len(), 2);
+        assert!(data.feed.iter().any(|r| r.kind == "album" && r.id == "42"));
+        assert_eq!(data.counts.playlists, 1);
+        assert_eq!(data.counts.all, 2);
+        exclude_deleted_playlists(&mut data, &deleted);
+        assert_eq!(
+            data.counts.playlists, 1,
+            "repeated reconciliation is idempotent"
+        );
+        assert_eq!(data.counts.all, 2);
+    }
+
+    #[test]
+    fn late_list_response_cannot_resurrect_deleted_playlist() {
+        let deleted = HashSet::from(["42".to_string(), "43".to_string()]);
+        let mut late_response = snapshot();
+        exclude_deleted_playlists(&mut late_response, &deleted);
+        assert_eq!(late_response.counts.playlists, 0);
+        assert_eq!(late_response.counts.all, 1);
+        assert_eq!(late_response.feed[0].kind, "album");
+    }
+
+    #[test]
+    fn no_successful_delete_keeps_snapshot_intact() {
+        let mut data = snapshot();
+        exclude_deleted_playlists(&mut data, &HashSet::new());
+        assert_eq!(data.feed.len(), 4);
+        assert_eq!(data.counts.playlists, 2);
     }
 }

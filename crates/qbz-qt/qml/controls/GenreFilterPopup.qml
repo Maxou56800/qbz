@@ -243,6 +243,7 @@ Item {
                             tintName: "muted"
                         }
                         TextInput {
+                            QbzTextEditMenu { }
                             id: searchInput
                             width: parent.width - 22
                             height: parent.height

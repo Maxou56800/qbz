@@ -678,6 +678,7 @@ const AUDIO_PORTABLE: &[&str] = &[
     "stream_first_track",
     "stream_buffer_seconds",
     "streaming_only",
+    "playback_cache",
     "normalization_enabled",
     "normalization_target_lufs",
     "gapless_enabled",
@@ -1194,6 +1195,10 @@ fn apply_audio_writes(data_root: &Path, writes: &[(&str, &Value)]) -> Result<(),
             "stream_first_track" => store.set_stream_first_track(as_bool(value))?,
             "stream_buffer_seconds" => {
                 store.set_stream_buffer_seconds(value.as_u64().unwrap_or(2) as u8)?
+            }
+            "playback_cache" => {
+                let policy = serde_json::from_value((*value).clone()).map_err(|e| format!("playback_cache: {e}"))?;
+                store.set_playback_cache(&policy)?;
             }
             "streaming_only" => store.set_streaming_only(as_bool(value))?,
             "limit_quality_to_device" => store.set_limit_quality_to_device(as_bool(value))?,
