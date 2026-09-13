@@ -17,7 +17,8 @@ pub struct CachedLoudness {
 }
 
 pub struct LoudnessCache {
-    conn: Mutex<Connection>,
+    /// `None` = disabled: every lookup misses, every store is dropped.
+    conn: Option<Mutex<Connection>>,
 }
 
 impl LoudnessCache {
@@ -32,7 +33,26 @@ impl LoudnessCache {
         let db_path = data_dir.join("loudness_cache.db");
         let conn = Connection::open(&db_path)
             .map_err(|e| format!("Failed to open loudness cache database: {}", e))?;
+        let cache = Self::with_connection(conn)?;
+        log::info!("[LoudnessCache] Opened at {}", db_path.display());
+        Ok(cache)
+    }
 
+    /// Session-only cache (SQLite in memory): the fallback when the on-disk
+    /// database cannot be opened. Analyses are reused within the run and lost
+    /// at exit.
+    pub fn in_memory() -> Result<Self, String> {
+        let conn = Connection::open_in_memory()
+            .map_err(|e| format!("Failed to open in-memory loudness cache: {}", e))?;
+        Self::with_connection(conn)
+    }
+
+    /// No cache at all: `get*` always miss and `set*` are no-ops. Last resort.
+    pub fn disabled() -> Self {
+        Self { conn: None }
+    }
+
+    fn with_connection(conn: Connection) -> Result<Self, String> {
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             .map_err(|e| format!("Failed to enable WAL for loudness cache database: {}", e))?;
 
@@ -58,16 +78,18 @@ impl LoudnessCache {
                ON track_loudness(content_key) WHERE content_key IS NOT NULL;",
         );
 
-        log::info!("[LoudnessCache] Opened at {}", db_path.display());
-
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Some(Mutex::new(conn)),
         })
+    }
+
+    fn lock(&self) -> Option<std::sync::MutexGuard<'_, Connection>> {
+        self.conn.as_ref()?.lock().ok()
     }
 
     /// Look up cached loudness for a track.
     pub fn get(&self, track_id: u64) -> Option<CachedLoudness> {
-        let conn = self.conn.lock().ok()?;
+        let conn = self.lock()?;
         conn.query_row(
             "SELECT gain_db, peak, source FROM track_loudness WHERE track_id = ?1",
             params![track_id as i64],
@@ -88,7 +110,7 @@ impl LoudnessCache {
         if content_key.trim().is_empty() {
             return;
         }
-        if let Ok(conn) = self.conn.lock() {
+        if let Some(conn) = self.lock() {
             let _ = conn.execute(
                 "UPDATE track_loudness SET content_key = ?1 WHERE track_id = ?2",
                 params![content_key.trim(), track_id as i64],
@@ -99,7 +121,7 @@ impl LoudnessCache {
     /// Look up cached loudness by content key (any source's copy of the
     /// same recording). Newest analysis wins.
     pub fn get_by_content_key(&self, content_key: &str) -> Option<CachedLoudness> {
-        let conn = self.conn.lock().ok()?;
+        let conn = self.lock()?;
         conn.query_row(
             "SELECT gain_db, peak, source FROM track_loudness
               WHERE content_key = ?1 ORDER BY created_at DESC LIMIT 1",
@@ -117,7 +139,7 @@ impl LoudnessCache {
 
     /// Store or update loudness data for a track.
     pub fn set(&self, track_id: u64, gain_db: f32, peak: f32, source: &str) {
-        if let Ok(conn) = self.conn.lock() {
+        if let Some(conn) = self.lock() {
             let result = conn.execute(
                 "INSERT OR REPLACE INTO track_loudness (track_id, gain_db, peak, source, created_at)
                  VALUES (?1, ?2, ?3, ?4, strftime('%s', 'now'))",
@@ -131,5 +153,30 @@ impl LoudnessCache {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_memory_cache_round_trips_by_track_and_content_key() {
+        let cache = LoudnessCache::in_memory().unwrap();
+        assert!(cache.get(7).is_none());
+        cache.set(7, -3.5, 0.9, "ebur128");
+        let hit = cache.get(7).unwrap();
+        assert_eq!((hit.gain_db, hit.peak, hit.source.as_str()), (-3.5, 0.9, "ebur128"));
+        cache.set_content_key(7, "USRC17607839");
+        assert_eq!(cache.get_by_content_key("USRC17607839").unwrap().gain_db, -3.5);
+    }
+
+    #[test]
+    fn disabled_cache_misses_and_swallows_writes() {
+        let cache = LoudnessCache::disabled();
+        cache.set(7, -3.5, 0.9, "ebur128");
+        cache.set_content_key(7, "USRC17607839");
+        assert!(cache.get(7).is_none());
+        assert!(cache.get_by_content_key("USRC17607839").is_none());
     }
 }

@@ -2098,13 +2098,28 @@ impl Player {
 
             // Initialize loudness analysis system
             let (analyzer_tx, analyzer_rx) = mpsc::sync_channel::<AnalyzerMessage>(64);
+            // A cache is an accelerator, never a reason to abort: this used to
+            // `panic!` here, which killed the one audio thread for the rest
+            // of the run (every later command failed with "Failed to send")
+            // on a full disk, a read-only profile or a corrupt
+            // loudness_cache.db. Degrade instead.
             let loudness_cache = match LoudnessCache::new() {
                 Ok(c) => Arc::new(c),
                 Err(e) => {
-                    log::error!("Failed to create loudness cache: {}. Normalization will work without caching.", e);
-                    // Create a fallback in-memory cache (will be lost on restart)
-                    // For now, just panic — this should not fail in practice
-                    panic!("LoudnessCache creation failed: {}", e);
+                    log::error!(
+                        "Failed to open the loudness cache: {e}. Normalization keeps working; \
+                         analyses are not persisted this run."
+                    );
+                    match LoudnessCache::in_memory() {
+                        Ok(c) => Arc::new(c),
+                        Err(e2) => {
+                            log::error!(
+                                "In-memory loudness cache failed too: {e2}. \
+                                 Normalization analyses will not be cached at all."
+                            );
+                            Arc::new(LoudnessCache::disabled())
+                        }
+                    }
                 }
             };
             let _analyzer_handle = LoudnessAnalyzer::spawn(analyzer_rx, loudness_cache.clone());
