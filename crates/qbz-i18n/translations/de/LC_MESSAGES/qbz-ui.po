@@ -7520,23 +7520,23 @@ msgstr "Schleifenende setzen (B)"
 msgid "Clear loop"
 msgstr "Schleife aufheben"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "COVER-CACHE"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Maximum size"
 msgstr "Maximale Größe"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 msgstr "Album- und Künstlerbilder werden bis zu diesem Budget auf der Festplatte behalten; die am längsten nicht gezeigten werden zuerst entfernt, während der Nutzung und beim Start."
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Clear artwork cache"
 msgstr "Cover-Cache leeren"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "{} images using {}"
 msgstr "{} Bilder belegen {}"
 

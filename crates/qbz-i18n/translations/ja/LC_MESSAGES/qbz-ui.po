@@ -7501,23 +7501,23 @@ msgstr "ループの終了点を設定 (B)"
 msgid "Clear loop"
 msgstr "ループを解除"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "アートワークキャッシュ"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Maximum size"
 msgstr "最大サイズ"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 msgstr "アルバムとアーティストの画像はこの上限までディスクに保持され、最も長く表示されていないものから削除されます（使用中および起動時）。"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Clear artwork cache"
 msgstr "アートワークキャッシュを消去"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "{} images using {}"
 msgstr "{} 件の画像、使用量 {}"
 

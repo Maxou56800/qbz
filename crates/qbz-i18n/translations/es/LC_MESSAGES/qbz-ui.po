@@ -7526,23 +7526,23 @@ msgstr "Fijar fin del bucle (B)"
 msgid "Clear loop"
 msgstr "Quitar bucle"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "CACHÉ DE PORTADAS"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Maximum size"
 msgstr "Tamaño máximo"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 msgstr "Las imágenes de álbumes y artistas se guardan en disco hasta este límite; las que llevan más tiempo sin mostrarse se descartan primero, durante el uso y al arrancar."
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Clear artwork cache"
 msgstr "Vaciar caché de portadas"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "{} images using {}"
 msgstr "{} imágenes ocupando {}"
 

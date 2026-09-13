@@ -3146,23 +3146,23 @@ msgstr "Set loop end (B)"
 msgid "Clear loop"
 msgstr "Clear loop"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "ARTWORK CACHE"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Maximum size"
 msgstr "Maximum size"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 msgstr "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Clear artwork cache"
 msgstr "Clear artwork cache"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "{} images using {}"
 msgstr "{} images using {}"
 

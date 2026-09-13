@@ -7518,23 +7518,23 @@ msgstr "Définir la fin de la boucle (B)"
 msgid "Clear loop"
 msgstr "Supprimer la boucle"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "ARTWORK CACHE"
 msgstr "CACHE DES POCHETTES"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Maximum size"
 msgstr "Taille maximale"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
 msgstr "Les images d'albums et d'artistes sont conservées sur le disque jusqu'à ce plafond ; les moins récemment affichées sont supprimées en premier, pendant l'utilisation et au démarrage."
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "Clear artwork cache"
 msgstr "Vider le cache des pochettes"
 
-#: qbz-qt/qml/settings/OfflineSettings.qml
+#: qbz-qt/qml/settings/StorageSettings.qml
 msgid "{} images using {}"
 msgstr "{} images occupant {}"
 

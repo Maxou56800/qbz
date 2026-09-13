@@ -9,8 +9,8 @@
 //   1 Playback       -> PlaybackSettings.qml
 //   2 Appearance     -> AppearanceSettings.qml
 //   3 Offline        -> OfflineSettings.qml
-//  13 Storage        -> StorageSettings.qml (every on-disk cache; shown
-//                       right after Offline)
+//  13 Storage        -> StorageSettings.qml (artwork, lyrics and Plex
+//                       caches; shown right after Offline)
 //   4 Local Library  -> LocalLibrarySettings.qml (+ PlexSettings.qml)
 //   5 Blacklist      -> BlacklistSettings.qml
 //   6 Integrations   -> IntegrationsSettings.qml

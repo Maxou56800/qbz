@@ -11,8 +11,9 @@
 // "Check now" IS shipped (`offline-recheck`); so is the live tri-state status
 // line (QbzSession.offlineMode / captivePortal).
 //
-// The on-disk half (offline downloads, artwork, lyrics) lives in Settings >
-// Storage (StorageSettings.qml) since 2026-09-13, next to every other cache.
+// OFFLINE CACHE (Open manager / Open folder / Clear all) is the downloads
+// half and lives here too. The artwork and lyrics caches live in Settings >
+// Storage (StorageSettings.qml) since 2026-09-13.
 
 import QtQuick
 import com.blitzfc.qbz
@@ -96,6 +97,56 @@ Column {
             text: QbzSession.tr("Check now", QbzSession.trRev)
             enabled: QbzSession.offlineMode !== 2
             onClicked: QbzBridge.settingsString("offline-recheck", "")
+        }
+    }
+
+    SettingsSpacer { }
+    SettingsDivider { }
+    SettingsSpacer { }
+
+    // ========================== OFFLINE CACHE ============================
+    // The downloads half: the manager view plus the two whole-cache actions.
+    // All three ride QbzOffline, the same bridge the manager view uses —
+    // "Open folder" and "Clear all" are the manager's own stats-bar buttons,
+    // offered here too exactly as the reference offers them
+    // (OfflineSettings.slint:135-167).
+    GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("OFFLINE CACHE", QbzSession.trRev) }
+    SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Manage offline cache", QbzSession.trRev)
+        description: QbzSession.tr("Browse and manage your downloaded tracks and albums.", QbzSession.trRev)
+        SettingsButton { kioskHost: root.kioskHost;
+            text: QbzSession.tr("Open manager", QbzSession.trRev)
+            onClicked: QbzOffline.openManager()
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Cache folder", QbzSession.trRev)
+        description: QbzSession.tr("Open the folder where offline tracks are stored on disk.", QbzSession.trRev)
+        SettingsButton { kioskHost: root.kioskHost;
+            text: QbzSession.tr("Open folder", QbzSession.trRev)
+            onClicked: QbzOffline.openFolder()
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Clear cache", QbzSession.trRev)
+        description: QbzSession.tr("Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above.", QbzSession.trRev)
+        SettingsButton { kioskHost: root.kioskHost;
+            danger: true
+            text: QbzSession.tr("Clear all", QbzSession.trRev)
+            // ONE prompt before the purge. The reference fires straight from
+            // the button; this port confirms every destructive settings row,
+            // and undoing this one means re-downloading the whole cache.
+            onClicked: {
+                if (!root.confirmHost) {
+                    QbzOffline.clearAll()
+                    return
+                }
+                root.confirmHost.ask(
+                    QbzSession.tr("Clear cache", QbzSession.trRev),
+                    QbzSession.tr("Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above.", QbzSession.trRev),
+                    QbzSession.tr("Clear all", QbzSession.trRev),
+                    function () { QbzOffline.clearAll() })
+            }
         }
     }
 }
