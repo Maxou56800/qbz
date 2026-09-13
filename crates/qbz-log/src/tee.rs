@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use log::{Log, Metadata, Record};
 
+use crate::install::FileSink;
 use crate::line::LogLine;
 use crate::repeat::ConsecutiveRecords;
 use crate::{redact, ring};
@@ -25,15 +26,23 @@ pub struct TeeLogger {
 
 struct Output {
     file: Option<BufWriter<File>>,
+    /// Held for the process lifetime: marks this process as a live writer of
+    /// the log file (see `install::open_log_file_at`).
+    _lock: Option<File>,
     consecutive: ConsecutiveRecords,
 }
 
 impl TeeLogger {
-    pub(crate) fn new(inner: env_logger::Logger, file: Option<BufWriter<File>>) -> Self {
+    pub(crate) fn new(inner: env_logger::Logger, sink: Option<FileSink>) -> Self {
+        let (file, lock) = match sink {
+            Some(sink) => (Some(sink.writer), sink.lock),
+            None => (None, None),
+        };
         Self {
             inner,
             output: Mutex::new(Output {
                 file,
+                _lock: lock,
                 consecutive: ConsecutiveRecords::default(),
             }),
         }
@@ -140,7 +149,13 @@ mod tests {
         let inner = env_logger::Builder::new()
             .filter_level(log::LevelFilter::Info)
             .build();
-        let logger = TeeLogger::new(inner, Some(BufWriter::new(file)));
+        let logger = TeeLogger::new(
+            inner,
+            Some(FileSink {
+                writer: BufWriter::new(file),
+                lock: None,
+            }),
+        );
         logger.log(
             &Record::builder()
                 .level(Level::Info)

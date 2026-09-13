@@ -568,7 +568,9 @@ impl PlaybackEngine {
                 is_playing.store(false, Ordering::SeqCst);
 
                 if let Some(handle) = playback_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[{label}] playback thread panicked before stop completed");
+                    }
                 }
 
                 if let Err(e) = stream.stop() {
@@ -589,7 +591,9 @@ impl PlaybackEngine {
                 should_stop.store(true, Ordering::SeqCst);
                 is_playing.store(false, Ordering::SeqCst);
                 if let Some(handle) = feeder_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[JACK Engine] feeder thread panicked before stop completed");
+                    }
                 }
                 // JackStream's Drop deactivates the client + unregisters the ports.
             }
@@ -608,7 +612,9 @@ impl PlaybackEngine {
                 should_stop.store(true, Ordering::SeqCst);
                 is_playing.store(false, Ordering::SeqCst);
                 if let Some(handle) = writer_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[DoP Engine] writer thread panicked before stop completed");
+                    }
                 }
                 if let Err(e) = stream.stop() {
                     log::warn!("[DoP Engine] Stop failed: {}", e);

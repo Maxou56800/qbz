@@ -167,7 +167,7 @@ say "gate: account-migration and portable-blacklist suites present and green"
 # blacklist_portable is the JSON one user hands to another.
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-account-migration --lib -- --list 2>/dev/null \
     | grep -c ': test$' || true)
-(( n >= 12 )) || { echo "qbz-account-migration has $n tests (expected >= 12)"; exit 1; }
+(( n >= 13 )) || { echo "qbz-account-migration has $n tests (expected >= 13)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-app --lib -- --list blacklist_portable:: 2>/dev/null \
     | grep -c ': test$' || true)
 (( n >= 3 )) || { echo "blacklist_portable suite has $n tests (expected >= 3)"; exit 1; }
@@ -199,6 +199,26 @@ cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- controller
 cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- queue_resolution::tests::manual_skip
 cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- decoder::tests::controller_
 cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- repeat::tests::
+
+say "gate: 2026-09 static-review regressions present (image-cache LRU, loudness-cache degrade, log-rotation lock, URL-free CDN errors + signed-param redaction, link-resolver timeout)"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list image_cache::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 4 )) || { echo "image cache suite has $n tests (expected >= 4)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list loudness_cache::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "loudness cache suite has $n tests (expected >= 2)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- --list install::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 3 )) || { echo "log rotation suite has $n tests (expected >= 3)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- --list redact::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 7 )) || { echo "redaction suite has $n tests (expected >= 7)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-qobuz --lib -- --list net_diag::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "net_diag suite has $n tests (expected >= 2)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-music-link --lib -- --list fast_path::tests:: 2>/dev/null \
+    | grep -c ': test$' || true)
+(( n >= 1 )) || { echo "link-resolver timeout suite has $n tests (expected >= 1)"; exit 1; }
 
 say "gate: DLNA device-description tolerance present and green (#745)"
 # The local rupnp patch accepts legacy service URLs without downgrading http.

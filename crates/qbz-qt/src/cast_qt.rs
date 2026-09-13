@@ -3982,6 +3982,11 @@ fn proxy_client() -> &'static reqwest::Client {
     PROXY_HTTP.get_or_init(|| {
         reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(10))
+            // A source server (Plex / Jellyfin / Subsonic) that stops
+            // answering mid-body used to park the media server's request
+            // thread in `BodyReader::read` forever. Per-read and reset on
+            // progress, so a slow-but-alive stream is never cut.
+            .read_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_default()
     })

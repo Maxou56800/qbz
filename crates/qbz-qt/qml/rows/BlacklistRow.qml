@@ -186,8 +186,12 @@ Rectangle {
                 Text {
                     visible: root.arm !== "dismissed"
                     width: parent.width
+                    // Unix seconds from the store, formatted in the user's
+                    // locale here (the Rust side carries no month names).
                     text: QbzSession.tr("Added {}", QbzSession.trRev)
-                        .replace("{}", root.row.addedDisplay || "")
+                        .replace("{}", (root.row.addedAt || 0) > 0
+                            ? Qt.formatDate(new Date(root.row.addedAt * 1000), Locale.LongFormat)
+                            : "")
                     color: theme.textMuted
                     font.pixelSize: root.kioskHost
                         ? theme.fontLegal * 1.2 : theme.fontLegal

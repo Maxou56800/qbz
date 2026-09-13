@@ -25,3 +25,8 @@ log = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
+
+[dev-dependencies]
+# The timeout test builds a reqwest client, which panics with "No provider
+# set" until a process-level rustls CryptoProvider exists (same as qbz-qobuz).
+rustls = { version = "0.23", features = ["aws_lc_rs"] }

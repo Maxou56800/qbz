@@ -132,6 +132,12 @@ Item {
                         if (v === "")
                             return QbzSession.tr("What's new", QbzSession.trRev)
                         var d = root.doc.date || ""
+                        // `date` is the release's civil date as written
+                        // (YYYY-MM-DD); render it in the user's locale.
+                        var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
+                        if (m)
+                            d = Qt.formatDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+                                              Locale.LongFormat)
                         return QbzSession.tr("What's new in v{}", QbzSession.trRev).replace("{}", v)
                             + (d === "" ? "" : " (" + d + ")")
                     }

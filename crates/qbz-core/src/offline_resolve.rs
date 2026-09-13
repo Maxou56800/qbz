@@ -35,10 +35,12 @@ pub async fn resolve_offline_bytes(
         let guard = offline.db.lock().await;
         let db = guard.as_ref()?;
         let row = db.get_cmaf_bundle(track_id).ok().flatten()?;
-        // A play IS an access. LRU eviction (`maintenance::check_cache_limit`)
-        // orders by `last_accessed_at`, which until now only the download
-        // wrote — so the cache evicted the tracks the user played most,
-        // oldest download first. This is the one place every offline play
+        // A play IS an access: keep `last_accessed_at` truthful (before this
+        // only the download wrote it). Nothing evicts on it today —
+        // `maintenance::check_cache_limit` only REFUSES new downloads at the
+        // limit, and downloaded albums are user data kept until removed in
+        // the offline manager — but it is the stamp any future space-reclaim
+        // policy must order by. This is the one place every offline play
         // funnels through (both frontends and qbzd resolve here).
         if let Err(e) = db.touch(track_id) {
             log::debug!("[OfflineResolve] touch({track_id}) failed: {e}");

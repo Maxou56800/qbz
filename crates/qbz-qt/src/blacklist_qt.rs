@@ -77,8 +77,6 @@ struct ArtistRowDoc {
     name: String,
     #[serde(rename = "addedAt")]
     added_at: i64,
-    #[serde(rename = "addedDisplay")]
-    added_display: String,
     notes: String,
     #[serde(rename = "hasNotes")]
     has_notes: bool,
@@ -97,8 +95,6 @@ struct AlbumRowDoc {
     art_path: String,
     #[serde(rename = "addedAt")]
     added_at: i64,
-    #[serde(rename = "addedDisplay")]
-    added_display: String,
     /// Carried for shape parity with the artist row; the Slint `AlbumRow`
     /// renders `added-display` in that slot and never the notes.
     notes: String,
@@ -160,47 +156,6 @@ fn set_query_value(q: String) {
 }
 
 // ---------------------------------------------------------------------------
-// Date formatting — "%b %-d, %Y" without pulling `chrono` into this crate
-// ---------------------------------------------------------------------------
-
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/// Format a unix-SECONDS timestamp as `"MMM D, YYYY"` (English — `qbz_i18n` has
-/// no Rust-side date catalog, same as the reference). Byte-identical to the
-/// reference's `chrono` `"%b %-d, %Y"` on a UTC timestamp; `qbz-qt` has no
-/// `chrono` dependency, so the civil-date conversion is inlined below rather
-/// than adding one for one string.
-fn format_added(secs: i64) -> String {
-    let days = secs.div_euclid(86_400);
-    // The reference's `DateTime::from_timestamp` yields `None` outside its
-    // range and renders "". Guard the same way for a corrupt row.
-    if !(-100_000_000..=100_000_000).contains(&days) {
-        return String::new();
-    }
-    let (year, month, day) = civil_from_days(days);
-    format!("{} {}, {}", MONTHS[(month - 1) as usize], day, year)
-}
-
-/// Howard Hinnant's `civil_from_days`: days since 1970-01-01 -> (year, month,
-/// day), pure integer arithmetic, valid for the whole proleptic Gregorian
-/// range. Truncating division with the era adjustment is the algorithm as
-/// published — do not "simplify" it to `div_euclid`.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
-    let doe = z - era * 146_097; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
-    (y + i64::from(m <= 2), m as u32, d as u32)
-}
-
-// ---------------------------------------------------------------------------
 // Builders — filtering is entirely Rust-side; QML never filters
 // ---------------------------------------------------------------------------
 
@@ -221,7 +176,6 @@ fn build_artists() -> (Vec<ArtistRowDoc>, i32) {
                 id: a.artist_id.to_string(),
                 name: a.artist_name,
                 added_at: a.added_at,
-                added_display: format_added(a.added_at),
                 has_notes: !notes.is_empty(),
                 notes,
             }
@@ -265,7 +219,6 @@ fn build_albums() -> (Vec<AlbumRowDoc>, i32, Vec<String>) {
                 cover_url: a.cover_url,
                 art_path,
                 added_at: a.added_at,
-                added_display: format_added(a.added_at),
                 has_notes: !notes.is_empty(),
                 notes,
             }
@@ -778,35 +731,4 @@ fn emit_artwork(key: String, path: String) {
         b.as_mut()
             .library_artwork_ready(QString::from(key.as_str()), QString::from(path.as_str()));
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_added_matches_chrono_b_d_y() {
-        // Epoch itself.
-        assert_eq!(format_added(0), "Jan 1, 1970");
-        // No zero padding on the day (%-d), month abbreviated (%b).
-        assert_eq!(format_added(1_751_500_000), "Jul 2, 2025");
-        // Leap day.
-        assert_eq!(format_added(1_709_164_800), "Feb 29, 2024");
-        // A December date, i.e. the mp >= 10 branch of civil_from_days.
-        assert_eq!(format_added(1_735_689_599), "Dec 31, 2024");
-        // Pre-epoch (floor division, not truncation).
-        assert_eq!(format_added(-1), "Dec 31, 1969");
-        // A corrupt value renders empty rather than a bogus date.
-        assert_eq!(format_added(i64::MAX), "");
-    }
-
-    #[test]
-    fn civil_from_days_month_boundaries() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        // 1972-01-01 is day 730 (two 365-day years); +59 lands on the first
-        // leap day after the epoch, +60 on the day after it.
-        assert_eq!(civil_from_days(730), (1972, 1, 1));
-        assert_eq!(civil_from_days(730 + 59), (1972, 2, 29));
-        assert_eq!(civil_from_days(730 + 60), (1972, 3, 1));
-    }
 }

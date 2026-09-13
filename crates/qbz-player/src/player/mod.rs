@@ -393,9 +393,17 @@ fn audio_metadata_from_codec_params(
             codec: params.codec,
         });
     }
+    let sample_rate = params.sample_rate.ok_or("No sample rate in codec params")?;
+    let channels = params.channels.map(|c| c.count() as u16).unwrap_or(2);
+    // Same guard the fully-decoded path applies (`samples.is_empty() ||
+    // sample_rate == 0 || channels == 0`): the streaming sources build
+    // `NonZero` from these with an `unwrap`.
+    if sample_rate == 0 || channels == 0 {
+        return Err("Invalid signal format in codec params (zero sample rate or channel count)".into());
+    }
     Ok(AudioMetadata {
-        sample_rate: params.sample_rate.ok_or("No sample rate in codec params")?,
-        channels: params.channels.map(|c| c.count() as u16).unwrap_or(2),
+        sample_rate,
+        channels,
         bit_depth: params.bits_per_sample,
         codec: params.codec,
     })
@@ -2098,13 +2106,28 @@ impl Player {
 
             // Initialize loudness analysis system
             let (analyzer_tx, analyzer_rx) = mpsc::sync_channel::<AnalyzerMessage>(64);
+            // A cache is an accelerator, never a reason to abort: this used to
+            // `panic!` here, which killed the one audio thread for the rest
+            // of the run (every later command failed with "Failed to send")
+            // on a full disk, a read-only profile or a corrupt
+            // loudness_cache.db. Degrade instead.
             let loudness_cache = match LoudnessCache::new() {
                 Ok(c) => Arc::new(c),
                 Err(e) => {
-                    log::error!("Failed to create loudness cache: {}. Normalization will work without caching.", e);
-                    // Create a fallback in-memory cache (will be lost on restart)
-                    // For now, just panic — this should not fail in practice
-                    panic!("LoudnessCache creation failed: {}", e);
+                    log::error!(
+                        "Failed to open the loudness cache: {e}. Normalization keeps working; \
+                         analyses are not persisted this run."
+                    );
+                    match LoudnessCache::in_memory() {
+                        Ok(c) => Arc::new(c),
+                        Err(e2) => {
+                            log::error!(
+                                "In-memory loudness cache failed too: {e2}. \
+                                 Normalization analyses will not be cached at all."
+                            );
+                            Arc::new(LoudnessCache::disabled())
+                        }
+                    }
                 }
             };
             let _analyzer_handle = LoudnessAnalyzer::spawn(analyzer_rx, loudness_cache.clone());
@@ -7492,6 +7515,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The streaming sources turn these into `NonZero` with an `unwrap` on the
+    /// audio thread; a demuxer reporting `Some(0)` or an empty channel mask
+    /// must fail here instead.
+    #[test]
+    fn codec_params_with_a_zero_rate_or_no_channels_are_rejected_before_nonzero() {
+        use symphonia::core::audio::Channels;
+        use symphonia::core::codecs::{CodecParameters, CODEC_TYPE_FLAC};
+        let mut params = CodecParameters::new();
+        params.for_codec(CODEC_TYPE_FLAC).with_sample_rate(0);
+        assert!(super::audio_metadata_from_codec_params(&params).is_err());
+        params.with_sample_rate(44100).with_channels(Channels::empty());
+        assert!(super::audio_metadata_from_codec_params(&params).is_err());
+        params.with_channels(Channels::FRONT_LEFT | Channels::FRONT_RIGHT);
+        let meta = super::audio_metadata_from_codec_params(&params).unwrap();
+        assert_eq!((meta.sample_rate, meta.channels), (44100, 2));
     }
 
     struct FakeDsdSource {

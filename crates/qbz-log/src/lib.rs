@@ -4,7 +4,8 @@
 //! `env_logger`'s built `Logger` and fans visible records out to three sinks:
 //!   1. **stderr** (redacted text, same line format as the file sink),
 //!   2. a bounded **in-memory ring** ([`ring`], cap [`ring::RING_CAP`]), and
-//!   3. an **on-disk file** (`~/.local/share/qbz/logs/qbz.log`, prev-rotated at startup).
+//!   3. an **on-disk file** (`~/.local/share/qbz/logs/qbz.log`; `qbzd.log` for the daemon),
+//!      prev-rotated at startup unless another live process is writing it.
 //!
 //! Secret **redaction** ([`redact`]) is applied once at the single write choke point,
 //! so every downstream consumer (stderr, ring, file, clipboard, paste upload) gets clean text.
@@ -26,6 +27,6 @@ pub mod tee;
 
 pub use bundle::{format_diagnostics_bundle, DiagFields};
 pub use fatal::install as install_fatal_signal_reporter;
-pub use install::{install, install_without_file_sink, set_level};
+pub use install::{install, install_named, install_without_file_sink, set_level};
 pub use line::LogLine;
 pub use redact::{redact, register_secret};

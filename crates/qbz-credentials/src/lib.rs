@@ -596,12 +596,15 @@ fn load_from_fallback() -> Result<Option<QobuzCredentials>, String> {
                 Ok(Some(creds))
             }
             Err(e) => {
-                log::warn!("Failed to decrypt credentials: {}", e);
-                // Try legacy format as fallback
-                if let Ok(Some(creds)) = load_legacy_credentials(&path) {
-                    log::info!("Loaded from legacy format, will re-encrypt on next save");
-                    return Ok(Some(creds));
-                }
+                // A new-format file that fails to decrypt is a key mismatch
+                // (machine-id / install salt / portal secret changed — see the
+                // daemon hazard on `PortalKey`) or a corrupt file; the legacy
+                // loader cannot succeed on JSON, so it is not tried. A fresh
+                // login rewrites the file.
+                log::warn!(
+                    "Failed to decrypt credentials at {}: {e} (key derivation inputs changed or the file is corrupt; log in again to rewrite it)",
+                    path.display()
+                );
                 Err(e)
             }
         }

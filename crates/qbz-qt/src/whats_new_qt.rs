@@ -34,7 +34,7 @@
 //!
 //! # Divergences from the reference
 //!
-//! - `format_release_date` is rewritten WITHOUT chrono (`qbz-qt` has no chrono
+//! - `release_date_iso` keeps only the civil date; QML formats it (`qbz-qt` has no chrono
 //!   dependency and is not gaining one for a date the GitHub API always emits
 //!   in a fixed RFC3339 shape). Same output, same raw-string fallback.
 //! - The blocks are plain `Serialize` structs instead of Slint model rows; the
@@ -231,7 +231,7 @@ async fn fetch_release_for_version(version: &str) -> Option<FetchedRelease> {
 
     Some(FetchedRelease {
         version: normalize_version_tag(&release.tag_name),
-        date: format_release_date(&release.published_at),
+        date: release_date_iso(&release.published_at),
         body: release.body,
     })
 }
@@ -240,34 +240,25 @@ fn normalize_version_tag(tag: &str) -> String {
     tag.trim().trim_start_matches('v').to_string()
 }
 
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/// Format an RFC3339 timestamp as "Mon D, YYYY" (en-US short). Falls back to
-/// the raw string on anything malformed.
-///
-/// CHRONO-FREE (the reference uses `DateTime::parse_from_rfc3339`, and this
-/// crate has no chrono dependency). GitHub's `published_at` is always
-/// `YYYY-MM-DDTHH:MM:SSZ`, and chrono's `year()/month0()/day()` on a parsed
-/// `DateTime<FixedOffset>` report the date AS WRITTEN in the string — so
-/// slicing the first ten ASCII bytes is behaviour-identical, offset included.
-fn format_release_date(iso: &str) -> String {
+/// Reduce GitHub's RFC3339 `published_at` to its civil date AS WRITTEN
+/// (`YYYY-MM-DD`, offset ignored — the reference's chrono
+/// `year()/month0()/day()` on a parsed `DateTime<FixedOffset>` did the same).
+/// Display formatting happens in QML with `Qt.formatDate(..., Locale.LongFormat)`
+/// so the header follows the user's locale instead of an English month table.
+/// Malformed input is echoed verbatim.
+fn release_date_iso(iso: &str) -> String {
     let bytes = iso.as_bytes();
     if bytes.len() < 10 || bytes[4] != b'-' || bytes[7] != b'-' {
         return iso.to_string();
     }
     let num = |a: usize, b: usize| iso[a..b].parse::<u32>().ok();
-    let (Some(year), Some(month), Some(day)) = (num(0, 4), num(5, 7), num(8, 10)) else {
+    let (Some(_year), Some(month), Some(day)) = (num(0, 4), num(5, 7), num(8, 10)) else {
         return iso.to_string();
     };
-    let Some(month_name) = month
-        .checked_sub(1)
-        .and_then(|m| MONTHS.get(m as usize).copied())
-    else {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return iso.to_string();
-    };
-    format!("{month_name} {day}, {year}")
+    }
+    iso[..10].to_string()
 }
 
 // ==================== Markdown → blocks + TOC ====================
@@ -603,21 +594,17 @@ mod tests {
     }
 
     #[test]
-    fn release_dates_format_like_the_reference_and_fall_back_raw() {
-        assert_eq!(format_release_date("2026-07-04T18:22:01Z"), "Jul 4, 2026");
-        assert_eq!(
-            format_release_date("2026-12-31T00:00:00+02:00"),
-            "Dec 31, 2026"
-        );
-        assert_eq!(format_release_date("2026-01-09T00:00:00Z"), "Jan 9, 2026");
+    fn release_dates_reduce_to_their_civil_date_and_fall_back_raw() {
+        assert_eq!(release_date_iso("2026-07-04T18:22:01Z"), "2026-07-04");
+        // The date AS WRITTEN, offset ignored (chrono's year()/month0()/day()
+        // on a parsed DateTime<FixedOffset> behave the same).
+        assert_eq!(release_date_iso("2026-12-31T00:00:00+02:00"), "2026-12-31");
+        assert_eq!(release_date_iso("2026-01-09T00:00:00Z"), "2026-01-09");
         // Malformed input is echoed verbatim, never blanked.
-        assert_eq!(format_release_date("not a date"), "not a date");
-        assert_eq!(format_release_date("2026/07/04"), "2026/07/04");
-        assert_eq!(
-            format_release_date("2026-13-04T00:00:00Z"),
-            "2026-13-04T00:00:00Z"
-        );
-        assert_eq!(format_release_date(""), "");
+        assert_eq!(release_date_iso("not a date"), "not a date");
+        assert_eq!(release_date_iso("2026/07/04"), "2026/07/04");
+        assert_eq!(release_date_iso("2026-13-04T00:00:00Z"), "2026-13-04T00:00:00Z");
+        assert_eq!(release_date_iso(""), "");
     }
 
     #[test]

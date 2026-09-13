@@ -82,6 +82,27 @@ budgets exclude active streaming buffers, decoders and offline downloads. The
 policy applies live without reopening the output device.
 
 
+## Network access
+
+By default `qbzd run` listens on `0.0.0.0:8182`: any device on your network
+can control playback, the queue and your playlists, the same way a Sonos or
+Chromecast renderer is open on the LAN. Browsers are blocked by an Origin
+check; other programs are not. The daemon logs one line about this at boot.
+
+To restrict it, edit `~/.config/qbzd/qbzd.toml`:
+
+```toml
+[server]
+bind = "127.0.0.1"   # local clients only
+# or keep the LAN bind and require a token on every request:
+token = "choose-a-long-random-string"
+```
+
+With a token set, clients send `Authorization: Bearer <token>`; the `qbzd`
+CLI on the same machine picks it up from `qbzd.toml` automatically (or from
+`QBZD_TOKEN`). `qbzd setup` has the same field on its Network screen
+("Access token").
+
 ## OpenRC and runit
 
 Do not reuse the systemd unit on a non-systemd host. `qbzd` generates a

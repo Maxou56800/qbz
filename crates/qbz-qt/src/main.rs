@@ -721,11 +721,10 @@ pub(crate) fn on_boot() {
     });
     offline_fwd::start_ui_forwarder();
 
-    // Derivative-cache housekeeping, off the Qt thread. Once per run: the
-    // `.jpg` orphan sweep is idempotent (FIX 1 moved the scaled derivatives to
-    // `.png`, so every `.jpg` left in `images/scaled/` is dead weight from a
-    // pre-fix build) and the byte cap is cheap — one `read_dir`, then unlink
-    // the oldest until the directory is back under the ceiling.
+    // Image-cache housekeeping, off the Qt thread, once per run: the shared
+    // `~/.cache/qbz/images` LRU trim (200 MB, batched under the cache mutex)
+    // and the `images/scaled` orphan sweep + byte cap. See artwork_qt.rs
+    // "Cache eviction".
     spawn(async {
         let _ = tokio::task::spawn_blocking(artwork_qt::housekeeping).await;
     });
