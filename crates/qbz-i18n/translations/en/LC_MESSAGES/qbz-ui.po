@@ -3119,10 +3119,6 @@ msgid "Show featured artists in track rows"
 msgstr "Show featured artists in track rows"
 
 #: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
-msgstr "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
-
-#: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Show 10-second skip buttons"
 msgstr "Show 10-second skip buttons"
 
@@ -3149,3 +3145,7 @@ msgstr "Set loop end (B)"
 #: qbz-qt/qml/shell/PlayerBar.qml
 msgid "Clear loop"
 msgstr "Clear loop"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
+msgstr "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."

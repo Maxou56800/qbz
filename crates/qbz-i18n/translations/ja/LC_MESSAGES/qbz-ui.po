@@ -7474,10 +7474,6 @@ msgid "Show featured artists in track rows"
 msgstr "トラック行にフィーチャリングアーティストを表示"
 
 #: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
-msgstr "Qobuz のトラック行のアーティスト欄に、フィーチャリングされた演奏者を「feat. …」として追加します。既定ではオフです。"
-
-#: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Show 10-second skip buttons"
 msgstr "10秒スキップボタンを表示"
 
@@ -7504,3 +7500,7 @@ msgstr "ループの終了点を設定 (B)"
 #: qbz-qt/qml/shell/PlayerBar.qml
 msgid "Clear loop"
 msgstr "ループを解除"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
+msgstr "Qobuz のトラック行で、メインアーティストの後にフィーチャリングされた演奏者をカンマ区切りで表示します。既定ではオフです。"

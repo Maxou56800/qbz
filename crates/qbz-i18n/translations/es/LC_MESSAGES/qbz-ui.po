@@ -7499,10 +7499,6 @@ msgid "Show featured artists in track rows"
 msgstr "Mostrar artistas invitados en las filas de pistas"
 
 #: qbz-qt/qml/settings/AppearanceSettings.qml
-msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
-msgstr "Añade \"feat. …\" con los intérpretes invitados de la pista a la línea de artista en las filas de pistas de Qobuz. Desactivado por defecto."
-
-#: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Show 10-second skip buttons"
 msgstr "Mostrar botones de salto de 10 segundos"
 
@@ -7529,3 +7525,7 @@ msgstr "Fijar fin del bucle (B)"
 #: qbz-qt/qml/shell/PlayerBar.qml
 msgid "Clear loop"
 msgstr "Quitar bucle"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Off by default."
+msgstr "Muestra los intérpretes invitados de la pista después del artista principal en las filas de pistas de Qobuz, separados por comas. Desactivado por defecto."

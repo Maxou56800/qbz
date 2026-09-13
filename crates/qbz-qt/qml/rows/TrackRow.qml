@@ -980,11 +980,12 @@ Rectangle {
             Text {
                 width: parent.width
                 visible: (root.item.artist || "") !== ""
-                // "feat." is a music convention, not a translated word. Local /
-                // media-server rows carry no `featured` and stay as they are.
+                // Main artist first, then the featured performers, one comma
+                // separated list. Local / media-server rows carry no
+                // `featured` and stay as they are.
                 text: (root.item.artist || "")
                     + (root.showFeaturedArtists && (root.item.featured || "") !== ""
-                        ? " feat. " + root.item.featured : "")
+                        ? ", " + root.item.featured : "")
                 color: root.artistLink && root.item.artistId && artistLinkArea.containsMouse
                     ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 12
