@@ -2313,9 +2313,6 @@ msgstr "Kies welke pagina wordt getoond wanneer de app start"
 msgid "Show Purchases"
 msgstr "Aankopen tonen"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Toon de sectie Aankopen in de zijbalk om je gekochte muziek te bekijken en te downloaden"
-
 msgid "MENU BAR"
 msgstr "MENUBALK"
 
@@ -4420,17 +4417,11 @@ msgstr "Qobuz-link openen"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Plak een Qobuz-, Spotify-, Apple Music-, Tidal-, Deezer- of song.link-URL"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Plaats de Aankopen-knop in de aangepaste titelbalk in plaats van de zijbalk"
-
 msgid "Press keys…"
 msgstr "Druk op toetsen…"
 
 msgid "Purchases"
 msgstr "Aankopen"
-
-msgid "Purchases in title bar"
-msgstr "Aankopen in titelbalk"
 
 msgid "RENDERER"
 msgstr "RENDERER"

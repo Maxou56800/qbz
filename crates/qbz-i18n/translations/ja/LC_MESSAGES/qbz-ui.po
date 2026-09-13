@@ -4106,9 +4106,6 @@ msgstr "最小化、最大化、閉じるボタンをタイトルバーに表示
 msgid "Add discrete plus and minus buttons next to the volume slider in the player bar."
 msgstr "プレーヤーバーの音量スライダーの横に、独立したプラスとマイナスのボタンを追加します。"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "購入した音楽の閲覧とダウンロードのために、サイドバーに購入済みセクションを表示します"
-
 msgid "Keep playing in the menu bar instead of quitting when you close the window"
 msgstr "ウィンドウを閉じたときに終了せず、メニューバーで再生を続けます"
 
@@ -4324,17 +4321,11 @@ msgstr "Qobuzリンクを開く"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Qobuz、Spotify、Apple Music、Tidal、Deezer、song.linkのURLを貼り付けてください"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "購入をサイドバーではなくカスタムタイトルバーに表示します"
-
 msgid "Press keys…"
 msgstr "キーを押してください…"
 
 msgid "Purchases"
 msgstr "購入"
-
-msgid "Purchases in title bar"
-msgstr "タイトルバーに購入を表示"
 
 msgid "RENDERER"
 msgstr "レンダラー"

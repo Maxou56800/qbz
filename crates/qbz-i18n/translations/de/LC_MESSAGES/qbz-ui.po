@@ -2317,9 +2317,6 @@ msgstr "Wähle welche Seite beim App-Start angezeigt wird"
 msgid "Show Purchases"
 msgstr "Einkäufe anzeigen"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Einkäufe-Bereich in der Seitenleiste zum Durchsuchen und Herunterladen gekaufter Musik anzeigen"
-
 msgid "MENU BAR"
 msgstr "MENÜLEISTE"
 
@@ -4377,17 +4374,11 @@ msgstr "Qobuz-Link öffnen"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Füge eine URL von Qobuz, Spotify, Apple Music, Tidal, Deezer oder song.link ein"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Zeigt den Eintrag Käufe in der eigenen Titelleiste statt in der Seitenleiste"
-
 msgid "Press keys…"
 msgstr "Tasten drücken…"
 
 msgid "Purchases"
 msgstr "Käufe"
-
-msgid "Purchases in title bar"
-msgstr "Käufe in der Titelleiste"
 
 msgid "RENDERER"
 msgstr "RENDERER"

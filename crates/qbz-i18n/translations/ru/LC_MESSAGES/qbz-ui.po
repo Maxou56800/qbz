@@ -4133,9 +4133,6 @@ msgstr "Показывать кнопки свернуть, развернуть
 msgid "Add discrete plus and minus buttons next to the volume slider in the player bar."
 msgstr "Добавить отдельные кнопки плюс и минус рядом с ползунком громкости в панели плеера."
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Показывать раздел «Покупки» в боковой панели для просмотра и скачивания купленной музыки"
-
 msgid "Keep playing in the menu bar instead of quitting when you close the window"
 msgstr "Продолжать воспроизведение в строке меню вместо выхода при закрытии окна"
 
@@ -4351,17 +4348,11 @@ msgstr "Открыть ссылку Qobuz"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Вставьте ссылку Qobuz, Spotify, Apple Music, Tidal, Deezer или song.link"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Размещает раздел «Покупки» в собственной строке заголовка вместо боковой панели"
-
 msgid "Press keys…"
 msgstr "Нажмите клавиши…"
 
 msgid "Purchases"
 msgstr "Покупки"
-
-msgid "Purchases in title bar"
-msgstr "Покупки в строке заголовка"
 
 msgid "RENDERER"
 msgstr "РЕНДЕРЕР"
