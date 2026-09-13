@@ -9,6 +9,8 @@
 //   1 Playback       -> PlaybackSettings.qml
 //   2 Appearance     -> AppearanceSettings.qml
 //   3 Offline        -> OfflineSettings.qml
+//  13 Storage        -> StorageSettings.qml (every on-disk cache; shown
+//                       right after Offline)
 //   4 Local Library  -> LocalLibrarySettings.qml (+ PlexSettings.qml)
 //   5 Blacklist      -> BlacklistSettings.qml
 //   6 Integrations   -> IntegrationsSettings.qml
@@ -72,6 +74,7 @@ Item {
         { label: QbzSession.tr("Appearance", QbzSession.trRev), section: 2 },
         { label: QbzSession.tr("Navigation", QbzSession.trRev), section: 10 },
         { label: QbzSession.tr("Offline", QbzSession.trRev), section: 3 },
+        { label: QbzSession.tr("Storage", QbzSession.trRev), section: 13 },
         { label: QbzSession.tr("Local Library", QbzSession.trRev), section: 4 },
         { label: QbzSession.tr("Blacklist", QbzSession.trRev), section: 5 },
         { label: QbzSession.tr("Integrations", QbzSession.trRev), section: 6 },
@@ -257,6 +260,12 @@ Item {
                         label: QbzSession.tr("Offline", QbzSession.trRev)
                         active: root.section === 3
                         onClicked: QbzBridge.settingsSetSection(3)
+                    }
+                    SubNavItem {
+                        name: "folder"
+                        label: QbzSession.tr("Storage", QbzSession.trRev)
+                        active: root.section === 13
+                        onClicked: QbzBridge.settingsSetSection(13)
                     }
                     SubNavItem {
                         name: "hard-drive"
@@ -472,6 +481,16 @@ Item {
                             panelIndex: 3
                             sourceComponent: Component {
                                 OfflineSettings { kioskHost: root.kioskHost;
+                                    width: parent.width
+                                    doc: root.doc
+                                    confirmHost: settingsConfirmHost
+                                }
+                            }
+                        }
+                        Panel {
+                            panelIndex: 13
+                            sourceComponent: Component {
+                                StorageSettings { kioskHost: root.kioskHost;
                                     width: parent.width
                                     doc: root.doc
                                     confirmHost: settingsConfirmHost

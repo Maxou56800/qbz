@@ -5,7 +5,10 @@ import "../../crates/qbz-qt/qml/settings" as Settings
 
 Item {
     width: 1000; height: 2800
-    Settings.PlaybackSettings { id: settings; width: 950 }
+    // The playback cache lives in Settings > Storage (2026-09-13); Playback
+    // keeps the behaviour rows (gapless).
+    Settings.StorageSettings { id: settings; width: 950 }
+    Settings.PlaybackSettings { id: playback; width: 950 }
     QtObject {
         id: confirmation
         property var pending: null
@@ -23,7 +26,7 @@ Item {
             waitForRendering(settings)
         }
         function row(label) {
-            var pending = [settings]
+            var pending = [settings, playback]
             while (pending.length) {
                 const item = pending.pop()
                 if (item.label === label && item.control !== undefined) return item
@@ -55,6 +58,7 @@ Item {
         }
         function test_streaming_only_keeps_gapless_available() {
             seed(false, null, null, true)
+            playback.doc = settings.doc
             const gapless = control("Gapless playback")
             verify(gapless.enabled)
             mouseClick(gapless)

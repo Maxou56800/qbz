@@ -451,26 +451,5 @@ Column {
                 }
             }
         }
-        SettingRow { kioskHost: root.kioskHost;
-            label: QbzSession.tr("Clear cache", QbzSession.trRev)
-            description: QbzSession.tr("Remove cached Plex libraries and tracks. Your sign-in is kept.", QbzSession.trRev)
-            SettingsButton { kioskHost: root.kioskHost;
-                danger: true
-                text: QbzSession.tr("Clear cache", QbzSession.trRev)
-                enabled: root.plex.hasToken === true
-                // plex_auth.rs:997-1001 — one prompt, sign-in kept.
-                onClicked: {
-                    if (!root.confirmHost) {
-                        QbzBridge.settingsString("plex-clear-cache", "")
-                        return
-                    }
-                    root.confirmHost.ask(
-                        QbzSession.tr("Clear Plex cache?", QbzSession.trRev),
-                        QbzSession.tr("This removes cached Plex libraries and tracks. Your sign-in is kept.", QbzSession.trRev),
-                        QbzSession.tr("Clear cache", QbzSession.trRev),
-                        function () { QbzBridge.settingsString("plex-clear-cache", "") })
-                }
-            }
-        }
     }
 }

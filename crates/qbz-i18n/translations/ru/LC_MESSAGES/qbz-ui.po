@@ -7562,3 +7562,15 @@ msgstr "Очистить кэш обложек"
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "{} images using {}"
 msgstr "{} изображений занимают {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Добавляет «feat. …» с приглашёнными исполнителями трека к строке артиста в строках треков Qobuz. По умолчанию выключено."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Хранилище"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "КЭШ PLEX"

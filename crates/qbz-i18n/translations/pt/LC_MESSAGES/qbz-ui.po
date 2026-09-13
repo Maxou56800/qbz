@@ -7541,3 +7541,15 @@ msgstr "Limpar cache de capas"
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "{} images using {}"
 msgstr "{} imagens ocupando {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Acrescenta \"feat. …\" com os intérpretes convidados da faixa à linha do artista nas linhas de faixa do Qobuz. Desligado por padrão."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Armazenamento"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "CACHE DO PLEX"

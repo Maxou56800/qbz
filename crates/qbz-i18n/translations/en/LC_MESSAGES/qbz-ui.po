@@ -3169,3 +3169,15 @@ msgstr "Clear artwork cache"
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "{} images using {}"
 msgstr "{} images using {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Storage"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "PLEX CACHE"

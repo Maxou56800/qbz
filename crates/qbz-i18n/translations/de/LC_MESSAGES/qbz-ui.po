@@ -7543,3 +7543,15 @@ msgstr "Cover-Cache leeren"
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "{} images using {}"
 msgstr "{} Bilder belegen {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Hängt \"feat. …\" mit den Gastinterpreten des Titels an die Künstlerzeile der Qobuz-Titelzeilen an. Standardmäßig aus."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Speicher"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "PLEX-CACHE"

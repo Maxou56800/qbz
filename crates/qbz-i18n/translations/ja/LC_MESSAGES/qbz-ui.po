@@ -7524,3 +7524,15 @@ msgstr "アートワークキャッシュを消去"
 #: qbz-qt/qml/settings/OfflineSettings.qml
 msgid "{} images using {}"
 msgstr "{} 件の画像、使用量 {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Qobuz のトラック行のアーティスト欄に、フィーチャリングされた演奏者を「feat. …」として追加します。既定ではオフです。"
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "ストレージ"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "PLEX キャッシュ"
