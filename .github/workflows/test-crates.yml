@@ -40,6 +40,9 @@
 # and preference preservation; qt-runtime-gate.sh covers the update UI.
 # Shared cargo-test.sh also gates Orbit HTTP host isolation, library profiles
 # and the SSE public-identity projection. No separate test command to drift.
+# Shared cargo-test.sh also gates the 2026-09 static-review regressions: image-cache
+# LRU eviction, loudness-cache degrade, live-writer log rotation lock, URL-free
+# CDN fetch errors + signed-param redaction, and the link-resolver timeout.
 # Qt runtime gate includes Library source/count regressions and the Rust
 # playlist-deletion/creation/offline-gapless and maintenance retry regressions.
 # The shared library service gate preserves manual scan feedback while keeping
