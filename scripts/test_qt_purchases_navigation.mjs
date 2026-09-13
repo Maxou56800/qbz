@@ -17,16 +17,18 @@ function binding(source, name) {
     return declaration.slice(declaration.indexOf(':') + 1).trim();
 }
 const slots = [...header.matchAll(/\bPurchaseTab \{\s*visible:\s*([^\n]+)/g)].map(m => m[1]);
-assert.equal(slots.length, 3, 'full, standalone and compact purchases entries');
+// Two slots since Purchases follows the section navigation (sidebar or
+// header): the standalone title-bar entry and its pref are gone.
+assert.equal(slots.length, 2, 'full and compact purchases entries');
 assert.match(header, /onClicked: QbzShell.navigateTo\("purchases"\)/);
 assert.match(sidebar, /id: navColumn[\s\S]*?visible: QbzShell.navInSidebar/);
 let cases = 0;
-for (let bits = 0; bits < 128; bits++) {
+for (let bits = 0; bits < 64; bits++) {
     const [showPurchases, offline, navInSidebar, navHeaderCompact,
-        navTbPurchases, systemTitleBar, hideTitleBar] = Array.from({length: 7}, (_, i) => !!(bits & (1 << i)));
+        systemTitleBar, hideTitleBar] = Array.from({length: 6}, (_, i) => !!(bits & (1 << i)));
     for (const sidebarState of [0, 1, 2]) {
         const ctx = vm.createContext({
-            root: {settingsDoc: {showPurchases, navTbPurchases}},
+            root: {settingsDoc: {showPurchases}},
             QbzShell: {navInSidebar, navHeaderCompact, sidebarState, systemTitleBar, hideTitleBar},
             QbzSession: {offline},
         });
@@ -34,7 +36,7 @@ for (let bits = 0; bits < 128; bits++) {
         for (const property of ['headerTabsOn', 'headerCompactOn', 'purchasesInHeader'])
             ctx.root[property] = evaluate(binding(header, property));
         const headerCount = slots.reduce((count, expression, index) => count + Number(evaluate(expression)
-            && (index === 0 ? ctx.root.headerTabsOn : index === 2 ? ctx.root.headerCompactOn : true)), 0);
+            && (index === 0 ? ctx.root.headerTabsOn : ctx.root.headerCompactOn)), 0);
         const sidebarCount = Number(navInSidebar && sidebarState !== 2 && evaluate(binding(sidebar, 'purchasesVisible')));
         assert.equal(headerCount + sidebarCount, Number(showPurchases && !offline),
             `exactly one reachable Purchases entry: ${JSON.stringify({bits, sidebarState})}`);
@@ -46,4 +48,8 @@ for (let bits = 0; bits < 128; bits++) {
 console.log(`Purchases navigation PASS: ${cases} combinations, full/compact/closed sidebar, title bars, opt-in and offline`);
 
 const shell = read('crates/qbz-qt/qml/shell/AppShell.qml');
-assert.match(shell, /NowPlayingBar \{[\s\S]*?\bz:\s*1/, 'transport paints above the content that follows it');
+// The bar's z is mode-aware since the 2.1.2 stabilization: Small's seek thumb
+// overlaps the pane above it and needs the lift; the full-height modes sit
+// below the Large cover dock, a later sibling that paints over the bar.
+assert.match(shell, /NowPlayingBar \{[\s\S]*?\bz:\s*(?:1\b|QbzShell\.npbMode === 2 \? 1 : 0)/,
+    'transport paints above the content that follows it in Small, and yields to the Large cover dock otherwise');
