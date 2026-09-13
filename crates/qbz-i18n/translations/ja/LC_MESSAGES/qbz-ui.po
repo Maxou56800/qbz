@@ -7552,3 +7552,7 @@ msgstr "オフラインキャッシュを削除しますか？"
 #: qbz-qt/qml/views/OfflineManagerView.qml
 msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
 msgstr "オフライン再生用に保存したものをすべて削除します（{}、{}）。ミュージックフォルダー内の購入済みダウンロードは残ります。削除したものをオフラインで再生するには、再度ダウンロードが必要です。"
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "詳細"

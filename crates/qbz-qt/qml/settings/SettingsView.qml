@@ -9,16 +9,21 @@
 //   1 Playback       -> PlaybackSettings.qml
 //   2 Appearance     -> AppearanceSettings.qml
 //   3 Offline        -> OfflineSettings.qml
-//  13 Storage        -> StorageSettings.qml (artwork, lyrics and Plex
-//                       caches; shown right after Offline)
+//  13 Storage        -> StorageSettings.qml (artwork, lyrics and Plex caches)
 //   4 Local Library  -> LocalLibrarySettings.qml (+ PlexSettings.qml)
 //   5 Blacklist      -> BlacklistSettings.qml
 //   6 Integrations   -> IntegrationsSettings.qml
 //   7 Developer      -> DeveloperSettings.qml
 //   8 Flatpak/Snap   -> SandboxSettings.qml (only on a sandboxed install)
-//   9 Import/Export  -> ImportExportSettings.qml (shown between
-//                       Integrations and Developer; index 9 keeps the
+//   9 Import/Export  -> ImportExportSettings.qml (index 9 keeps the
 //                       persisted section numbers of 0-8 stable)
+//
+// The sub-nav ORDER (2026-09-13) is not the index order: Audio, Playback,
+// Appearance, Navigation, Local Library, Offline, Integrations, Updates,
+// [Flatpak/Snap], then an ADVANCED fold (`advancedOpen`) holding Blacklist,
+// Storage, Import / Export, Developer and Orbit. The fold opens itself when
+// the current section lives inside it; "Share logs" stays pinned at the
+// bottom of the column.
 //
 // All state is ONE JSON document (QbzBridge.settingsJson, settings_qt.rs
 // SettingsDoc). Controls never keep local truth: they call the
@@ -68,22 +73,36 @@ Item {
     // assignment destroys the binding it lands on, so a single surviving
     // `root.section = n` would work once and then re-introduce the bug one
     // navigation later, in a way that looks fixed under casual testing.
+    // Same order as the desktop column; the fold is flattened here because
+    // the kiosk selector is one list.
     readonly property var kioskSections: [
         { label: QbzSession.tr("Audio", QbzSession.trRev), section: 0 },
         { label: QbzSession.tr("Playback", QbzSession.trRev), section: 1 },
         { label: QbzSession.tr("Appearance", QbzSession.trRev), section: 2 },
         { label: QbzSession.tr("Navigation", QbzSession.trRev), section: 10 },
-        { label: QbzSession.tr("Offline", QbzSession.trRev), section: 3 },
-        { label: QbzSession.tr("Storage", QbzSession.trRev), section: 13 },
         { label: QbzSession.tr("Local Library", QbzSession.trRev), section: 4 },
-        { label: QbzSession.tr("Blacklist", QbzSession.trRev), section: 5 },
+        { label: QbzSession.tr("Offline", QbzSession.trRev), section: 3 },
         { label: QbzSession.tr("Integrations", QbzSession.trRev), section: 6 },
-        { label: QbzSession.tr("Import / Export", QbzSession.trRev), section: 9 },
         { label: QbzSession.tr("Updates", QbzSession.trRev), section: 12 },
+        { label: QbzSession.tr("Blacklist", QbzSession.trRev), section: 5 },
+        { label: QbzSession.tr("Storage", QbzSession.trRev), section: 13 },
+        { label: QbzSession.tr("Import / Export", QbzSession.trRev), section: 9 },
         { label: QbzSession.tr("Developer", QbzSession.trRev), section: 7 }
     ].concat(QbzOrbit.enabled ? [{ label: "Orbit", section: 11 }] : []).concat(root.sandboxed ? [{ label: (doc.dev || ({})).installMethod === "snap"
         ? QbzSession.tr("Snap", QbzSession.trRev) : QbzSession.tr("Flatpak", QbzSession.trRev), section: 8 }] : [])
     readonly property int section: QbzBridge.settingsSection === 11 && !QbzOrbit.enabled ? 0 : QbzBridge.settingsSection
+    /// The ADVANCED fold of the desktop sub-nav (Blacklist, Storage,
+    /// Import / Export, Developer, Orbit). Not persisted on purpose: it opens
+    /// itself whenever the current section lives inside it, so a restored or
+    /// programmatic selection is never hidden behind a closed fold, and it
+    /// stays open once opened until the next launch.
+    readonly property var advancedSections: [5, 13, 9, 7, 11]
+    property bool advancedOpen: false
+    function revealAdvanced() {
+        if (root.advancedSections.indexOf(root.section) >= 0)
+            root.advancedOpen = true
+    }
+    onSectionChanged: revealAdvanced()
     readonly property bool migrationRunning:
         (doc.importExport || ({})).migrationRunning === true
 
@@ -99,7 +118,10 @@ Item {
             root.doc = ({})
         }
     }
-    Component.onCompleted: reload()
+    Component.onCompleted: {
+        reload()
+        revealAdvanced()
+    }
     Connections {
         target: QbzBridge
         function onSettingsJsonChanged() { root.reload() }
@@ -164,6 +186,10 @@ Item {
                     property string name: ""
                     property string label: ""
                     property bool active: false
+                    /// Extra left inset for the rows inside the ADVANCED fold.
+                    property int indent: 0
+                    /// Optional right-aligned glyph — the fold's chevron.
+                    property string trailing: ""
                     signal clicked()
 
                     width: parent ? parent.width : 0
@@ -189,8 +215,8 @@ Item {
                     }
                     Row {
                         anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
+                        anchors.leftMargin: 12 + parent.indent
+                        anchors.rightMargin: parent.trailing !== "" ? 36 : 12
                         spacing: 10
                         QbzIcon {
                             name: parent.parent.name
@@ -211,6 +237,21 @@ Item {
                             font.weight: parent.parent.active ? theme.weightSemibold : theme.weightRegular
                             verticalAlignment: Text.AlignVCenter
                         }
+                    }
+                    Loader {
+                        active: parent.trailing !== ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 16
+                        height: 16
+                        sourceComponent: QbzIcon {
+                            name: snTrailingHost.trailing
+                            width: 16
+                            height: 16
+                            tintName: "secondary"
+                        }
+                        readonly property Item snTrailingHost: parent
                     }
                     MouseArea {
                         id: snArea
@@ -244,7 +285,7 @@ Item {
                         onClicked: QbzBridge.settingsSetSection(1)
                     }
                     SubNavItem {
-                        name: "layers"
+                        name: "paintbrush-vertical"
                         label: QbzSession.tr("Appearance", QbzSession.trRev)
                         active: root.section === 2
                         onClicked: QbzBridge.settingsSetSection(2)
@@ -256,59 +297,28 @@ Item {
                         onClicked: QbzBridge.settingsSetSection(10)
                     }
                     SubNavItem {
-                        name: "cloud-download"
-                        label: QbzSession.tr("Offline", QbzSession.trRev)
-                        active: root.section === 3
-                        onClicked: QbzBridge.settingsSetSection(3)
-                    }
-                    SubNavItem {
-                        name: "folder"
-                        label: QbzSession.tr("Storage", QbzSession.trRev)
-                        active: root.section === 13
-                        onClicked: QbzBridge.settingsSetSection(13)
-                    }
-                    SubNavItem {
                         name: "hard-drive"
                         label: QbzSession.tr("Local Library", QbzSession.trRev)
                         active: root.section === 4
                         onClicked: QbzBridge.settingsSetSection(4)
                     }
                     SubNavItem {
-                        name: "blind-eye"
-                        label: QbzSession.tr("Blacklist", QbzSession.trRev)
-                        active: root.section === 5
-                        onClicked: QbzBridge.settingsSetSection(5)
+                        name: "cloud-download"
+                        label: QbzSession.tr("Offline", QbzSession.trRev)
+                        active: root.section === 3
+                        onClicked: QbzBridge.settingsSetSection(3)
                     }
                     SubNavItem {
-                        name: "refresh-cw"
+                        name: "unplug"
                         label: QbzSession.tr("Integrations", QbzSession.trRev)
                         active: root.section === 6
                         onClicked: QbzBridge.settingsSetSection(6)
-                    }
-                    SubNavItem {
-                        name: "import"
-                        label: QbzSession.tr("Import / Export", QbzSession.trRev)
-                        active: root.section === 9
-                        onClicked: QbzBridge.settingsSetSection(9)
                     }
                     SubNavItem {
                         name: "refresh-cw"
                         label: QbzSession.tr("Updates", QbzSession.trRev)
                         active: root.section === 12
                         onClicked: QbzBridge.settingsSetSection(12)
-                    }
-                    SubNavItem {
-                        name: "bug"
-                        label: QbzSession.tr("Developer", QbzSession.trRev)
-                        active: root.section === 7
-                        onClicked: QbzBridge.settingsSetSection(7)
-                    }
-                    SubNavItem {
-                        visible: QbzOrbit.enabled
-                        name: "compass"
-                        label: "Orbit"
-                        active: root.section === 11
-                        onClicked: QbzBridge.settingsSetSection(11)
                     }
                     // Sandboxed installs only (Flatpak / Snap permissions).
                     SubNavItem {
@@ -319,6 +329,57 @@ Item {
                             : QbzSession.tr("Flatpak", QbzSession.trRev)
                         active: root.section === 8
                         onClicked: QbzBridge.settingsSetSection(8)
+                    }
+
+                    // The ADVANCED fold: a disclosure row, not a section. It
+                    // reads as active while it is closed over the selected
+                    // page, so the column never shows nothing selected.
+                    SubNavItem {
+                        name: "sliders-horizontal"
+                        trailing: root.advancedOpen ? "chevron-down" : "chevron-right"
+                        label: QbzSession.tr("Advanced", QbzSession.trRev)
+                        active: !root.advancedOpen && root.advancedSections.indexOf(root.section) >= 0
+                        onClicked: root.advancedOpen = !root.advancedOpen
+                    }
+                    SubNavItem {
+                        visible: root.advancedOpen
+                        indent: 16
+                        name: "blind-eye"
+                        label: QbzSession.tr("Blacklist", QbzSession.trRev)
+                        active: root.section === 5
+                        onClicked: QbzBridge.settingsSetSection(5)
+                    }
+                    SubNavItem {
+                        visible: root.advancedOpen
+                        indent: 16
+                        name: "database"
+                        label: QbzSession.tr("Storage", QbzSession.trRev)
+                        active: root.section === 13
+                        onClicked: QbzBridge.settingsSetSection(13)
+                    }
+                    SubNavItem {
+                        visible: root.advancedOpen
+                        indent: 16
+                        name: "import"
+                        label: QbzSession.tr("Import / Export", QbzSession.trRev)
+                        active: root.section === 9
+                        onClicked: QbzBridge.settingsSetSection(9)
+                    }
+                    SubNavItem {
+                        visible: root.advancedOpen
+                        indent: 16
+                        name: "bug"
+                        label: QbzSession.tr("Developer", QbzSession.trRev)
+                        active: root.section === 7
+                        onClicked: QbzBridge.settingsSetSection(7)
+                    }
+                    SubNavItem {
+                        visible: root.advancedOpen && QbzOrbit.enabled
+                        indent: 16
+                        name: "compass"
+                        label: "Orbit"
+                        active: root.section === 11
+                        onClicked: QbzBridge.settingsSetSection(11)
                     }
                 }
 

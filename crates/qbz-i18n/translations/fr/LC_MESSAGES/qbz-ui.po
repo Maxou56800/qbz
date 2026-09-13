@@ -7569,3 +7569,7 @@ msgstr "Vider le cache hors ligne ?"
 #: qbz-qt/qml/views/OfflineManagerView.qml
 msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
 msgstr "Supprime tout ce qui est enregistré pour l'écoute hors ligne : {} occupant {}. Les achats téléchargés dans votre dossier musique sont conservés ; ce qui est supprimé devra être retéléchargé pour être écouté hors ligne."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Avancé"

@@ -7577,3 +7577,7 @@ msgstr "¿Vaciar el caché offline?"
 #: qbz-qt/qml/views/OfflineManagerView.qml
 msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
 msgstr "Elimina todo lo guardado para escuchar sin conexión: {} que ocupan {}. Las compras descargadas en tu carpeta de música se conservan; lo que se elimine tendrá que descargarse de nuevo para escucharse sin conexión."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Avanzado"

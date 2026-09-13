@@ -7571,3 +7571,7 @@ msgstr "Offline-Cache leeren?"
 #: qbz-qt/qml/views/OfflineManagerView.qml
 msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
 msgstr "Entfernt alles, was zum Offline-Hören gespeichert ist: {} mit {}. Gekaufte Downloads in deinem Musikordner bleiben erhalten; Entferntes muss zum Offline-Hören erneut heruntergeladen werden."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Erweitert"

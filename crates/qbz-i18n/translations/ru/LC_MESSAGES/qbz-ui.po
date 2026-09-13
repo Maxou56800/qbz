@@ -7590,3 +7590,7 @@ msgstr "Очистить офлайн-кэш?"
 #: qbz-qt/qml/views/OfflineManagerView.qml
 msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
 msgstr "Удаляет всё, что сохранено для прослушивания офлайн: {} объёмом {}. Купленные загрузки в папке с музыкой остаются; удалённое придётся скачать заново, чтобы слушать офлайн."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Дополнительно"
