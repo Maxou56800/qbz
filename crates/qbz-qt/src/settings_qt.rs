@@ -2258,8 +2258,6 @@ pub struct SettingsDoc {
     pub startup_page_index: i32,
     #[serde(rename = "showPurchases")]
     pub show_purchases: bool,
-    #[serde(rename = "navTbPurchases")]
-    pub nav_tb_purchases: bool,
     /// Opt-in: a click on a top-level section row (Discover / Library / Local
     /// Library / My QBZ) also NAVIGATES, landing on that section's first entry.
     /// Off by default, which is the behaviour that shipped: a click only opens
@@ -2807,7 +2805,6 @@ pub async fn publish_snapshot() {
             startup_pages: STARTUP_PAGE_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             startup_page_index: index_of(STARTUP_PAGE_VALUES, &pref_str("startup_page", "home"), 0),
             show_purchases: pref_bool("show_purchases", false),
-            nav_tb_purchases: pref_bool("nav_tb_purchases", false),
             nav_click_first_tab: pref_bool("nav_click_first_tab", false),
             local_tab_order: local_tab_order(),
             genre_filters_position: local_genre_filters_position(),
@@ -3755,10 +3752,6 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         }
         "show-purchases" => {
             save_pref("show_purchases", serde_json::json!(value));
-            Ok(Apply::None)
-        }
-        "nav-tb-purchases" => {
-            save_pref("nav_tb_purchases", serde_json::json!(value));
             Ok(Apply::None)
         }
         // Read by BOTH nav hosts off `settingsJson` (shell/NavFlyout.qml), so

@@ -7604,3 +7604,7 @@ msgstr "-23 LUFS · 放送 (EBU R128)"
 #: qbz-qt/src/settings_qt.rs
 msgid "Custom ({} LUFS)"
 msgstr "カスタム（{} LUFS）"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "購入セクションを他のセクションと同じ場所（サイドバーまたはヘッダー）に表示し、購入した音楽を閲覧・ダウンロードできます"

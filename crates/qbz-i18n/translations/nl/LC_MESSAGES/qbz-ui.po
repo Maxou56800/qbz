@@ -7611,3 +7611,7 @@ msgstr "-23 LUFS · Omroep (EBU R128)"
 #: qbz-qt/src/settings_qt.rs
 msgid "Custom ({} LUFS)"
 msgstr "Aangepast ({} LUFS)"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "Toont de sectie Aankopen naast de andere secties — in de zijbalk of de koptekst, waar ze ook staan — om je gekochte muziek te bekijken en te downloaden"

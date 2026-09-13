@@ -175,15 +175,14 @@ Rectangle {
         try { return JSON.parse(QbzBridge.settingsJson) } catch (e) { return ({}) }
     }
 
-    // Follow navigation into the header, including the closed-sidebar fallback.
-    // The separate relocation preference also works while navigation stays in
-    // the sidebar; only that explicit title-bar placement needs custom chrome.
+    // Purchases FOLLOWS the section nav (2026-09-13): it is up here exactly
+    // when the sections are — the full tabs, or the compact buttons while
+    // the sidebar is closed / "Compact header navigation" is on — and in the
+    // sidebar otherwise (Sidebar.qml `purchasesVisible`).
     readonly property bool purchasesInHeader:
         root.settingsDoc.showPurchases === true
         && !QbzSession.offline
-        && (root.headerTabsOn || root.headerCompactOn
-            || (root.settingsDoc.navTbPurchases === true
-                && !QbzShell.systemTitleBar && !QbzShell.hideTitleBar))
+        && (root.headerTabsOn || root.headerCompactOn)
 
     // Highlighted section — derived from the live view (see NavFlyout), OR'd
     // in the triggers with "my menu is open" (Slint highlights off
@@ -450,13 +449,6 @@ Rectangle {
                 showIcon: root.width >= 1140
                 anchors.verticalCenter: parent.verticalCenter
             }
-        }
-
-        // Explicit Purchases relocation with the other navigation in the sidebar.
-        PurchaseTab {
-            visible: root.purchasesInHeader && !root.headerTabsOn && !root.headerCompactOn
-            showIcon: root.width >= 1140
-            anchors.verticalCenter: parent.verticalCenter
         }
 
         // Compact section nav — while the sidebar is fully closed (so the

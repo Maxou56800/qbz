@@ -92,23 +92,12 @@ Column {
     }
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Show Purchases", QbzSession.trRev)
-        description: QbzSession.tr("Show the Purchases section in the sidebar for browsing and downloading your purchased music", QbzSession.trRev)
+        // Purchases follows the other sections — sidebar or header — so the
+        // separate "in title bar" placement toggle is gone (2026-09-13).
+        description: QbzSession.tr("Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music", QbzSession.trRev)
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.doc.showPurchases === true
             onToggled: function (v) { QbzBridge.settingsBool("show-purchases", v) }
-        }
-    }
-    SettingRow { kioskHost: root.kioskHost;
-        // Nothing to place while the section itself is off (owner
-        // 2026-08-21) — absent rather than rendered-and-inert.
-        visible: root.doc.showPurchases === true
-        label: QbzSession.tr("Purchases in title bar", QbzSession.trRev)
-        description: QbzSession.tr("Place the Purchases entry in the custom title bar instead of the sidebar", QbzSession.trRev)
-        rowEnabled: !root.tbLocked
-        QbzToggle { kioskHost: root.kioskHost;
-            enabled: !root.tbLocked
-            checked: root.doc.navTbPurchases === true
-            onToggled: function (v) { QbzBridge.settingsBool("nav-tb-purchases", v) }
         }
     }
 
