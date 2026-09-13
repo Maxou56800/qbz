@@ -594,7 +594,7 @@ fn map_track(index: usize, track: PageArtistTrack) -> TrackRow {
         .and_then(|r| r.streamable)
         .unwrap_or(true);
     TrackRow {
-        featured: String::new(),
+        featured: Vec::new(),
         is_favorite: crate::fav_cache_qt::contains_track(track.id),
         id: track.id.to_string(),
         cache_status: if crate::offline_qt::is_cached(&track.id.to_string()) {

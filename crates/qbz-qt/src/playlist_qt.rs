@@ -59,9 +59,9 @@ use serde::Serialize;
 
 #[derive(Clone, Default, Serialize)]
 pub struct PlaylistTrackRow {
-    /// Featured performers already joined ("X, Y"); "" when none.
+    /// Featured performers (see `album_qt::TrackRow::featured`); empty when none.
     #[serde(rename = "featured")]
-    pub featured: String,
+    pub featured: Vec<crate::album_qt::FeaturedArtist>,
     pub id: String,
     /// The playlist membership row id (== catalog track id for Qobuz
     /// playlists — what remove_tracks_from_playlist takes).
@@ -865,7 +865,7 @@ pub(crate) fn map_track(track: &Track) -> PlaylistTrackRow {
         .map(|p| (p.name, p.id.to_string()))
         .unwrap_or_default();
     PlaylistTrackRow {
-        featured: crate::album_qt::featured_join(track.performers.as_deref(), &artist, &track.title),
+        featured: crate::album_qt::featured_list(track.performers.as_deref(), &artist, &track.title, &[]),
         // Heart state at build time, from the favourite-id cache — the same
         // O(1) read `album_qt` / `artist_qt` / `label_qt` rows use. It was
         // never stamped here, so `TrackRow.qml` saw `undefined` on every

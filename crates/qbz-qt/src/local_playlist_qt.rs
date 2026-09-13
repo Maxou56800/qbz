@@ -806,7 +806,7 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
         } => {
             let art = artwork_path.clone().unwrap_or_default();
             let row = PlaylistTrackRow {
-                featured: String::new(),
+                featured: Vec::new(),
                 id: track_id.to_string(),
                 playlist_track_id: *track_id,
                 title: title.clone(),
@@ -881,7 +881,7 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
             )
             .unwrap_or_default();
             let row = PlaylistTrackRow {
-                featured: String::new(),
+                featured: Vec::new(),
                 id: queue.id.to_string(),
                 playlist_track_id: queue.id,
                 title: t.title.clone(),
@@ -932,7 +932,7 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
                 .unwrap_or_else(|| path.clone());
             (
                 PlaylistTrackRow {
-                    featured: String::new(),
+                    featured: Vec::new(),
                     id: path.clone(),
                     title: name,
                     source: "local".to_string(),
@@ -945,7 +945,7 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
         }
         RowItem::Unresolved { kind, reference } => (
             PlaylistTrackRow {
-                featured: String::new(),
+                featured: Vec::new(),
                 id: format!("{kind}:{reference}"),
                 title: qbz_i18n::t("Unavailable track"),
                 source: (*kind).to_string(),

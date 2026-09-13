@@ -233,6 +233,13 @@ pub fn featured_artists(performers: &str, row_artist: &str, title: &str) -> Vec<
     out
 }
 
+/// "Is this the same person" for two credited names (the row's featured
+/// performer vs. an album credit that carries an id).
+pub fn same_artist_name(a: &str, b: &str) -> bool {
+    let (a, b) = (normalize_name(a), normalize_name(b));
+    !a.is_empty() && a == b
+}
+
 /// Lower-case, Latin-1 diacritics folded, apostrophes dropped, whitespace
 /// collapsed — the comparison key for "is this the same person".
 fn normalize_name(s: &str) -> String {
@@ -343,6 +350,14 @@ mod tests {
         assert_eq!(featured_artists(p, "Alice & Bob", "Song"), vec!["Carol"]);
         assert_eq!(featured_artists(p, "Alice", "Song (feat. Carol)"), vec!["Bob"]);
         assert!(featured_artists(p, "Alice, Bob & Carol", "Song").is_empty());
+    }
+
+    #[test]
+    fn same_artist_name_folds_case_diacritics_and_apostrophes() {
+        assert!(same_artist_name("Émilie D'Angelo", "emilie dangelo"));
+        assert!(same_artist_name("Yo-Yo Ma", "YO-YO  MA"));
+        assert!(!same_artist_name("Watt", "Andrew Watt"));
+        assert!(!same_artist_name("", ""));
     }
 
     #[test]

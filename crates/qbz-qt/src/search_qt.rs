@@ -194,9 +194,9 @@ pub struct CardRow {
 
 #[derive(Clone, Default, Serialize)]
 pub struct TrackRow {
-    /// Featured performers already joined ("X, Y"); "" when none.
+    /// Featured performers (see `album_qt::TrackRow::featured`); empty when none.
     #[serde(rename = "featured")]
-    pub featured: String,
+    pub featured: Vec<crate::album_qt::FeaturedArtist>,
     pub id: String,
     pub title: String,
     pub artist: String,
@@ -407,7 +407,7 @@ fn map_track(track: &Track) -> TrackRow {
         .map(|p| (p.name, p.id.to_string()))
         .unwrap_or_default();
     TrackRow {
-        featured: crate::album_qt::featured_join(track.performers.as_deref(), &artist, &track.title),
+        featured: crate::album_qt::featured_list(track.performers.as_deref(), &artist, &track.title, &[]),
         // Same story as `map_album`: the field was declared (line 186) and
         // never stamped, so every search track row drew the empty heart and
         // the first click sent `favorite/delete` on a track the user had
