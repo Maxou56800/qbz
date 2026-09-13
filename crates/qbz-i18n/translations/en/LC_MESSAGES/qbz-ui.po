@@ -294,10 +294,6 @@ msgid "Random"
 msgstr "Random"
 
 
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-
 msgid "Cache cleared"
 msgstr "Cache cleared"
 
@@ -3181,3 +3177,23 @@ msgstr "PLEX CACHE"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
 msgstr "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "Apply the size limit"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "Open the cache folder"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "Clear the whole offline cache…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "Clear the offline cache?"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."

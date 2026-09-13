@@ -4627,10 +4627,6 @@ msgid "Random"
 msgstr "ランダム"
 
 
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "キャッシュデータを解放します。ダウンロード済みのアルバムは保持されます。削除は上のオフラインマネージャーから行ってください。"
-
 msgid "Couldn't clear the cache"
 msgstr "キャッシュを削除できませんでした"
 
@@ -7536,3 +7532,23 @@ msgstr "PLEX キャッシュ"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
 msgstr "Qobuz のトラック行で、メインアーティストの後にフィーチャリングされた演奏者をカンマ区切りで表示します。各名前はリンクです。既定ではオンです。"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "サイズ上限を適用"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "キャッシュフォルダーを開く"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "オフラインキャッシュをすべて削除…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "オフラインキャッシュを削除しますか？"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "オフライン再生用に保存したものをすべて削除します（{}、{}）。ミュージックフォルダー内の購入済みダウンロードは残ります。削除したものをオフラインで再生するには、再度ダウンロードが必要です。"
