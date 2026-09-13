@@ -40,8 +40,9 @@ pub struct BootedRuntime {
 /// gracefully. Returns the process exit code (0 = clean shutdown). `warns` are
 /// the unknown-key warnings surfaced by [`QbzdConfig::load`] in `main`.
 pub async fn run(roots: ProfileRoots, cfg: QbzdConfig, warns: Vec<String>, orbit: bool) -> Result<i32, String> {
-    // 1. argv parse happened in main(). 2. logging:
-    qbz_log::install(&cfg.log.level);
+    // 1. argv parse happened in main(). 2. logging — to its OWN file, never
+    //    the desktop app's (a shared qbz.log was rotated from under the GUI):
+    qbz_log::install_named(&cfg.log.level, "qbzd.log");
     // A headless daemon that dies of a signal leaves even less behind than
     // the GUI does: no window, no user watching. Same reporter, same reason
     // (qbz-log/src/fatal.rs).
