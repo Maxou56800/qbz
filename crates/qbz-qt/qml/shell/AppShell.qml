@@ -252,12 +252,14 @@ Rectangle {
         hostName: QbzOrbit.hostName
     }
 
-    // The gutter the player bar keeps to the window edges (below). Nothing
-    // is painted behind it: the bar floats over the shell's own ground —
-    // the ambient field or the root colour — exactly like the content pane's
-    // margins show what is under them (a backdrop was tried and rejected).
-    readonly property int npbGutter: Qt.platform.os === "osx" ? theme.npbGutterMac : theme.npbGutter
-
+    // The bottom chrome band (NowPlayingBar.qml's root): full width, flush
+    // on the window's bottom edge, the same tier and paint as the HeaderBar
+    // above. The bar layout inside it keeps the content pane's gutter to the
+    // window's left, right and bottom edges — wider on macOS, where the
+    // Liquid Glass corner curve ate the cover's corner (QbzTheme.npbGutterMac)
+    // — and the band sizes itself: the mode-aware layout height (Small
+    // collapses to one header-tall row; New/Classic/Large keep the full
+    // 112px, AppShell.slint:396) plus that gutter.
     NowPlayingBar {
         id: npb
         // The small seek thumb/hit area extends above the bar by a few pixels.
@@ -267,17 +269,6 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        // Inset by the content pane's gutter on the three window edges
-        // (2026-09-13, every mode): the bar's ends line up with the pane's
-        // and nothing in it touches the window edge — wider on macOS, where
-        // the Liquid Glass corner curve ate the cover's corner
-        // (QbzTheme.npbGutterMac).
-        anchors.leftMargin: root.npbGutter
-        anchors.rightMargin: root.npbGutter
-        anchors.bottomMargin: root.npbGutter
-        // Mode-aware height (AppShell.slint:396): Small collapses to one
-        // header-tall row; New/Classic/Large keep the full 112px.
-        height: QbzShell.npbMode === 2 ? theme.npbSmallHeight : theme.npbLargeHeight
         // The shared hover-tooltip overlay (declared further down — id
         // references resolve at completion). All four modes consume it for
         // Shuffle/Repeat state; the full bar also uses it for Qobuz Connect.
@@ -666,9 +657,9 @@ Rectangle {
         // so this width also sets the art size.
         x: 16
         width: 208
-        // Flush with the bar's bottom edge, which now sits a gutter above
-        // the window's (npbGutter) — the dock lifts with it.
-        y: npb.y + npb.height - QbzShell.largeDockHeight
+        // Flush with the bar LAYOUT's bottom edge, which sits a gutter above
+        // the window's (the band's inset) — the dock lifts with it.
+        y: npb.y + npb.height - npb.gutter - QbzShell.largeDockHeight
         ambientOn: root.ambientOn
     }
 
