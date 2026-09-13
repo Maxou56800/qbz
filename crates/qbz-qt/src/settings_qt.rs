@@ -2220,6 +2220,8 @@ pub struct SettingsDoc {
     pub wc_position_index: i32,
     #[serde(rename = "showWindowControls")]
     pub show_window_controls: bool,
+    #[serde(rename = "showSkipTen")]
+    pub show_skip_ten: bool,
     #[serde(rename = "showVolumeSteppers")]
     pub show_volume_steppers: bool,
     #[serde(rename = "miniDefaultViews")]
@@ -2753,6 +2755,7 @@ pub async fn publish_snapshot() {
             wc_position_index: index_of(WC_POSITION_VALUES, &pref_str("wc_position", "right"), 1),
             show_window_controls: pref_bool("show_window_controls", true),
             show_volume_steppers: pref_bool("show_volume_steppers", false),
+            show_skip_ten: pref_bool("show_skip_ten", false),
             mini_default_views: MINI_VIEW_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             mini_default_view_index: index_of(
                 MINI_VIEW_VALUES,
@@ -3692,6 +3695,13 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "show-window-controls" => {
             save_pref("show_window_controls", serde_json::json!(value));
             crate::shell_bridge::ui(move |mut b| b.as_mut().set_show_window_controls(value));
+            Ok(Apply::None)
+        }
+        "show-skip-ten" => {
+            save_pref("show_skip_ten", serde_json::json!(value));
+            // Live mirror on the domain bridge (the §5.6 pattern): the bar
+            // reads QbzPlayer.showSkipTen, not the settings document.
+            crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(value));
             Ok(Apply::None)
         }
         "show-volume-steppers" => {

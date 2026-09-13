@@ -7495,3 +7495,19 @@ msgstr "Gastkünstler in Titelzeilen anzeigen"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
 msgstr "Hängt \"feat. …\" mit den Gastinterpreten des Titels an die Künstlerzeile der Qobuz-Titelzeilen an. Standardmäßig aus."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Schaltflächen für 10-Sekunden-Sprünge anzeigen"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Fügt ±10-s-Schaltflächen neben Zurück und Weiter in der Player-Leiste hinzu."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "10 Sekunden zurück"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "10 Sekunden vor"

@@ -7483,3 +7483,19 @@ msgstr "Gastartiesten in trackregels tonen"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
 msgstr "Voegt \"feat. …\" met de gastartiesten van de track toe aan de artiestregel van Qobuz-trackregels. Standaard uit."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Knoppen voor 10 seconden springen tonen"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Voegt ±10 s-knoppen toe naast Vorige en Volgende in de spelerbalk."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "10 seconden terug"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "10 seconden vooruit"

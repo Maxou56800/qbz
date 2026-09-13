@@ -7476,3 +7476,19 @@ msgstr "トラック行にフィーチャリングアーティストを表示"
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
 msgstr "Qobuz のトラック行のアーティスト欄に、フィーチャリングされた演奏者を「feat. …」として追加します。既定ではオフです。"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "10秒スキップボタンを表示"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "プレーヤーバーの「前へ」「次へ」の横に ±10 秒ボタンを追加します。"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "10秒戻る"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "10秒進む"

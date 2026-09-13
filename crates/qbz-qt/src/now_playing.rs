@@ -198,6 +198,7 @@ pub fn publish_current() {
     publish(&snapshot);
     // The layers-glyph preference (see `publish_show_context_icon`).
     publish_show_context_icon();
+    publish_show_skip_ten();
     // Seed the two output LEDs + the volume-lock flag at shell entry too, so
     // the stamp is correct before the first track ever plays (the bridge
     // defaults are the unlit SYST/DEFAULT pair).
@@ -258,6 +259,13 @@ pub fn publish_seek_waveform(track_id: u64) {
 pub fn publish_show_context_icon() {
     let show = crate::settings_qt::show_context_icon();
     crate::player_bridge::ui(move |mut b| b.as_mut().set_show_context_icon(show));
+}
+
+/// The ±10 s buttons preference (ui_prefs `show_skip_ten`), re-published on
+/// shell entry and from the Settings toggle.
+pub fn publish_show_skip_ten() {
+    let show = crate::settings_qt::pref_bool("show_skip_ten", false);
+    crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(show));
 }
 
 // --- Pure-UI toggles (mutate + republish) --------------------------------

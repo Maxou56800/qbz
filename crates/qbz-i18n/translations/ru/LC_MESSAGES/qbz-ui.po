@@ -7514,3 +7514,19 @@ msgstr "Показывать приглашённых артистов в стр
 #: qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
 msgstr "Добавляет «feat. …» с приглашёнными исполнителями трека к строке артиста в строках треков Qobuz. По умолчанию выключено."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Показывать кнопки перемотки на 10 секунд"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Добавляет кнопки ±10 с рядом с «Назад» и «Вперёд» на панели воспроизведения."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "Назад на 10 секунд"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "Вперёд на 10 секунд"

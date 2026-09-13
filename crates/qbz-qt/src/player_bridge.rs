@@ -157,6 +157,10 @@ pub mod qbz_player {
         // "Show track playing context" pref (Playback settings) — feeds the
         // SongCard layers icon.
         #[qproperty(bool, show_context_icon)]
+        // "Show 10-second skip buttons" (Appearance > Player & Visuals) —
+        // ui_prefs `show_skip_ten`, mirrored here so TransportControls reads
+        // one property on every bar.
+        #[qproperty(bool, show_skip_ten)]
         type QbzPlayer = super::QbzPlayerRust;
 
         /// Registers this object's Qt-thread hop (Main.qml boots EVERY
@@ -347,6 +351,7 @@ pub struct QbzPlayerRust {
     np_context_kind: QString,
     np_context_id: QString,
     show_context_icon: bool,
+    show_skip_ten: bool,
 }
 
 impl Default for QbzPlayerRust {
@@ -412,6 +417,7 @@ impl Default for QbzPlayerRust {
             // open (then it reads false). `now_playing::publish_show_context_icon`
             // re-publishes it on shell entry and on the Settings toggle.
             show_context_icon: crate::settings_qt::show_context_icon(),
+            show_skip_ten: crate::settings_qt::pref_bool("show_skip_ten", false),
         }
     }
 }

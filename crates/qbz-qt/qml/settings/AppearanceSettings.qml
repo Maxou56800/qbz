@@ -290,6 +290,14 @@ Column {
         }
     }
     SettingRow { kioskHost: root.kioskHost;
+        label: QbzSession.tr("Show 10-second skip buttons", QbzSession.trRev)
+        description: QbzSession.tr("Add ±10 s buttons beside Previous and Next in the player bar.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.showSkipTen === true
+            onToggled: function (v) { QbzBridge.settingsBool("show-skip-ten", v) }
+        }
+    }
+    SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Startup page", QbzSession.trRev)
         description: QbzSession.tr("Choose which page to show when the app starts", QbzSession.trRev)
         QbzSelect { kioskHost: root.kioskHost;

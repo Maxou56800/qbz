@@ -605,6 +605,7 @@ Rectangle {
                 TransportControls {
                     id: classicTransport
                     visible: root.isClassic
+                    compact: root.width < 1100
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     playCircle: false
@@ -630,6 +631,7 @@ Rectangle {
                 TransportControls {
                     id: centreTransport
                     visible: !root.isClassic
+                    compact: root.width < 1366
                     anchors.centerIn: parent
                     playCircle: true
                     favorite: root.npFavorite

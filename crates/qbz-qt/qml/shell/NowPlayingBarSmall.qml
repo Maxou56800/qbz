@@ -320,6 +320,7 @@ Rectangle {
                     id: centreTransport
                     anchors.centerIn: parent
                     height: 34
+                    compact: root.width < 900
                     playCircle: false
                     favorite: root.npFavorite
                     ephemeral: root.npEphemeral
