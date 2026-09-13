@@ -206,7 +206,21 @@ n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list im
 (( n >= 4 )) || { echo "image cache suite has $n tests (expected >= 4)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list loudness_cache::tests:: 2>/dev/null \
     | grep -c ': test$' || true)
-(( n >= 2 )) || { echo "loudness cache suite has $n tests (expected >= 2)"; exit 1; }
+(( n >= 5 )) || { echo "loudness cache suite has $n tests (expected >= 5)"; exit 1; }
+# Loudness from the first sample (2026-09): absolute-LUFS cache with ranked
+# sources, full-track scan, one-shot live gain, 400 ms glide, start-gain plan.
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list loudness_scan::tests:: 2>/dev/null \
+  | grep -c ': test$' || true)
+(( n >= 1 )) || { echo "loudness scan suite has $n tests (expected >= 1)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list dynamic_amplify::tests:: 2>/dev/null \
+  | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "dynamic amplify suite has $n tests (expected >= 2)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list loudness_analyzer::tests:: 2>/dev/null \
+  | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "loudness analyzer suite has $n tests (expected >= 2)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list normalization::tests:: 2>/dev/null \
+  | grep -c ': test$' || true)
+(( n >= 3 )) || { echo "player normalization suite has $n tests (expected >= 3)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- --list install::tests:: 2>/dev/null \
     | grep -c ': test$' || true)
 (( n >= 3 )) || { echo "log rotation suite has $n tests (expected >= 3)"; exit 1; }

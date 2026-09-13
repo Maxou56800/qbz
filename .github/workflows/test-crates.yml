@@ -43,6 +43,8 @@
 # Shared cargo-test.sh also gates the 2026-09 static-review regressions: image-cache
 # LRU eviction, loudness-cache degrade, live-writer log rotation lock, URL-free
 # CDN fetch errors + signed-param redaction, and the link-resolver timeout.
+# Loudness (2026-09): absolute-LUFS cache with ranked sources, full-track scan,
+# one-shot live gain with a 400 ms glide, and the player's start-gain plan.
 # Qt runtime gate includes Library source/count regressions and the Rust
 # playlist-deletion/creation/offline-gapless and maintenance retry regressions.
 # The shared library service gate preserves manual scan feedback while keeping
