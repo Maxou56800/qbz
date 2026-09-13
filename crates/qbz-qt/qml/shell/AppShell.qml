@@ -252,20 +252,11 @@ Rectangle {
         hostName: QbzOrbit.hostName
     }
 
-    // The player bar's FRAME — the same chrome tier as the sidebar and the
-    // content frame, so the gutter around the inset bar reads as one
-    // continuous frame and never as a band of raw background (the same rule
-    // the content frame documents below). It spans the bar's height plus
-    // the bottom gutter, full width, so the side gutters are covered too.
+    // The gutter the player bar keeps to the window edges (below). Nothing
+    // is painted behind it: the bar floats over the shell's own ground —
+    // the ambient field or the root colour — exactly like the content pane's
+    // margins show what is under them (a backdrop was tried and rejected).
     readonly property int npbGutter: Qt.platform.os === "osx" ? theme.npbGutterMac : theme.npbGutter
-    Rectangle {
-        id: npbFrame
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: npb.height + root.npbGutter
-        color: root.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
-    }
 
     NowPlayingBar {
         id: npb
