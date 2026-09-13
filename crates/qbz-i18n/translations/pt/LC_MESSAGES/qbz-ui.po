@@ -7624,3 +7624,15 @@ msgstr "Nesta rede"
 #: qbz-qt/qml/shell/QconnectFlyout.qml
 msgid "Pair"
 msgstr "Parear"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "Excluir playlist"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "Excluir a playlist?"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "“{}” será excluída. Isso não pode ser desfeito."

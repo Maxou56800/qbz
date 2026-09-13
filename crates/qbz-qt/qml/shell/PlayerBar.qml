@@ -69,7 +69,10 @@ import "../theme"
 
 Rectangle {
     id: root
-    color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
+    // No background of its own: the chrome band is NowPlayingBar.qml's root
+    // (surface-card @ 0.5 under the ambient background, opaque surface-card
+    // otherwise), full width behind this inset layout — see THE BAND there.
+    color: "transparent"
     readonly property bool ambientOn: theme.ambientOn
     readonly property bool largeActive: QbzShell.npbMode === 3 && QbzShell.sidebarState === 0
     readonly property bool isClassic: QbzShell.npbMode === 1
@@ -103,7 +106,7 @@ Rectangle {
     // are the SHARED theme token (QbzTheme.npbSideFrac) — the Small bar reads
     // the same one, so the two bars cannot drift apart.
     // `root.width` is the window width minus the two side gutters
-    // (AppShell `npbGutter`): the bar is anchored left-to-right on the shell
+    // (NowPlayingBar.qml `gutter`): the bar is anchored left-to-right on the shell
     // root, exactly like PlayerBar.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colSide: isClassic ? 0.324 : sideFrac

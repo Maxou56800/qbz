@@ -198,6 +198,31 @@ pub struct FeedItem {
     pub playlist_own_image: bool,
     /// Recency proxy in [0,1]; 0 = most-recently added (per source).
     pub added_rank: f32,
+    /// When the row entered the library, unix seconds: the catalog's
+    /// `favorited_at`, a purchase's `purchased_at`, a local favourite's own
+    /// stamp. 0 = unknown, and unknown sorts LAST under "Date added" — the
+    /// rank above only orders rows that have no date at all (2026-09-13).
+    #[serde(default, rename = "addedAt", skip_serializing_if = "is_zero_i64")]
+    pub added_at: i64,
+}
+
+fn is_zero_i64(value: &i64) -> bool {
+    *value == 0
+}
+
+/// "Date added" order for the merged feed: a dated row before an undated
+/// one, dated rows newest first, undated rows by the per-source rank. Total
+/// and transitive, so it is safe as a `sort_by` comparator.
+pub(crate) fn recency_order(a: &FeedItem, b: &FeedItem) -> std::cmp::Ordering {
+    match (a.added_at > 0, b.added_at > 0) {
+        (true, true) => b.added_at.cmp(&a.added_at),
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        (false, false) => a
+            .added_rank
+            .partial_cmp(&b.added_rank)
+            .unwrap_or(std::cmp::Ordering::Equal),
+    }
 }
 
 /// `skip_serializing_if` predicate for the default-false flags above.
@@ -1150,9 +1175,11 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
     let unavailable_releases = unavailable_release_ids(runtime, &tracks).await;
     let n = tracks.len();
     for (i, track) in tracks.into_iter().enumerate() {
+        let favorited_at = track.favorited_at.unwrap_or(0);
         let mut item = map_track(track);
         item.release_unavailable = unavailable_releases.contains(&item.album_id);
         item.added_rank = rank(i, n);
+        item.added_at = favorited_at;
         feed.push(item);
     }
     let albums: Vec<Album> = parse_items(raw_albums, "album");
@@ -1160,15 +1187,19 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
     let n = albums.len();
     for (i, album) in albums.into_iter().enumerate() {
         let ready = ready_album_tracks.get(&album.id).copied().unwrap_or(0);
+        let favorited_at = album.favorited_at.unwrap_or(0);
         let mut item = map_album(album, ready);
         item.added_rank = rank(i, n);
+        item.added_at = favorited_at;
         feed.push(item);
     }
     let artists: Vec<Artist> = parse_items(raw_artists, "artist");
     let n = artists.len();
-    for (i, item) in artists.into_iter().map(map_artist).enumerate() {
-        let mut item = item;
+    for (i, artist) in artists.into_iter().enumerate() {
+        let favorited_at = artist.favorited_at.unwrap_or(0);
+        let mut item = map_artist(artist);
         item.added_rank = rank(i, n);
+        item.added_at = favorited_at;
         feed.push(item);
     }
     let n = pl_favorites.len();
@@ -1297,6 +1328,7 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
                     is_favorite: true,
                     source_unavailable,
                     added_rank: rank(i, n),
+                    added_at: lf.favorited_at,
                     id: lf.id,
                     title: lf.title,
                     ..Default::default()
@@ -1306,12 +1338,10 @@ pub async fn load_library(runtime: &Arc<AppRuntime<LoggingAdapter>>) -> Result<u
         }
     }
 
-    // Merge by recency proxy (stable — equal ranks keep source order).
-    feed.sort_by(|a, b| {
-        a.added_rank
-            .partial_cmp(&b.added_rank)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // Merge newest first by the REAL date where a row has one (favourites,
+    // purchases and local favourites all do), the per-source rank proxy for
+    // the rest (stable — equal keys keep source order).
+    feed.sort_by(recency_order);
     let all_total = feed.len() as i64;
     log::info!(
         "[qbz-qt][perf] map+merge: {:?} ({} feed items)",
@@ -1630,6 +1660,7 @@ fn map_purchased_album(a: qbz_models::PurchaseAlbum) -> FeedItem {
         release_sort_key: qbz_text_utils::dates::release_sort_key(
             a.release_date_original.as_deref(),
         ),
+        added_at: a.purchased_at.unwrap_or(0),
         label: a.label.as_ref().map(|label| label.name.clone()).unwrap_or_default(),
         duration_secs: a.duration.unwrap_or(0),
         track_count: a.tracks_count,
@@ -2857,6 +2888,26 @@ mod tests {
         .unwrap_err();
         assert_eq!(calls, 2);
         assert!(error.contains("repeated a page at offset 500"));
+    }
+
+    #[test]
+    fn favourite_albums_carry_their_added_date_and_dated_rows_sort_first() {
+        let album: Album = serde_json::from_value(serde_json::json!({
+            "id":"fav", "title":"Hearted", "favorited_at": 1_757_700_000
+        }))
+        .unwrap();
+        assert_eq!(album.favorited_at, Some(1_757_700_000));
+        let mut dated = map_album(album, 0);
+        dated.added_at = 1_757_700_000;
+        assert_eq!(serde_json::to_value(&dated).unwrap()["addedAt"], 1_757_700_000);
+        let mut older = dated.clone();
+        older.added_at = 1_700_000_000;
+        let mut undated = dated.clone();
+        undated.added_at = 0;
+        undated.added_rank = 0.0;
+        assert_eq!(recency_order(&dated, &older), std::cmp::Ordering::Less, "newest first");
+        assert_eq!(recency_order(&undated, &older), std::cmp::Ordering::Greater, "undated last");
+        assert!(serde_json::to_value(&undated).unwrap().get("addedAt").is_none());
     }
 
     #[test]

@@ -40,9 +40,10 @@ import "../theme"
 
 Rectangle {
     id: root
-    // surface-card @ 0.5 while the ambient background is active (phase 14,
-    // PlayerBarSmall.slint).
-    color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
+    // No background of its own: the chrome band is NowPlayingBar.qml's root
+    // (surface-card @ 0.5 under the ambient background, opaque surface-card
+    // otherwise), full width behind this inset layout — see THE BAND there.
+    color: "transparent"
     readonly property bool ambientOn: theme.ambientOn
     /// AppShell's one shared hover-tooltip overlay.
     property Item tooltip: null
@@ -65,7 +66,7 @@ Rectangle {
     // 1366 / 1920) are the SHARED theme token, so this bar and PlayerBar can
     // never drift apart — see QbzTheme.npbSideFrac.
     // `root.width` is the window width minus the two side gutters
-    // (AppShell `npbGutter`): the bar is anchored left-to-right on the shell
+    // (NowPlayingBar.qml `gutter`): the bar is anchored left-to-right on the shell
     // root, exactly like PlayerBarSmall.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colCentre: 1.0 - 2.0 * root.sideFrac
