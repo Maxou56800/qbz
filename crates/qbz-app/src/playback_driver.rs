@@ -1171,7 +1171,9 @@ pub async fn restore_session_paused<A: FrontendAdapter + Send + Sync + 'static>(
     core.set_queue_with_order(tracks, index, pb.shuffle_enabled, None)
         .await;
     core.set_repeat_mode(repeat_from_str(&pb.repeat_mode)).await;
-    let _ = core.set_volume(pb.volume);
+    if let Err(e) = core.set_volume(pb.volume) {
+        log::warn!("[qbzd] driver: volume restore failed: {e}");
+    }
     log::info!(
         "[qbzd] driver: restored {count} queue tracks (index {index:?}), paused; \
          saved position {position}s"
