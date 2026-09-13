@@ -24,6 +24,7 @@ pub struct StatusDoc {
     pub qconnect: QconnectStatus,
     pub network: NetworkStatus,
     pub last_errors: LatchedErrors,
+    pub playback_cache: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -185,6 +186,7 @@ fn assemble_live(state: &super::ApiState) -> StatusDoc {
     };
 
     StatusDoc {
+        playback_cache: serde_json::to_value(player.playback_cache_stats()).ok(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: crate::API_VERSION,
         uptime_secs: uptime,
@@ -302,7 +304,7 @@ mod tests {
     /// 02 §3.3.3 NeedsAuth fragment — the serde-shape contract these tests pin.
     fn needs_auth_doc() -> StatusDoc {
         StatusDoc {
-            version: "2.1.0".into(),
+            playback_cache: None,            version: "2.1.0".into(),
             api_version: crate::API_VERSION,
             uptime_secs: 261_360,
             data_root: "/home/pi/.local/share/qbzd".into(),

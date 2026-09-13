@@ -53,6 +53,7 @@
 // consumer.
 
 import QtQuick
+import "../../controls"
 import com.blitzfc.qbz
 import "../../theme"
 
@@ -267,6 +268,7 @@ Item {
                     tintName: "muted"
                 }
                 TextInput {
+                    QbzTextEditMenu { }
                     id: searchInput
                     width: parent.width - 22 - (clearBtn.visible ? clearBtn.width + 8 : 0)
                     height: 21

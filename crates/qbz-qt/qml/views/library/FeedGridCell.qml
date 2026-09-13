@@ -114,6 +114,19 @@ Item {
             // may additionally show the catalog mark in the mixed feed.
             source: cell.item.source
             sources: cell.item.sources || []
+            catalogAffordances: !cell.view.isLocalFeedItem(cell.item)
+            localMode: cell.view.isLocalFeedItem(cell.item)
+            localPlaylistAffordance: localMode
+            hostFavorite: localMode && badgeSources.some(function (source) {
+                return ["local", "plex", "jellyfin", "subsonic", "navidrome",
+                    "gonic", "airsonic", "astiga"].indexOf(source) >= 0
+            })
+            onFavoriteRequested: QbzLocal.albumToggleFavorite(cell.item.id,
+                cell.item.title || "", cell.item.artist || "", artworkUrl,
+                JSON.stringify(badgeSources))
+            onOpenRequested: QbzAlbum.openAlbum(cell.item.id)
+            onPlayRequested: QbzPlayer.playAlbum(cell.item.id)
+            onEnqueueRequested: function (mode) { QbzPlayer.enqueueAlbum(cell.item.id, mode) }
             showSourceBadge: cell.view.showSourceBadges
         }
     }

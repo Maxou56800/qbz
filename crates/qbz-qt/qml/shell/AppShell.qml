@@ -254,6 +254,10 @@ Rectangle {
 
     NowPlayingBar {
         id: npb
+        // The small seek thumb/hit area extends above the bar by a few pixels.
+        // Only Small needs this overlap. Large's cover dock is a later
+        // sibling and must paint over the full-width player background.
+        z: QbzShell.npbMode === 2 ? 1 : 0
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

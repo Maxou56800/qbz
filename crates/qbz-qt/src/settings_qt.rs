@@ -47,6 +47,8 @@ use serde::Serialize;
 pub mod devtools;
 pub mod import_export;
 pub mod library;
+mod appearance_profile;
+mod playback_storage;
 pub mod offline;
 
 // ---------------------------------------------------------------------------
@@ -1500,6 +1502,9 @@ pub(crate) fn read_pref(key: &str) -> Option<serde_json::Value> {
 /// atomic rename and its refusal to rebuild an unparsable document.
 pub fn save_pref(key: &str, value: serde_json::Value) {
     update_prefs(|doc| {
+        if appearance_profile::managed(key) && doc.get(key) != Some(&value) {
+            doc.insert("appearance_profile".into(), serde_json::json!("custom"));
+        }
         doc.insert(key.to_string(), value);
         true
     });
@@ -2089,6 +2094,18 @@ pub struct SettingsDoc {
     pub buffer_seconds: i32,
     #[serde(rename = "streamingOnly")]
     pub streaming_only: bool,
+    #[serde(rename = "playbackCache")]
+    pub playback_cache: qbz_models::playback_cache::PlaybackCacheSettings,
+    #[serde(rename = "playbackMemoryProfile")]
+    pub playback_memory_profile: String,
+    #[serde(rename = "appearanceProfile")]
+    pub appearance_profile: String,
+    #[serde(rename = "playbackMemoryApplyBusy")]
+    pub playback_memory_apply_busy: bool,
+    #[serde(rename = "playbackStorage")]
+    pub playback_storage: playback_storage::Snapshot,
+    #[serde(rename = "playbackCacheUsage")]
+    pub playback_cache_usage: Option<qbz_cache::CacheStats>,
     #[serde(rename = "retryBehaviors")]
     pub retry_behaviors: Vec<String>,
     #[serde(rename = "retryBehaviorIndex")]
@@ -2618,6 +2635,12 @@ pub async fn publish_snapshot() {
             stream_uncached: audio_settings.stream_first_track,
             buffer_seconds: audio_settings.stream_buffer_seconds as i32,
             streaming_only: audio_settings.streaming_only,
+            playback_cache: audio_settings.playback_cache.clone(),
+            playback_memory_profile: audio_settings.playback_cache.selected_profile().as_str().into(),
+            appearance_profile: appearance_profile::selected(),
+            playback_memory_apply_busy: crate::playback_qt::memory_apply_busy(),
+            playback_storage: playback_storage::snapshot(),
+            playback_cache_usage: crate::APP.get().map(|r| r.core().player().playback_cache_stats()),
             retry_behaviors: RETRY_BEHAVIOR_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -3417,6 +3440,12 @@ pub(crate) async fn reconcile_alsa_hardware_volume(
 // ---------------------------------------------------------------------------
 
 pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str, value: bool) {
+    if key == "playback-cache-dynamic" {
+        update_playback_cache(|p| { p.make_custom(); p.dynamic = value; Ok(()) });
+        publish_snapshot().await;
+        return;
+    }
+
     // Hardware-volume toggles can await a physical mixer write, seed the live
     // Player and reinitialize its output. Admit before the first persistence or
     // cascade so a rejected delegated action is a complete no-op.
@@ -3439,11 +3468,6 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         }
         "dac-passthrough" => {
             if with_audio(|s| s.set_pw_force_bitperfect(false)).is_ok() {
-                cascaded = true;
-            }
-        }
-        "streaming-only" if value => {
-            if with_audio(|s| s.set_gapless_enabled(false)).is_ok() {
                 cascaded = true;
             }
         }
@@ -4286,12 +4310,56 @@ pub async fn settings_slider(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
     publish_snapshot().await;
 }
 
+fn update_playback_cache(change: impl FnOnce(&mut qbz_models::playback_cache::PlaybackCacheSettings) -> Result<(), String>) {
+    let result = with_audio(|store| {
+        let mut settings = store.get_settings()?;
+        change(&mut settings.playback_cache)?;
+        store.set_playback_cache(&settings.playback_cache)?;
+        if let Some(runtime) = crate::APP.get() {
+            runtime.core().player().configure_playback_cache(settings.playback_cache)?;
+        }
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::warn!("Playback cache setting rejected: {error}");
+        crate::toast_qt::error(qbz_i18n::t(&error));
+    }
+}
+
 /// String-payload handler. Also the ACTION channel for the sections whose
 /// affordances are buttons rather than settings (Local Library folders and
 /// scans, the caches, the developer tools): the payload is the action's
 /// argument ("" when it takes none).
 pub async fn settings_string(key: &str, value: String) {
     match key {
+        "playback-memory-profile" => update_playback_cache(|policy| {
+            policy.select_profile(qbz_models::playback_cache::PlaybackMemoryProfile::parse(&value)?);
+            Ok(())
+        }),
+        "playback-cache-min" | "playback-cache-max" => {
+            update_playback_cache(|policy| {
+                let limit = if value.trim().is_empty() { None } else {
+                    Some(value.trim().parse::<u32>().map_err(|_| "Playback cache limits must be between 16 and 16384 MiB".to_string())?)
+                };
+                policy.make_custom();
+                if key == "playback-cache-min" { policy.min_mib = limit; } else { policy.max_mib = limit; }
+                Ok(())
+            });
+        }
+        "playback-cache-reset" => update_playback_cache(|policy| {
+            policy.select_profile(qbz_models::playback_cache::PlaybackMemoryProfile::Auto); Ok(())
+        }),
+        "playback-cache-refresh" => {},
+        "appearance-profile" => appearance_profile::apply(&value),
+        "playback-storage-folder" => playback_storage::set(value).await,
+        "playback-storage-browse" => playback_storage::browse().await,
+        "playback-cache-apply" => {
+            if let Err(error) = crate::playback_qt::apply_playback_memory(&value).await {
+                log::warn!("[playback-memory] Apply failed: {error}");
+                crate::toast_qt::error(qbz_i18n::t(&error));
+            }
+        },
+
         "qconnect-device-name" => {
             let trimmed = value.trim().to_string();
             let stored = (!trimmed.is_empty()).then_some(trimmed);
@@ -4411,8 +4479,7 @@ pub async fn settings_string(key: &str, value: String) {
             crate::nav_qt::record("libraryfolders");
         }
         "library-pick-folder" => {
-            // Native chooser, then the SAME add path as the typed field —
-            // the picker only supplies the string.
+            // Native chooser fills the field; Add confirms registration.
             library::pick_and_add_folder().await;
         }
         "library-remove-folders" => {
@@ -4708,6 +4775,25 @@ mod local_tab_order_tests {
 #[cfg(test)]
 mod exclusive_gate_tests {
     use super::*;
+
+    #[test]
+    fn memory_and_appearance_documents_use_the_qml_field_names() {
+        let doc = SettingsDoc {
+            playback_memory_profile: "low".into(),
+            appearance_profile: "custom".into(),
+            playback_memory_apply_busy: true,
+            playback_storage: playback_storage::Snapshot {
+                candidate: "/mnt/music".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_value(doc).unwrap();
+        assert_eq!(json["playbackMemoryProfile"], "low");
+        assert_eq!(json["appearanceProfile"], "custom");
+        assert_eq!(json["playbackMemoryApplyBusy"], true);
+        assert_eq!(json["playbackStorage"]["candidate"], "/mnt/music");
+    }
 
     #[test]
     fn settings_doc_publishes_backend_is_coreaudio_under_the_name_qml_reads() {

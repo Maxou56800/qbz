@@ -809,6 +809,8 @@ pub fn create_and_add(name: &str) {
                 crate::toast_qt::error(qbz_i18n::t("Couldn't create the playlist"));
                 return;
             };
+            crate::sidebar_qt::insert_local_entry(&new_id, &name);
+            crate::publish_sidebar();
             let added = tokio::task::spawn_blocking({
                 let new_id = new_id.clone();
                 move || match payload {
@@ -838,6 +840,13 @@ pub fn create_and_add(name: &str) {
         match runtime.core().create_playlist(&name, None, false).await {
             Ok(playlist) => {
                 let pid = playlist.id;
+                crate::sidebar_qt::insert_qobuz_entry(
+                    pid,
+                    &playlist.name,
+                    playlist.tracks_count,
+                    &[],
+                );
+                crate::publish_sidebar();
                 // Snapshot the newborn header FIRST (owned, empty, captured):
                 // the incremental producer below refuses playlists it has
                 // never captured, and the authoritative list will not name

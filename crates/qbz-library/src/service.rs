@@ -6,7 +6,7 @@
 //! is cooperative: call `close` immediately, then `shutdown` on a blocking thread
 //! to join (filesystem calls on an unavailable mount may take time to return).
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -42,6 +42,7 @@ pub enum ScanOutcome {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct ScanCompletion {
     pub job: u64,
+    pub background: bool,
     pub outcome: ScanOutcome,
     pub skipped: usize,
 }
@@ -50,44 +51,62 @@ pub struct ScanCompletion {
 pub struct LibrarySnapshot {
     pub progress: ScanProgress,
     pub last_scan: Option<ScanCompletion>,
+    /// Keep a manual result available even if background work finishes between UI polls.
+    #[serde(skip_serializing)]
+    pub last_requested_scan: Option<ScanCompletion>,
     /// Changes after each scan, even a partial/cancelled one: committed batches
     /// remain authoritative. This is an invalidation signal, not a DB cursor.
     pub revision: u64,
+    /// Changes only when scans write catalog rows (or a folder is registered).
+    /// Completion/progress still advances for an unchanged or unavailable root.
+    pub content_revision: u64,
     pub queued: usize,
     pub closed: bool,
 }
 
 #[derive(Default)]
 struct PendingScans {
-    all: bool,
-    folders: BTreeSet<i64>,
+    all: Option<bool>,
+    folders: BTreeMap<i64, bool>,
 }
 
 impl PendingScans {
     fn push(&mut self, id: Option<i64>) {
+        self.push_with_background(id, false);
+    }
+
+    fn push_with_background(&mut self, id: Option<i64>, background: bool) {
         match id {
             None => {
-                self.all = true;
+                self.all = Some(
+                    background
+                        && self.all.unwrap_or(true)
+                        && self.folders.values().all(|background| *background),
+                );
                 self.folders.clear();
             }
-            Some(id) if !self.all => {
-                self.folders.insert(id);
+            Some(id) if self.all.is_none() => {
+                self.folders
+                    .entry(id)
+                    .and_modify(|old| *old &= background)
+                    .or_insert(background);
             }
-            Some(_) => {}
+            Some(_) => *self.all.as_mut().unwrap() &= background,
         }
     }
 
-    fn pop(&mut self) -> Option<Option<i64>> {
-        if self.all {
-            self.all = false;
-            Some(None)
+    fn pop(&mut self) -> Option<(Option<i64>, bool)> {
+        if let Some(background) = self.all.take() {
+            Some((None, background))
         } else {
-            self.folders.pop_first().map(Some)
+            self.folders
+                .pop_first()
+                .map(|(id, background)| (Some(id), background))
         }
     }
 
     fn len(&self) -> usize {
-        usize::from(self.all) + self.folders.len()
+        usize::from(self.all.is_some()) + self.folders.len()
     }
     fn clear(&mut self) {
         *self = Self::default();
@@ -99,6 +118,16 @@ struct State {
     snapshot: LibrarySnapshot,
     pending: PendingScans,
     source_base: u32,
+    background: bool,
+}
+
+impl State {
+    fn record_completion(&mut self, completion: ScanCompletion) {
+        if !completion.background {
+            self.snapshot.last_requested_scan = Some(completion.clone());
+        }
+        self.snapshot.last_scan = Some(completion);
+    }
 }
 
 struct Shared {
@@ -171,12 +200,30 @@ impl LibraryService {
     /// Returns false after close. The queue and running flag change under the
     /// same lock, so a request arriving at worker completion cannot be lost.
     pub fn scan(&self, folder: Option<i64>) -> Result<bool, LibraryError> {
+        self.scan_with_background(folder, false)
+    }
+
+    /// Maintenance keeps the same progress and invalidation contract, without
+    /// presenting its completion as a scan requested by the user.
+    pub fn scan_background(&self, folder: Option<i64>) -> Result<bool, LibraryError> {
+        self.scan_with_background(folder, true)
+    }
+
+    fn scan_with_background(
+        &self,
+        folder: Option<i64>,
+        background: bool,
+    ) -> Result<bool, LibraryError> {
         let mut worker = self.worker.lock().unwrap_or_else(|e| e.into_inner());
         let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.snapshot.closed {
             return Ok(false);
         }
-        state.pending.push(folder);
+        if background {
+            state.pending.push_with_background(folder, true);
+        } else {
+            state.pending.push(folder);
+        }
         if state.snapshot.progress.running {
             return Ok(true);
         }
@@ -195,12 +242,16 @@ impl LibraryService {
                 if result.is_err() {
                     let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     let job = state.snapshot.progress.job;
-                    state.snapshot.last_scan = Some(ScanCompletion {
+                    let background = state.background;
+                    state.record_completion(ScanCompletion {
                         job,
+                        background,
                         outcome: ScanOutcome::Failed,
                         skipped: 0,
                     });
                     state.snapshot.revision += 1;
+                    // A panic may follow an already committed batch.
+                    state.snapshot.content_revision += 1;
                     state.snapshot.progress.running = false;
                     state.pending.clear();
                     shared.idle.notify_all();
@@ -268,12 +319,12 @@ impl LibraryService {
             .get_folder_by_id(folder_id)?
             .ok_or_else(|| LibraryError::Other("registered folder missing".into()))?;
         if added {
-            self.shared
+            let mut state = self.shared
                 .state
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .snapshot
-                .revision += 1;
+                .unwrap_or_else(|e| e.into_inner());
+            state.snapshot.revision += 1;
+            state.snapshot.content_revision += 1;
         }
         Ok(folder)
     }
@@ -344,7 +395,7 @@ fn run(shared: &Shared) {
             } else {
                 state.pending.pop()
             };
-            let Some(next) = next else {
+            let Some((next, background)) = next else {
                 state.snapshot.progress.running = false;
                 state.snapshot.progress.file.clear();
                 shared.idle.notify_all();
@@ -357,11 +408,13 @@ fn run(shared: &Shared) {
                 ..Default::default()
             };
             state.source_base = 0;
+            state.background = background;
             // Same lock as cancellation: no request can reset a cancellation
             // intended for the already-started job.
             shared.cancel.store(false, Ordering::Release);
             next
         };
+        let mut content_changed = true;
         let result = shared.store.open_or_create().and_then(|db| {
             let ids = folder.map(|id| vec![id]);
             let count = db
@@ -377,25 +430,35 @@ fn run(shared: &Shared) {
                 .progress
                 .source_count = count.min(u32::MAX as usize) as u32;
             std::fs::create_dir_all(&shared.artwork)?;
-            crate::scan_with_progress(
+            db.with_connection(crate::scan_changes::begin)
+                .map_err(|error| LibraryError::Database(error.to_string()))?;
+            let result = crate::scan_with_progress(
                 &db,
                 ids.as_deref(),
                 &shared.artwork,
                 &shared.cancel,
                 &|event| on_event(shared, event),
-            )
+            );
+            content_changed = db.with_connection(crate::scan_changes::changed)
+                .map_err(|error| LibraryError::Database(error.to_string()))?;
+            result
         });
         let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(error) = result {
             log::error!("library scan failed: {error}");
             let job = state.snapshot.progress.job;
-            state.snapshot.last_scan = Some(ScanCompletion {
+            let background = state.background;
+            state.record_completion(ScanCompletion {
                 job,
+                background,
                 outcome: ScanOutcome::Failed,
                 skipped: 0,
             });
         }
         state.snapshot.revision += 1;
+        if content_changed {
+            state.snapshot.content_revision += 1;
+        }
     }
 }
 
@@ -454,8 +517,10 @@ fn on_event(shared: &Shared, event: ScanEvent) {
             progress.cleaning = false;
             progress.file.clear();
             let job = progress.job;
-            state.snapshot.last_scan = Some(ScanCompletion {
+            let background = state.background;
+            state.record_completion(ScanCompletion {
                 job,
+                background,
                 outcome: match status {
                     ScanStatus::Complete => ScanOutcome::Complete,
                     ScanStatus::Cancelled => ScanOutcome::Cancelled,
@@ -477,6 +542,47 @@ mod tests {
             LibraryStore::new(dir.join("library.db")),
             dir.join("artwork"),
         )
+    }
+
+    #[test]
+    fn unchanged_and_missing_scans_complete_without_catalog_invalidation() {
+        let temp = tempfile::tempdir().unwrap();
+        let music = temp.path().join("music");
+        std::fs::create_dir(&music).unwrap();
+        let track = music.join("silence.wav");
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&918_u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16_u32.to_le_bytes());
+        for value in [1_u16, 1] { wav.extend_from_slice(&value.to_le_bytes()); }
+        for value in [44_100_u32, 88_200] { wav.extend_from_slice(&value.to_le_bytes()); }
+        for value in [2_u16, 16] { wav.extend_from_slice(&value.to_le_bytes()); }
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&882_u32.to_le_bytes());
+        wav.resize(926, 0);
+        std::fs::write(&track, wav).unwrap();
+        let service = host(&temp.path().join("profile"));
+        let folder = service.register_folder(&music, 0).unwrap();
+        let scan = || {
+            assert!(service.scan_background(Some(folder.id)).unwrap());
+            assert!(service.wait_idle(Duration::from_secs(10)));
+            service.snapshot()
+        };
+        let imported = scan();
+        assert_eq!(imported.content_revision, 2); // Registration + imported track.
+        let reused = scan();
+        assert_eq!(reused.content_revision, imported.content_revision);
+        assert!(reused.revision > imported.revision);
+        assert_eq!(reused.last_scan.unwrap().outcome, ScanOutcome::Complete);
+        std::fs::remove_file(track).unwrap();
+        let removed = scan();
+        assert_eq!(removed.content_revision, imported.content_revision + 1);
+        std::fs::remove_dir(music).unwrap();
+        let missing = scan();
+        assert_eq!(missing.content_revision, removed.content_revision);
+        assert!(missing.last_scan.unwrap().skipped > 0);
+        service.shutdown();
     }
 
     #[test]
@@ -549,13 +655,58 @@ mod tests {
         for id in [9, 4, 9] {
             queue.push(Some(id));
         }
-        assert_eq!(queue.pop(), Some(Some(4)));
-        assert_eq!(queue.pop(), Some(Some(9)));
+        assert_eq!(queue.pop(), Some((Some(4), false)));
+        assert_eq!(queue.pop(), Some((Some(9), false)));
         queue.push(Some(4));
         queue.push(None);
         queue.push(Some(9));
-        assert_eq!(queue.pop(), Some(None));
+        assert_eq!(queue.pop(), Some((None, false)));
         assert_eq!(queue.pop(), None);
+    }
+
+    #[test]
+    fn background_scans_keep_manual_intent_when_requests_coalesce() {
+        let mut queue = PendingScans::default();
+        queue.push_with_background(Some(1), true);
+        queue.push(Some(1));
+        queue.push_with_background(Some(2), true);
+        assert_eq!(queue.pop(), Some((Some(1), false)));
+        assert_eq!(queue.pop(), Some((Some(2), true)));
+        queue.push(Some(1));
+        queue.push_with_background(None, true);
+        assert_eq!(queue.pop(), Some((None, false)));
+        queue.push_with_background(None, true);
+        queue.push(Some(2));
+        assert_eq!(queue.pop(), Some((None, false)));
+        queue.push_with_background(None, true);
+        assert_eq!(queue.pop(), Some((None, true)));
+    }
+
+    #[test]
+    fn background_completion_remains_silent_and_next_manual_scan_is_reportable() {
+        let temp = tempfile::tempdir().unwrap();
+        let service = host(temp.path());
+        // A missing root reproduces the periodic "one skipped" completion.
+        service
+            .store()
+            .open_or_create()
+            .unwrap()
+            .add_folder(temp.path().join("missing").to_str().unwrap())
+            .unwrap();
+        for background in [true, true, false, true] {
+            assert!(service.scan_with_background(None, background).unwrap());
+            assert!(service.wait_idle(Duration::from_secs(10)));
+            let result = service.snapshot().last_scan.unwrap();
+            assert_eq!(result.background, background);
+            assert_eq!(result.skipped, 1);
+            assert_eq!(result.outcome, ScanOutcome::Complete);
+            if result.job >= 3 {
+                assert_eq!(service.snapshot().last_requested_scan.unwrap().job, 3);
+            } else {
+                assert!(service.snapshot().last_requested_scan.is_none());
+            }
+        }
+        service.shutdown();
     }
 
     #[test]
@@ -607,6 +758,7 @@ mod tests {
             assert_eq!(
                 snapshot.last_scan.unwrap(),
                 ScanCompletion {
+                    background: false,
                     job,
                     outcome: ScanOutcome::Failed,
                     skipped: 0
@@ -686,6 +838,7 @@ mod tests {
         assert_eq!(
             snapshot.last_scan.unwrap(),
             ScanCompletion {
+                background: false,
                 job: 2,
                 outcome: ScanOutcome::Complete,
                 skipped: 0,

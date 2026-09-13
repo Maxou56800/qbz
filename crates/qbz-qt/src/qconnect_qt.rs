@@ -1364,6 +1364,12 @@ impl QtQconnectService {
         self.authority.observe_owner_authority()
     }
 
+    pub(crate) async fn playback_memory_fence(&self) -> Result<
+        (tokio::sync::OwnedMutexGuard<()>, qconnect_app::OwnerActionFence), String,
+    > {
+        self.delegation_host.playback_memory_fence().await
+    }
+
     /// Preserve already-stamped owner work across a fallible candidate fence.
     /// It returns `None` only once that exact owner generation is truly stale.
     pub async fn wait_for_exact_owner_action_permit(
@@ -3138,7 +3144,7 @@ impl QtQconnectService {
     /// True when a PEER renderer currently owns playback (controller mode). Reads
     /// the session under the sync-state lock. Shared by the play-next /
     /// add-to-queue routing entry points.
-    async fn is_peer_renderer_active(&self) -> bool {
+    pub(crate) async fn is_peer_renderer_active(&self) -> bool {
         let sync_state = {
             let guard = lock_inner(&self.inner);
             let Some(runtime) = guard.runtime.as_ref() else {

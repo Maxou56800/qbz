@@ -183,20 +183,14 @@ fn settle_failure(msgid: &'static str) {
     crate::toast_qt::error(qbz_i18n::t(msgid));
 }
 
-fn settle_success(new_id: String, local: bool) {
+fn settle_success(new_id: String) {
     {
         let mut st = state();
         st.busy = false;
         st.open = false;
     }
     publish();
-    // The offline-safe verb: `reload_sidebar` early-returns while offline, and
-    // a local playlist created there would never appear in the tree.
-    if local {
-        crate::reload_sidebar_including_local();
-    } else {
-        crate::reload_sidebar();
-    }
+    crate::publish_sidebar();
     // Land on it, exactly as the reference does after either arm
     // (`main.rs:21554` / `:21598`). `open_playlist` routes a `local:` id to the
     // local loader and does not offline-gate it.
@@ -242,6 +236,7 @@ pub(crate) fn submit(
         // `main.rs:21528-21530`): the flag is what "Upload to Qobuz" reads, and
         // Edit can unmark it later.
         crate::spawn(async move {
+            let created_name = name.clone();
             let created = tokio::task::spawn_blocking(move || {
                 let desc = if description.is_empty() {
                     None
@@ -256,7 +251,8 @@ pub(crate) fn submit(
             match created {
                 Some(new_id) => {
                     log::info!("[qbz-qt] local playlist created: {new_id}");
-                    settle_success(new_id, true);
+                    crate::sidebar_qt::insert_local_entry(&new_id, &created_name);
+                    settle_success(new_id);
                 }
                 None => {
                     log::error!("[qbz-qt] create local playlist failed");
@@ -294,7 +290,14 @@ pub(crate) fn submit(
                     playlist.name,
                     playlist.id
                 );
-                settle_success(new_id, false);
+                crate::sidebar_qt::insert_qobuz_entry(
+                    playlist.id,
+                    &playlist.name,
+                    playlist.tracks_count,
+                    &[],
+                );
+                crate::sidebar_qt::move_playlist_optimistic(&new_id, &folder_id);
+                settle_success(new_id);
             }
             Err(e) => {
                 log::error!("[qbz-qt] create playlist failed: {e}");

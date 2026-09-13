@@ -2849,3 +2849,267 @@ msgstr "System / manual"
 #: qbz-qt/qml/shell/UpdatesModal.qml
 msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
 msgstr "Update ready. Close QBZ to finish installation. It will reopen automatically."
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "PLAYBACK CACHE"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "Grow cache when memory is available"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "Minimum cache budget (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "Maximum cache budget (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "Memory cache usage"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "Recommended cache defaults"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "Restore defaults"
+
+#. Playback memory cache policy (#774).
+msgid "Refresh"
+msgstr "Refresh"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "Playback cache limits must be between 16 and 16384 MiB"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "Minimum playback cache budget must not exceed its maximum"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "Playback memory profile"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — recommended"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — dynamic"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — Pi style"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom"
+msgstr "Custom"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "Same audio quality in every profile"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "Unknown playback memory profile"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "Playback memory preset conflicts with custom cache limits"
+
+msgid "Apply playback memory profile?"
+msgstr "Apply playback memory profile?"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+
+msgid "Apply & free memory"
+msgstr "Apply & free memory"
+
+msgid "Rebuild playback buffers"
+msgstr "Rebuild playback buffers"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "Playback memory can only be applied to local playback."
+
+msgid "Playback is not ready yet."
+msgstr "Playback is not ready yet."
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "Playback is busy. Try applying the memory profile again."
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "Playback changed. Apply again to confirm the current track."
+
+msgid "Visual resource profile"
+msgstr "Visual resource profile"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+
+msgid "Compare memory profiles"
+msgstr "Compare memory profiles"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+
+msgid "RAM and storage trade-off"
+msgstr "RAM and storage trade-off"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+
+msgid "Playback storage folder"
+msgstr "Playback storage folder"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+
+msgid "Current playback storage"
+msgstr "Current playback storage"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+
+msgid "Could not use this playback storage folder:"
+msgstr "Could not use this playback storage folder:"
+
+msgid "Folder access"
+msgstr "Folder access"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "Choose an absolute folder path for playback storage."
+
+msgid "The folder is accessible and visible in the library."
+msgstr "The folder is accessible and visible in the library."
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "The folder is accessible but hidden by your preference."
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+
+msgid "A connection failure prevents access to this storage."
+msgstr "A connection failure prevents access to this storage."
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "QBZ does not have permission to access this folder."
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "The folder could not be accessed. The check timed out or returned another access error."
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "Folder access is being checked or has not been checked yet."
+
+msgid "Local folder"
+msgstr "Local folder"
+
+msgid "Network folder"
+msgstr "Network folder"
+
+msgid "Access denied"
+msgstr "Access denied"
+
+msgid "Missing"
+msgstr "Missing"
+
+msgid "Disconnected"
+msgstr "Disconnected"
+
+msgid "Hidden"
+msgstr "Hidden"
+
+msgid "Active"
+msgstr "Active"
+
+msgid "Unavailable"
+msgstr "Unavailable"
+
+msgid "Checking..."
+msgstr "Checking..."
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "Low"
+msgstr "Low"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."

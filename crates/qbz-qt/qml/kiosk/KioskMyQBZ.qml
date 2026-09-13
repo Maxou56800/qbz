@@ -83,6 +83,7 @@ Rectangle {
         KioskTab { text: "+"; onClicked: QbzMyQbz.createOpen(root.kind) }
     }
     TextField {
+        QbzTextEditMenu { }
         id: search
         anchors.top: root.compactHeader ? root.top : tabs.bottom
         anchors.left: root.compactHeader ? tabs.right : parent.left

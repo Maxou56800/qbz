@@ -344,7 +344,7 @@ pub fn local_queue_track(t: &LocalTrack) -> QueueTrack {
 /// filesystem whether `file_path` is a directory, and that stats a path which
 /// may live on an unreachable share — the exact block the audible step's
 /// bounded probe exists to survive.
-fn belongs_to_the_offline_tier(track: &QueueTrack) -> bool {
+pub(crate) fn belongs_to_the_offline_tier(track: &QueueTrack) -> bool {
     qbz_source::RawRef::from_queue_track(track).badge == qbz_source::SourceBadge::Offline
 }
 
@@ -503,8 +503,7 @@ pub async fn play_current_if_local(runtime: &Runtime, track_id: u64) -> LocalPla
     // keep happening.
     let ours = match qbz_source::registry().claim(&raw) {
         Ok(item) => {
-            item.source() != qbz_source::SourceId::QOBUZ
-                && raw.badge != qbz_source::SourceBadge::Offline
+            item.source() != qbz_source::SourceId::QOBUZ && !belongs_to_the_offline_tier(&qt)
         }
         Err(_) => false,
     };

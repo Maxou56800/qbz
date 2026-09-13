@@ -7268,3 +7268,241 @@ msgstr "Системная / ручная"
 #: qbz-qt/qml/shell/UpdatesModal.qml
 msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
 msgstr "Обновление готово. Закройте QBZ для завершения установки. Приложение откроется автоматически."
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "КЭШ ВОСПРОИЗВЕДЕНИЯ"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "Увеличивать кэш при наличии свободной памяти"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "Необязательно; рекомендуется для длинных треков Hi-Res. Фиксированный лимит остаётся рекомендуемым значением по умолчанию."
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "Минимальный лимит кэша (МиБ)"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "Базовый лимит без резервирования ОЗУ. Может снижаться при нехватке памяти. Оставьте пустым для рекомендуемого значения."
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "Максимальный лимит кэша (МиБ)"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "Предел роста; доступная память может ограничить его сильнее. Оставьте пустым для автоматического выбора."
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "Использование кэша в памяти"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "Использовано / текущий лимит: %1 / %2 МиБ. Без памяти декодера и офлайн-загрузок."
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "Рекомендуемые настройки кэша"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "Восстановить значения по умолчанию"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "Лимиты кэша воспроизведения должны быть от 16 до 16384 МиБ"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "Минимальный лимит кэша воспроизведения не может превышать максимальный"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "Профиль памяти воспроизведения"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — рекомендуется"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — динамический"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — режим Pi"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "Auto выбирает Desktop или Low по объёму ОЗУ компьютера. Фиксированный бюджет кэша без динамического роста. Рекомендуемая настройка по умолчанию."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "High начинает с бюджета кэша 400 МиБ и увеличивает его до 1600 МиБ при наличии свободной памяти. После простоя или при нехватке памяти бюджет уменьшается. Для длинных треков Hi-Res и компьютеров со свободной ОЗУ."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktop использует фиксированный бюджет кэша 400 МиБ и обычную предзагрузку. Более крупные треки используют дисковые буферы."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Low использует бюджет кэша 50 МиБ, меньшие стартовые буферы и сокращённую предзагрузку. Большие треки используют диск; упреждающая загрузка Hi-Res пропускается. Полезно на Raspberry Pi или для экономии ОЗУ."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "Свой профиль использует указанные ниже лимиты кэша и настройку роста. Предзагрузка зависит от определённого класса памяти компьютера. Изменение готового профиля включает свой профиль."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "Одинаковое качество звука во всех профилях"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "Профили управляют памятью воспроизведения, а не качеством звука или всей ОЗУ приложения. Дисковый кэш работает, кроме режима Только потоковая передача. Изменения действуют на новые буферы; текущий трек продолжает играть."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "Разрешить рост кэша до заданного максимума при наличии свободной ОЗУ. High включает это автоматически. Изменение этой настройки включает свой профиль."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "Неизвестный профиль памяти воспроизведения"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "Профиль памяти воспроизведения несовместим с заданными лимитами кэша"
+
+msgid "Apply playback memory profile?"
+msgstr "Применить профиль памяти воспроизведения?"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "Буферы воспроизведения будут освобождены. Если трек воспроизводится, он остановится и начнётся сначала. Если он на паузе, он останется остановленным на 0:00. Очередь и дисковый кэш сохранятся."
+
+msgid "Apply & free memory"
+msgstr "Применить и освободить память"
+
+msgid "Rebuild playback buffers"
+msgstr "Пересоздать буферы воспроизведения"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "Профиль уже применяется к новым буферам. Примените его сейчас, чтобы освободить существующие буферы и кэш в памяти. При продолжении воспроизведения расход памяти может снова вырасти."
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "Профиль памяти можно применить только к воспроизведению на этом устройстве."
+
+msgid "Playback is not ready yet."
+msgstr "Воспроизведение ещё не готово."
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "Воспроизведение занято. Попробуйте применить профиль памяти ещё раз."
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "Воспроизведение изменилось. Примените снова, чтобы подтвердить текущий трек."
+
+msgid "Visual resource profile"
+msgstr "Профиль визуальных ресурсов"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Low использует маленький плеер и компактные заголовки, отключает динамический фон, градиент, спектр, анимацию воспроизведения, коллажи и дополнительные обложки треков. Default восстанавливает эти настройки. Их изменение выбирает Custom. Качество звука и память воспроизведения независимы."
+
+msgid "Compare memory profiles"
+msgstr "Сравнение профилей памяти"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto: фиксированные 400 MiB или 50 MiB в зависимости от ОЗУ; крупные треки используют диск."
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High: динамические 400–1600 MiB; больше ОЗУ для крупных треков, меньше потребность в дисковых буферах."
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop: фиксированные 400 MiB; баланс ОЗУ и дискового воспроизведения крупных треков."
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low: фиксированные 50 MiB и сокращённая предзагрузка; меньше ОЗУ, больше чтения и записи на диск для крупных треков."
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom: ваши пределы ОЗУ и настройки роста определяют, когда нужен диск."
+
+msgid "RAM and storage trade-off"
+msgstr "Баланс ОЗУ и накопителя"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "Все профили сохраняют качество звука и могут использовать дисковый кэш. Меньше ОЗУ означает большую зависимость от скорости накопителя и больше записей; дополнительная ОЗУ может снизить эту нагрузку. Треки в дисковом кэше читаются с диска даже в High. Выбирайте накопитель с учётом своего использования."
+
+msgid "Playback storage folder"
+msgstr "Папка хранения воспроизведения"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "Выберите существующую папку на нужном диске. QBZ хранит кэш и временные буферы в подпапке qbz-playback. Офлайн-загрузки хранятся отдельно. Оставьте поле пустым для стандартного пути."
+
+msgid "Current playback storage"
+msgstr "Текущее хранилище воспроизведения"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "Новая папка будет использоваться после перезапуска QBZ. Старые файлы кэша останутся на прежнем месте; они не перемещаются и не удаляются автоматически."
+
+msgid "Could not use this playback storage folder:"
+msgstr "Не удалось использовать эту папку воспроизведения:"
+
+msgid "Folder access"
+msgstr "Доступ к папке"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "Если песочница блокирует папку, выполните команду ниже в терминале основной системы, перезапустите QBZ и выберите папку снова. Разрешайте доступ только к нужной папке."
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snap может обращаться к поддерживаемым домашним папкам и накопителям в /mnt, /media или /run/media. Для накопителей подключите указанный интерфейс и повторите попытку. Snap не разрешает произвольные папки через override, как Flatpak."
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "Укажите абсолютный путь к папке воспроизведения."
+
+msgid "The folder is accessible and visible in the library."
+msgstr "Папка доступна и видна в библиотеке."
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "Папка доступна, но скрыта по вашей настройке."
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "Путь больше не существует. Подключите папку, измените путь или удалите её из библиотеки."
+
+msgid "A connection failure prevents access to this storage."
+msgstr "Ошибка соединения препятствует доступу к накопителю."
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "У QBZ нет разрешения на доступ к этой папке."
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "Не удалось обратиться к папке. Проверка превысила время ожидания или вернула другую ошибку доступа."
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "Доступ проверяется или ещё не был проверен."
+
+msgid "Local folder"
+msgstr "Локальная папка"
+
+msgid "Access denied"
+msgstr "Доступ запрещён"
+
+msgid "Missing"
+msgstr "Отсутствует"
+
+msgid "Actions"
+msgstr "Действия"
+
+msgid "Low"
+msgstr "Низкий"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "Эти параметры не применяются, пока включён режим «Только потоковое воспроизведение». Отключите его, чтобы выбрать профиль памяти воспроизведения и применить изменения."
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "Повторяет поведение потокового воспроизведения официальных клиентов, используя меньше памяти. Отключает кэш воспроизведения и его защиту от перебоев сети: кэш QBZ заранее подготавливает аудио для более надёжного воспроизведения и мгновенного повтора."

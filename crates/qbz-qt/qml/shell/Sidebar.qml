@@ -1016,6 +1016,7 @@ Rectangle {
                         border.width: 1
                         border.color: theme.borderSubtle
                         TextInput {
+                            QbzTextEditMenu { }
                             id: myqbzSearchEdit
                             anchors.fill: parent
                             anchors.leftMargin: 6
@@ -1292,6 +1293,7 @@ Rectangle {
                 border.width: 1
                 border.color: theme.borderSubtle
                 TextInput {
+                    QbzTextEditMenu { }
                     id: searchEdit
                     anchors.fill: parent
                     anchors.leftMargin: 6

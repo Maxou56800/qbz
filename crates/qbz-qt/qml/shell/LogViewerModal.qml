@@ -261,6 +261,7 @@ Item {
                         tintName: "muted"
                     }
                     TextInput {
+                        QbzTextEditMenu { }
                         id: searchInput
                         anchors.left: searchGlyph.right
                         anchors.leftMargin: 8
@@ -488,6 +489,7 @@ Item {
                     tintName: "accent"
                 }
                 TextInput {
+                    QbzTextEditMenu { }
                     anchors.left: linkGlyph.right
                     anchors.leftMargin: 8
                     anchors.right: urlCopy.left

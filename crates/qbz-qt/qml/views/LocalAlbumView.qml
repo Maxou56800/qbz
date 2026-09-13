@@ -556,6 +556,7 @@ Rectangle {
                                 height: parent.height
                                 clip: true
                                 TextInput {
+                                    QbzTextEditMenu { }
                                     id: searchInput
                                     anchors.fill: parent
                                     color: theme.textPrimary

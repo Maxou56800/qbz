@@ -66,7 +66,8 @@ Rectangle {
     readonly property bool pulled: root.item.qobuzUnavailable === true
     readonly property int cacheStatus: root.item.cacheStatus !== undefined
         ? root.item.cacheStatus : 0
-    readonly property bool pulledDead: root.pulled && root.cacheStatus !== 3
+    readonly property bool pulledDead: (root.pulled && root.cacheStatus !== 3)
+        || root.item.sourceUnavailable === true
     /// `modifiers` rides straight off the mouse event: Shift is what turns
     /// a click into a range (controls/SelectionModel.qml).
     signal toggleSelect(int modifiers)
@@ -123,7 +124,7 @@ Rectangle {
     /// below all resolve a catalog id.
     readonly property bool catalogRow: {
         var src = root.item.source || ""
-        return src !== "local" && src !== "plex"
+        return src === "" || src === "qobuz"
     }
 
     function menuEntries() {

@@ -854,7 +854,7 @@ Rectangle {
             // per-row batch-root cost as the quality cell above.
             RoundedImage {
                 anchors.fill: parent
-                source: root.item.artPath || ""
+                source: root.showArtwork ? (root.item.artPath || "") : ""
                 radius: 4
             }
             // Per-item cover placeholder — clears when THIS row's cover lands,

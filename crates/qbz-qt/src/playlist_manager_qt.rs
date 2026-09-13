@@ -273,8 +273,12 @@ fn build_document() -> (String, String) {
 
 /// Publish the document. **Never touches `pmLoading`** (§5.4).
 pub(crate) fn publish_document() {
+    let deletion_revision = crate::library_qt::playlist_deletion_revision();
     let (manager, folders) = build_document();
     crate::playlist_manager_bridge::ui(move |mut b| {
+        if deletion_revision != crate::library_qt::playlist_deletion_revision() {
+            return;
+        }
         b.as_mut().set_manager_json(QString::from(manager.as_str()));
         b.as_mut().set_folders_json(QString::from(folders.as_str()));
     });
@@ -283,8 +287,13 @@ pub(crate) fn publish_document() {
 /// The load's TERMINAL rebuild — the one and only place `pmLoading` is
 /// cleared.
 fn publish_loaded() {
+    let deletion_revision = crate::library_qt::playlist_deletion_revision();
     let (manager, folders) = build_document();
     crate::playlist_manager_bridge::ui(move |mut b| {
+        if deletion_revision != crate::library_qt::playlist_deletion_revision() {
+            b.as_mut().set_pm_loading(false);
+            return;
+        }
         b.as_mut().set_manager_json(QString::from(manager.as_str()));
         b.as_mut().set_folders_json(QString::from(folders.as_str()));
         b.as_mut().set_pm_loading(false);
@@ -338,8 +347,12 @@ pub(crate) fn reload() {
     });
     let runtime = crate::app();
     crate::spawn(async move {
-        let data = load(&runtime).await;
-        *CACHE.lock().unwrap() = Some(data);
+        let mut data = load(&runtime).await;
+        crate::library_qt::with_deleted_playlists(|deleted| {
+            data.playlists
+                .retain(|p| !deleted.contains(&p.id.to_string()));
+            *CACHE.lock().unwrap() = Some(data);
+        });
         publish_loaded();
     });
 }
@@ -363,6 +376,15 @@ pub fn reload_if_loaded() {
         return;
     }
     reload();
+}
+
+pub(crate) fn playlist_deleted(id: u64) {
+    {
+        let mut cache = CACHE.lock().unwrap();
+        let Some(data) = cache.as_mut() else { return };
+        data.playlists.retain(|p| p.id != id);
+    }
+    publish_document();
 }
 
 /// Name + description of a QOBUZ playlist out of the WARM manager cache.

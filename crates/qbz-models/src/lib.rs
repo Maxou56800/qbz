@@ -35,6 +35,7 @@ pub mod fs_url;
 pub mod lenient;
 pub mod mixtape;
 pub mod playback;
+pub mod playback_cache;
 pub mod purchase_serde;
 pub mod source;
 pub mod traits;

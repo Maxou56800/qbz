@@ -33,6 +33,8 @@ struct PlaybackCacheState {
 /// Files are named `{track_id}.audio` in the cache directory.
 pub struct PlaybackCache {
     state: Mutex<PlaybackCacheState>,
+    // Serialize admission with eviction so parallel oversized streams respect L2.
+    writes: Mutex<()>,
     /// Cache directory path
     cache_dir: PathBuf,
     /// Maximum cache size in bytes
@@ -59,6 +61,7 @@ impl PlaybackCache {
             .map_err(|e| format!("Failed to create playback cache directory: {}", e))?;
 
         let cache = Self {
+            writes: Mutex::new(()),
             state: Mutex::new(PlaybackCacheState {
                 entries: HashMap::new(),
                 current_size: 0,
@@ -131,6 +134,23 @@ impl PlaybackCache {
         self.state.lock().unwrap().entries.contains_key(&track_id)
     }
 
+    /// Open an immutable cache entry without allocating its contents. Cache
+    /// replacement is atomic so active decoder handles keep the original file.
+    pub fn open(&self, track_id: u64) -> Option<fs::File> {
+        let file = fs::File::open(self.track_path(track_id)).ok()?;
+        let mut state = self.state.lock().ok()?;
+        if let Some(entry) = state.entries.get_mut(&track_id) {
+            entry.last_accessed = SystemTime::now();
+        }
+        Some(file)
+    }
+
+    /// Temporary playback spools live on the cache disk, never the system /tmp
+    /// (commonly tmpfs on streamers). They disappear with their last file handle.
+    pub fn create_spool(&self) -> std::io::Result<fs::File> {
+        tempfile::tempfile_in(&self.cache_dir)
+    }
+
     /// Get a track from the cache
     pub fn get(&self, track_id: u64) -> Option<Vec<u8>> {
         let path = self.track_path(track_id);
@@ -181,7 +201,8 @@ impl PlaybackCache {
     }
 
     /// Insert a track into the cache (called when evicting from memory cache)
-    pub fn insert(&self, track_id: u64, data: &[u8]) {
+    pub fn insert(&self, track_id: u64, data: &[u8]) -> bool {
+        let _write = self.writes.lock().unwrap();
         let size = data.len() as u64;
 
         // Don't cache if larger than max size
@@ -192,18 +213,27 @@ impl PlaybackCache {
                 size / (1024 * 1024),
                 self.max_size_bytes / (1024 * 1024)
             );
-            return;
+            return false;
         }
 
         // Evict old entries if needed
         self.evict_if_needed(size);
 
         let path = self.track_path(track_id);
+        let pending = path.with_extension(format!("audio.{}.tmp", std::process::id()));
 
         // Write file
-        match fs::File::create(&path) {
+        match fs::File::create(&pending) {
             Ok(mut file) => {
                 if file.write_all(data).is_ok() {
+                    drop(file);
+                    if let Err(error) = fs::rename(&pending, &path) {
+                        log::warn!(
+                            "Failed to publish playback cache file for track {track_id}: {error}"
+                        );
+                        let _ = fs::remove_file(&pending);
+                        return false;
+                    }
                     let mut state = self.state.lock().unwrap();
 
                     // Remove old entry if exists
@@ -229,9 +259,10 @@ impl PlaybackCache {
                         state.current_size / (1024 * 1024),
                         self.max_size_bytes / (1024 * 1024)
                     );
+                    return true;
                 } else {
                     log::warn!("Failed to write playback cache file for track {}", track_id);
-                    let _ = fs::remove_file(&path);
+                    let _ = fs::remove_file(&pending);
                 }
             }
             Err(e) => {
@@ -242,6 +273,7 @@ impl PlaybackCache {
                 );
             }
         }
+        false
     }
 
     /// Insert a track whose bytes are streamed in by `fill` rather than
@@ -253,70 +285,54 @@ impl PlaybackCache {
     /// `size_hint` is the expected byte count: it drives the too-large
     /// rejection and pre-write eviction; the entry records the actual bytes
     /// written.
-    pub fn insert_from<F>(&self, track_id: u64, size_hint: u64, fill: F)
+    pub fn insert_from<F>(&self, track_id: u64, size_hint: u64, fill: F) -> bool
     where
         F: FnOnce(&mut fs::File) -> std::io::Result<usize>,
     {
-        // Don't cache if larger than max size
+        let _write = self.writes.lock().unwrap();
         if size_hint > self.max_size_bytes {
-            log::debug!(
-                "Track {} too large for playback cache ({} MB > {} MB)",
-                track_id,
-                size_hint / (1024 * 1024),
-                self.max_size_bytes / (1024 * 1024)
-            );
-            return;
+            return false;
         }
-
-        // Evict old entries if needed
-        self.evict_if_needed(size_hint);
-
-        let path = self.track_path(track_id);
-
-        match fs::File::create(&path) {
-            Ok(mut file) => match fill(&mut file) {
-                Ok(written) => {
-                    let size = written as u64;
-                    let mut state = self.state.lock().unwrap();
-
-                    // Remove old entry if exists
-                    if let Some(old) = state.entries.remove(&track_id) {
-                        state.current_size = state.current_size.saturating_sub(old.size_bytes);
-                    }
-
-                    state.entries.insert(
-                        track_id,
-                        CacheEntry {
-                            track_id,
-                            size_bytes: size,
-                            last_accessed: SystemTime::now(),
-                        },
-                    );
-                    state.current_size += size;
-
-                    log::info!(
-                        "Saved track {} to playback cache ({} KB). Total: {} MB / {} MB",
-                        track_id,
-                        size / 1024,
-                        state.current_size / (1024 * 1024),
-                        self.max_size_bytes / (1024 * 1024)
-                    );
+        // Build a separate inode. Replacing a cached id must not truncate the
+        // open file of an active decoder, and failed writes must not publish.
+        let pending = self
+            .cache_dir
+            .join(format!("{track_id}.stream.{}.tmp", std::process::id()));
+        let result = (|| -> std::io::Result<u64> {
+            let mut file = fs::File::create(&pending)?;
+            let written = fill(&mut file)? as u64;
+            if written > self.max_size_bytes || file.metadata()?.len() != written {
+                return Err(std::io::Error::other(
+                    "invalid playback cache streamed size",
+                ));
+            }
+            drop(file);
+            self.evict_if_needed(written);
+            fs::rename(&pending, self.track_path(track_id))?;
+            Ok(written)
+        })();
+        match result {
+            Ok(size) => {
+                let mut state = self.state.lock().unwrap();
+                if let Some(old) = state.entries.remove(&track_id) {
+                    state.current_size = state.current_size.saturating_sub(old.size_bytes);
                 }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to stream playback cache file for track {}: {}",
-                        track_id,
-                        e
-                    );
-                    let _ = fs::remove_file(&path);
-                }
-            },
-            Err(e) => {
-                log::warn!(
-                    "Failed to create playback cache file for track {}: {}",
+                state.entries.insert(
                     track_id,
-                    e
+                    CacheEntry {
+                        track_id,
+                        size_bytes: size,
+                        last_accessed: SystemTime::now(),
+                    },
                 );
+                state.current_size += size;
+                log::info!("Saved track {track_id} to playback disk cache ({size} bytes)");
+                true
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&pending);
+                log::warn!("Failed to stream playback cache track {track_id}: {error}");
+                false
             }
         }
     }
@@ -357,6 +373,7 @@ impl PlaybackCache {
 
     /// Clear the entire cache
     pub fn clear(&self) {
+        let _write = self.writes.lock().unwrap();
         let mut state = self.state.lock().unwrap();
 
         for track_id in state.entries.keys() {
@@ -392,4 +409,51 @@ pub struct PlaybackCacheStats {
     pub cached_tracks: usize,
     pub current_size_bytes: u64,
     pub max_size_bytes: u64,
+}
+
+#[cfg(test)]
+mod disk_reader_tests {
+    use super::*;
+
+    #[test]
+    fn open_reader_survives_replacement_and_eviction() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert!(cache.insert(1, b"original bytes"));
+        let mut original = cache.open(1).unwrap();
+        assert!(cache.insert_from(1, 11, |file| {
+            file.write_all(b"replacement")?;
+            Ok(11)
+        }));
+        assert_eq!(cache.get(1).unwrap(), b"replacement");
+        cache.clear();
+        let mut bytes = Vec::new();
+        original.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original bytes");
+    }
+
+    #[test]
+    fn failed_stream_write_does_not_publish_or_damage_existing_track() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert!(cache.insert(1, b"original"));
+        assert!(!cache.insert_from(1, 10, |file| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("fixture disk failure"))
+        }));
+        assert_eq!(cache.get(1).unwrap(), b"original");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn understated_stream_size_cannot_exceed_disk_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 8).unwrap();
+        assert!(!cache.insert_from(1, 1, |file| {
+            file.write_all(&[0; 9])?;
+            Ok(9)
+        }));
+        assert!(cache.open(1).is_none());
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+    }
 }

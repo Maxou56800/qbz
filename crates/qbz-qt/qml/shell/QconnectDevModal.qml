@@ -144,6 +144,7 @@ Popup {
                         boundsBehavior: Flickable.StopAtBounds
                         clip: true
                         TextEdit {
+                            QbzTextEditMenu { }
                             id: statusText
                             width: statusFlick.width
                             readOnly: true
@@ -214,6 +215,7 @@ Popup {
                         boundsBehavior: Flickable.StopAtBounds
                         clip: true
                         TextEdit {
+                            QbzTextEditMenu { }
                             id: logText
                             width: logFlick.width
                             readOnly: true

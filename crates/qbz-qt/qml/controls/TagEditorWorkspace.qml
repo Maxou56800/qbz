@@ -220,6 +220,7 @@ Item {
                             border.width: input.activeFocus ? 1 : 0
                             border.color: theme.focusRing
                             TextInput {
+                                QbzTextEditMenu { }
                                 id: input
                                 anchors.fill: parent
                                 leftPadding: 9

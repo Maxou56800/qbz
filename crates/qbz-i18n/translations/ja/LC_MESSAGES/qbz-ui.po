@@ -7230,3 +7230,241 @@ msgstr "システム / 手動"
 #: qbz-qt/qml/shell/UpdatesModal.qml
 msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
 msgstr "更新の準備ができました。QBZ を終了するとインストールが完了し、自動的に再起動します。"
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "再生キャッシュ"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "メモリに余裕がある場合にキャッシュを拡張"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "任意設定です。長いハイレゾ曲におすすめします。通常は既定の固定容量を推奨します。"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "キャッシュの最小容量（MiB）"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "RAMを予約する設定ではありません。メモリ不足時は縮小されます。空欄で推奨値を使用します。"
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "キャッシュの最大容量（MiB）"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "拡張の上限です。空きメモリによってさらに制限される場合があります。空欄で自動設定になります。"
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "メモリキャッシュの使用量"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "使用量 / 現在の容量：%1 / %2 MiB。デコーダーのメモリとオフラインダウンロードは含みません。"
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "キャッシュの推奨設定"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "既定値に戻す"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "再生キャッシュの容量は16〜16384 MiBで指定してください"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "再生キャッシュの最小容量は最大容量以下にしてください"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "再生メモリプロファイル"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — 推奨"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — 動的"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — Pi向け"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "AutoはコンピューターのRAMに応じてDesktopまたはLowを選択します。キャッシュ容量は固定で、動的拡張は無効です。推奨の初期設定です。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "Highは400 MiBのキャッシュ容量から開始し、空きメモリがある場合に最大1600 MiBまで拡張します。非アクティブ時やメモリ不足時には縮小します。長いHi-Res曲やRAMに余裕のあるコンピューター向けです。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktopは400 MiBの固定キャッシュ容量と通常の先読みを使用します。大きな曲にはディスク上のバッファを使用します。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Lowは50 MiBのキャッシュ容量、小さな開始バッファ、少ない先読みを使用します。大きな曲にはディスクを使用し、Hi-Resの事前読み込みは省略します。Raspberry PiやRAMの節約に適しています。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "カスタムは以下のキャッシュ上限と拡張設定を使用します。先読みは検出されたメモリクラスに従います。プリセットを編集するとカスタムに切り替わります。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "すべてのプロファイルで同じ音質"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "プロファイルは再生メモリを制御し、音質やアプリ全体のRAMは変更しません。ストリーミングのみのモードを除き、ディスクキャッシュは有効です。変更は新しいバッファに適用され、現在の曲は再生を続けます。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "RAMに余裕がある場合、指定した上限までキャッシュを拡張します。Highでは自動的に有効になります。この設定を編集するとカスタムに切り替わります。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "不明な再生メモリプロファイルです"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "再生メモリプリセットとカスタムキャッシュ上限が矛盾しています"
+
+msgid "Apply playback memory profile?"
+msgstr "再生メモリプロファイルを適用しますか？"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "再生バッファを解放します。再生中の曲は停止し、最初から再生し直します。一時停止中の場合は、0:00で停止したままになります。キューとディスクキャッシュは保持されます。"
+
+msgid "Apply & free memory"
+msgstr "適用してメモリを解放"
+
+msgid "Rebuild playback buffers"
+msgstr "再生バッファを再構築"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "プロファイルはすでに新しいバッファに適用されています。今すぐ適用すると、既存の再生バッファとメモリキャッシュを解放します。再生を続けると、メモリ使用量が再び増えることがあります。"
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "メモリプロファイルは、このデバイスでの再生にのみ適用できます。"
+
+msgid "Playback is not ready yet."
+msgstr "再生の準備がまだできていません。"
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "再生処理が進行中です。メモリプロファイルの適用をもう一度お試しください。"
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "再生内容が変わりました。現在の曲を確認して、もう一度適用してください。"
+
+msgid "Visual resource profile"
+msgstr "表示リソースプロファイル"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Lowは小型プレーヤーとコンパクトなヘッダーを使い、動的背景、グラデーション、スペクトラム、再生アニメーション、コラージュ、任意の曲の画像を無効にします。Defaultで標準値に戻り、対象設定を変更するとCustomになります。音質と再生メモリは独立しています。"
+
+msgid "Compare memory profiles"
+msgstr "メモリプロファイルを比較"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto：RAM容量に応じて400 MiBまたは50 MiBに固定。大きな曲はディスクを使用します。"
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High：400～1600 MiBで可変。大きな曲をRAMに保持しやすくなり、ディスクバッファの必要性が減ります。"
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop：400 MiB固定。RAMを使い、大きな曲はディスクで再生します。"
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low：50 MiB固定で先読みを抑制。RAM使用量は減りますが、大きな曲ではディスクの読み書きが増えます。"
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom：RAMの上限と拡張設定に応じてディスクを使用します。"
+
+msgid "RAM and storage trade-off"
+msgstr "RAMとストレージのバランス"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "どのプロファイルも音質を維持し、ディスクキャッシュを使用できます。RAMが少ないほどストレージ速度や書き込みへの依存が増え、RAMを増やすと負荷を減らせます。ディスクにキャッシュ済みの曲はHighでもディスクから読みます。用途に合うストレージを選んでください。"
+
+msgid "Playback storage folder"
+msgstr "再生ストレージのフォルダー"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "使用するドライブの既存フォルダーを選びます。QBZはqbz-playbackサブフォルダーに再生キャッシュと一時バッファを保存します。オフラインダウンロードは別です。空欄なら標準の場所を使います。"
+
+msgid "Current playback storage"
+msgstr "現在の再生ストレージ"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "フォルダーの変更はQBZの再起動後に反映されます。既存のキャッシュは元の場所に残り、自動で移動や削除はされません。"
+
+msgid "Could not use this playback storage folder:"
+msgstr "この再生ストレージフォルダーを使用できませんでした："
+
+msgid "Folder access"
+msgstr "フォルダーへのアクセス"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "サンドボックスがフォルダーをブロックする場合、ホストの端末で下のコマンドを実行し、QBZを再起動して再度選んでください。使用するフォルダーだけにアクセスを許可してください。"
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snapは対応するホームフォルダーと/mnt、/media、/run/media配下の外部ストレージにアクセスできます。外部ストレージでは下のインターフェースを接続して再試行してください。Flatpakのようなoverrideで任意のフォルダーを許可することはできません。"
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "再生ストレージの絶対パスを指定してください。"
+
+msgid "The folder is accessible and visible in the library."
+msgstr "フォルダーにアクセスでき、ライブラリに表示されます。"
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "フォルダーにアクセスできますが、設定により非表示です。"
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "フォルダーのパスが存在しません。再接続するか、パスを変更するか、ライブラリから削除してください。"
+
+msgid "A connection failure prevents access to this storage."
+msgstr "接続エラーにより、このストレージにアクセスできません。"
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "QBZにはこのフォルダーへのアクセス権がありません。"
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "フォルダーにアクセスできませんでした。確認がタイムアウトしたか、別のアクセスエラーが発生しました。"
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "フォルダーへのアクセスを確認中、またはまだ未確認です。"
+
+msgid "Local folder"
+msgstr "ローカルフォルダー"
+
+msgid "Access denied"
+msgstr "アクセス拒否"
+
+msgid "Missing"
+msgstr "見つかりません"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Low"
+msgstr "低"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "「ストリーミングのみ」が有効な間、これらの設定は適用されません。無効にすると、再生メモリプロファイルを選択して変更を適用できます。"
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "公式クライアントと同様のストリーミング動作でメモリ使用量を抑えます。再生キャッシュとそのネットワーク中断への保護を無効にします。QBZのキャッシュは次の音声を事前に用意し、より安定した再生と即座のリプレイを可能にします。"

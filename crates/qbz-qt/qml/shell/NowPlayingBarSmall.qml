@@ -44,9 +44,6 @@ Rectangle {
     // PlayerBarSmall.slint).
     color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
     readonly property bool ambientOn: theme.ambientOn
-    // Feature parked for a later release. Keep the compact renderer in place
-    // but use the classic seekbar consistently with the other NPB modes.
-    readonly property bool waveformVisible: false
     /// AppShell's one shared hover-tooltip overlay.
     property Item tooltip: null
 
@@ -142,27 +139,6 @@ Rectangle {
         return m + ":" + (s < 10 ? "0" : "") + s
     }
 
-    // --- Seek clamp (closes PARITY-DEBT #15, QML half) -------------------
-    // Same SeekBar the full bar mounts (PlayerBarSmall.slint:186 passes
-    // seekable-max: NowPlayingState.seekable-max into SeekBar.slint), so the
-    // behaviour is identical here: while a track is still downloading the
-    // seek target is LOCKED to the furthest fraction that has arrived and the
-    // cursor turns not-allowed past it. Source: state.slint:4402, fed by
-    // playback.rs:5304 `buffer_progress.clamp(0,1)`, published as
-    // QbzPlayer.npSeekableMax. A fully-available track reports 1.0, so the
-    // Math.min() is a no-op and local/cached seeking stays free.
-    function clamp01(v) {
-        return Math.min(Math.max(v, 0), 1)
-    }
-    // SeekBar.slint:98 — Math.min(clamp01(mouse-x / width), seekable-max).
-    function seekTarget(fraction) {
-        return Math.min(root.clamp01(fraction), QbzPlayer.npSeekableMax)
-    }
-    // SeekBar.slint:93 — clamp01(mouse-x / width) > seekable-max.
-    function beyondSeekable(fraction) {
-        return root.clamp01(fraction) > QbzPlayer.npSeekableMax
-    }
-
     // --- Track Info (album/TrackInfoModal.slint) -------------------------
     // The (i) button and the song-card title open the MODAL (scrim + centered
     // card) — PlayerBarSmall.slint fires media-action("track", id,
@@ -214,81 +190,14 @@ Rectangle {
         spacing: 0
 
         // === A. TOP full-width seekbar (the content/bar divider) ========
-        Item {
+        QbzCompactSeekBar {
             width: parent.width
-            height: 3
-
-            Rectangle {
-                id: seekTrack
-                width: parent.width
-                height: root.waveformVisible ? 13 : 3
-                anchors.verticalCenter: parent.verticalCenter
-                radius: 2
-                color: root.waveformVisible ? "transparent" : theme.surfaceElevated
-
-                SeekWaveformItem {
-                    anchors.fill: parent
-                    visible: root.waveformVisible
-                    values: QbzPlayer.npSeekWaveform
-                    playedProgress: QbzPlayer.npProgress
-                    cacheProgress: QbzPlayer.npCacheProgress
-                    baseColor: theme.surfaceElevated
-                    cacheColor: Qt.rgba(theme.textMuted.r, theme.textMuted.g,
-                                        theme.textMuted.b, 0.35)
-                    playedColor: theme.accent
-                    renderMode: 1
-                }
-
-                // Buffered / cache line.
-                Rectangle {
-                    visible: !root.waveformVisible
-                    width: parent.width * Math.min(Math.max(QbzPlayer.npCacheProgress, 0), 1)
-                    height: parent.height
-                    radius: 2
-                    color: Qt.rgba(theme.textMuted.r, theme.textMuted.g,
-                                   theme.textMuted.b, 0.35)
-                    // Alpha in the material, not a container `opacity`: an
-                    // always-on opacity node pins this quad in its own batch,
-                    // and the three seek quads use compatible materials
-                    // (QSGSmoothColorMaterial::compare() returns 0), so folding
-                    // it lets rail + cache + progress merge.
-                }
-                // Playback progress line.
-                Rectangle {
-                    visible: !root.waveformVisible
-                    width: parent.width * Math.min(Math.max(QbzPlayer.npProgress, 0), 1)
-                    height: parent.height
-                    radius: 2
-                    color: theme.accent
-                }
-                // Hover thumb.
-                Rectangle {
-                    width: 12
-                    height: 12
-                    radius: 6
-                    color: theme.textPrimary
-                    x: parent.width * Math.min(Math.max(QbzPlayer.npProgress, 0), 1) - width / 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    opacity: seekArea.containsMouse ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 100 } }
-                }
-            }
-            // Tall, easy-to-grab hit area over the thin line.
-            MouseArea {
-                id: seekArea
-                width: parent.width
-                height: 18
-                anchors.verticalCenter: seekTrack.verticalCenter
-                hoverEnabled: true
-                // No-drop cursor over the not-yet-downloaded region
-                // (SeekBar.slint:93-95).
-                cursorShape: root.beyondSeekable(mouseX / width) ? Qt.ForbiddenCursor
-                                                                 : Qt.PointingHandCursor
-                enabled: QbzPlayer.npHasTrack
-                // Lock the seek target to what has downloaded while streaming
-                // (SeekBar.slint:96-99).
-                onClicked: QbzPlayer.seek(root.seekTarget(mouseX / width))
-            }
+            hasTrack: QbzPlayer.npHasTrack
+            progress: QbzPlayer.npProgress
+            cacheProgress: QbzPlayer.npCacheProgress
+            seekableMax: QbzPlayer.npSeekableMax
+            durationSecs: QbzPlayer.npDurationSecs
+            onSeekRequested: function (fraction) { QbzPlayer.seek(fraction) }
         }
 
         // === B. CONTROLS ROW — symmetric 3 columns =======================

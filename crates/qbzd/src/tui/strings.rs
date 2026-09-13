@@ -219,7 +219,6 @@ pub const P_MPRIS: &str = "System media controls";
 pub const P_MPRIS_DESC: &str = "MPRIS: KDE/GNOME media widget + media keys · restart to apply";
 
 pub const R_LIMIT_OFF: &str = "Limit quality to device off";
-pub const R_STREAMING_ONLY_ON: &str = "off while Audio > Streaming only on";
 pub const R_RESTORE_OFF: &str = "needs Restore session";
 
 pub const Q_MP3: &str = "MP3";

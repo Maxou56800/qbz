@@ -6,6 +6,7 @@ description = "Audio caching system for QBZ - L1 memory + L2 disk caches"
 authors = ["blitzkriegfc"]
 
 [dependencies]
+qbz-models = { path = "../qbz-models" }
 # Logging
 log = "0.4"
 
@@ -15,7 +16,11 @@ serde = { version = "1", features = ["derive"] }
 # File system utilities
 dirs = "6"
 filetime = "0.2"
+tempfile = "3"
 
 # Image cache index + URL hashing
 rusqlite = { version = "0.40", features = ["bundled"] }
 md-5 = "0.10"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Win32_System_SystemInformation"] }

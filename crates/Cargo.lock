@@ -3997,8 +3997,11 @@ dependencies = [
  "filetime",
  "log",
  "md-5",
+ "qbz-models",
  "rusqlite",
  "serde",
+ "tempfile",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -4359,6 +4362,7 @@ dependencies = [
  "rodio",
  "serde",
  "symphonia",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-stream",

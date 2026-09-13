@@ -148,10 +148,12 @@ Rectangle {
             it._albumLc = String(it.album || "").toLowerCase()
             it._genreLc = String(it.genre || "").toLowerCase()
             if (it.kind === "track" || it.kind === "album") {
-                if (it.group === "favorites" || it.group === "purchases") {
-                    var tabKey = it.kind + ":" + it.id
+                if (it.group === "favorites" || it.group === "purchases"
+                    || (it.kind === "album" && isLocalFeedItem(it))) {
+                    var tabKey = membershipKey
                     if (it.group === "purchases") tabPurchased[tabKey] = true
-                    else tabFavorites[tabKey] = true
+                    else if (it.group === "favorites" || it.isFavorite === true)
+                        tabFavorites[tabKey] = true
                     if (!tabSeen[tabKey]) {
                         tabSeen[tabKey] = true
                         totals[it.kind + "s"]++
@@ -674,13 +676,15 @@ Rectangle {
             var x = feed[i]
             var keep = false
             if (sourceTab && x.kind === sourceKind) {
-                var sourceKey = sourceKind + ":" + x.id
+                var sourceKey = x._membershipKey
                 var isPurchased = purchased[sourceKey] === true
                 var isFavorite = favorites[sourceKey] === true
                 var included = matchesSources(isPurchased, isFavorite, false)
+                var localRelease = sourceKind === "album" && isLocalFeedItem(x)
+                if (localRelease && !showLocal && hideableLocalAlbum(x)) included = false
                 // One representative row per included entity. A purchase row
                 // wins even in Favorites-only so its quality badge survives.
-                keep = included && ((isPurchased && x.group === "purchases")
+                keep = included && (localRelease || (isPurchased && x.group === "purchases")
                     || (!isPurchased && x.group === "favorites"))
                 if (keep) {
                     if (tabSeen[sourceKey]) keep = false

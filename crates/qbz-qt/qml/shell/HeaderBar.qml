@@ -175,23 +175,15 @@ Rectangle {
         try { return JSON.parse(QbzBridge.settingsJson) } catch (e) { return ({}) }
     }
 
-    /// Purchases in the TITLE BAR — the third row of the §7.1 truth table.
-    ///
-    /// This is the EXACT COMPLEMENT of `Sidebar.qml`'s `purchasesVisible`, and
-    /// it has to be, because that property WITHDRAWS the sidebar row for this
-    /// configuration. Until this existed the entry was withdrawn from one host
-    /// and offered by none: with `show_purchases` and `nav_tb_purchases` both on
-    /// and a custom title bar, Purchases simply had no way in.
-    ///
-    /// `nav_tb_purchases` only RELOCATES; `show_purchases` is the master gate.
-    /// Under system chrome or with no title bar there is nowhere to relocate TO,
-    /// so the sidebar keeps it and this stays false.
+    // Follow navigation into the header, including the closed-sidebar fallback.
+    // The separate relocation preference also works while navigation stays in
+    // the sidebar; only that explicit title-bar placement needs custom chrome.
     readonly property bool purchasesInHeader:
         root.settingsDoc.showPurchases === true
         && !QbzSession.offline
-        && root.settingsDoc.navTbPurchases === true
-        && !QbzShell.systemTitleBar
-        && !QbzShell.hideTitleBar
+        && (root.headerTabsOn || root.headerCompactOn
+            || (root.settingsDoc.navTbPurchases === true
+                && !QbzShell.systemTitleBar && !QbzShell.hideTitleBar))
 
     // Highlighted section — derived from the live view (see NavFlyout), OR'd
     // in the triggers with "my menu is open" (Slint highlights off
@@ -256,17 +248,17 @@ Rectangle {
                 visible: purchaseTab.showIcon
                 anchors.verticalCenter: parent.verticalCenter
                 name: "shopping-bag"
-                width: 16
-                height: 16
-                tintName: purchaseTab.isActive ? "primary" : "muted"
+                width: purchaseTab.compact ? 16 : 14
+                height: width
+                tintName: purchaseTab.isActive ? "textPrimary" : "secondary"
             }
             Text {
                 visible: !purchaseTab.compact
                 anchors.verticalCenter: parent.verticalCenter
                 text: QbzSession.tr("Purchases", QbzSession.trRev)
-                color: purchaseTab.isActive ? theme.textPrimary : theme.textMuted
-                font.pixelSize: theme.fontLegal
-                font.weight: theme.weightMedium
+                color: theme.textPrimary
+                font.pixelSize: 11
+                font.weight: purchaseTab.isActive ? theme.weightSemibold : theme.weightRegular
             }
         }
 
@@ -460,6 +452,13 @@ Rectangle {
             }
         }
 
+        // Explicit Purchases relocation with the other navigation in the sidebar.
+        PurchaseTab {
+            visible: root.purchasesInHeader && !root.headerTabsOn && !root.headerCompactOn
+            showIcon: root.width >= 1140
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
         // Compact section nav — while the sidebar is fully closed (so the
         // sections stay reachable), or always when the nav is in the header
         // and "Compact header navigation" is ON (HeaderBar.slint:974).
@@ -618,6 +617,7 @@ Rectangle {
                                 border.width: 1
                                 border.color: theme.borderSubtle
                                 TextInput {
+                                    QbzTextEditMenu { }
                                     id: plSearch
                                     anchors.fill: parent
                                     anchors.leftMargin: 6
@@ -880,6 +880,7 @@ Rectangle {
             tintName: "muted"
         }
         TextInput {
+            QbzTextEditMenu { }
             id: searchInput
             anchors.left: parent.left
             anchors.right: parent.right
@@ -898,10 +899,8 @@ Rectangle {
             // the reference opens on the FIRST keystroke >= 2 chars and
             // debounces only the LOAD. Rust's version guard is what discards
             // the superseded loads.
-            // Shared by keyboard edits (onTextEdited) and the edit menu's
-            // cut/paste, which are PROGRAMMATIC changes — TextInput only
-            // emits textEdited for user input, so a menu paste would
-            // otherwise change the text without ever driving the cortinilla.
+            // The shared edit menu dispatches the same textEdited callback
+            // as typing, once, including on Qt versions where paste does not.
             function applyLiveQuery() {
                 if (text.trim().length < 2) {
                     QbzSearch.cortinillaDismiss()
@@ -910,38 +909,6 @@ Rectangle {
                 }
             }
             onTextEdited: applyLiveQuery()
-
-            // QoL round: clipboard access by pointer, not only Ctrl+C/X/V —
-            // QML TextInput has no system edit menu of its own. RightButton
-            // only, so left clicks keep placing the cursor.
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    searchEditMenu.openAtCursor(searchInput, mouse.x, mouse.y)
-                }
-            }
-            CardMenu {
-                id: searchEditMenu
-                menuWidth: 160
-                entries: {
-                    var t = QbzSession.tr
-                    var r = QbzSession.trRev
-                    var hasSel = searchInput.selectedText !== ""
-                    return [
-                        { "label": t("Cut", r), "icon": "scissors", "action": "cut", "enabled": hasSel },
-                        { "label": t("Copy", r), "icon": "copy", "action": "copy", "enabled": hasSel },
-                        { "label": t("Paste", r), "icon": "clipboard", "action": "paste", "enabled": searchInput.canPaste },
-                        { "label": t("Select all", r), "icon": "square-check-big", "action": "select-all", "enabled": searchInput.text !== "" },
-                    ]
-                }
-                onPicked: function (a) {
-                    if (a === "cut") { searchInput.cut(); searchInput.applyLiveQuery() }
-                    else if (a === "copy") searchInput.copy()
-                    else if (a === "paste") { searchInput.paste(); searchInput.applyLiveQuery() }
-                    else if (a === "select-all") searchInput.selectAll()
-                }
-            }
 
             // The Enter rule (HeaderBar.slint on-enter): cortinilla open +
             // a keyboard selection -> activate the row; open + none -> full

@@ -50,6 +50,8 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
 
         TextEdit {
+
+            QbzTextEditMenu { }
             id: input
             width: flick.width
             text: root.text
