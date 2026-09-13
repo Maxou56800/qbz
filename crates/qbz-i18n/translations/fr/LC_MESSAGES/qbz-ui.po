@@ -4450,8 +4450,9 @@ msgstr "Mode de barre de titre modifié — redémarrez QBZ pour appliquer"
 msgid "Compact header navigation"
 msgstr "Navigation compacte dans l'en-tête"
 
-msgid "Use the icon-only section navigation in the header even while the sidebar is open."
-msgstr "Utilise la navigation des sections en icônes seules dans l'en-tête, même lorsque la barre latérale est ouverte."
+#: crates/qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Always use the icon-only section navigation in the header. When off, the text tabs turn into icons only when they no longer fit next to the search box."
+msgstr "Utilise toujours la navigation des sections en icônes seules dans l'en-tête. Désactivé, les onglets texte ne passent en icônes que lorsqu'ils ne tiennent plus à côté du champ de recherche."
 
 # DSD support Phase 1 (2026-07-03)
 msgid "DSD: {}"
