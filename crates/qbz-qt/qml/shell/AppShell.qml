@@ -252,6 +252,21 @@ Rectangle {
         hostName: QbzOrbit.hostName
     }
 
+    // The player bar's FRAME — the same chrome tier as the sidebar and the
+    // content frame, so the gutter around the inset bar reads as one
+    // continuous frame and never as a band of raw background (the same rule
+    // the content frame documents below). It spans the bar's height plus
+    // the bottom gutter, full width, so the side gutters are covered too.
+    readonly property int npbGutter: Qt.platform.os === "osx" ? theme.npbGutterMac : theme.npbGutter
+    Rectangle {
+        id: npbFrame
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: npb.height + root.npbGutter
+        color: root.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
+    }
+
     NowPlayingBar {
         id: npb
         // The small seek thumb/hit area extends above the bar by a few pixels.
@@ -261,6 +276,14 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
+        // Inset by the content pane's gutter on the three window edges
+        // (2026-09-13, every mode): the bar's ends line up with the pane's
+        // and nothing in it touches the window edge — wider on macOS, where
+        // the Liquid Glass corner curve ate the cover's corner
+        // (QbzTheme.npbGutterMac).
+        anchors.leftMargin: root.npbGutter
+        anchors.rightMargin: root.npbGutter
+        anchors.bottomMargin: root.npbGutter
         // Mode-aware height (AppShell.slint:396): Small collapses to one
         // header-tall row; New/Classic/Large keep the full 112px.
         height: QbzShell.npbMode === 2 ? theme.npbSmallHeight : theme.npbLargeHeight
@@ -652,7 +675,9 @@ Rectangle {
         // so this width also sets the art size.
         x: 16
         width: 208
-        y: parent.height - QbzShell.largeDockHeight
+        // Flush with the bar's bottom edge, which now sits a gutter above
+        // the window's (npbGutter) — the dock lifts with it.
+        y: npb.y + npb.height - QbzShell.largeDockHeight
         ambientOn: root.ambientOn
     }
 

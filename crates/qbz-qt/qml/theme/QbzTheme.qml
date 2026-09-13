@@ -419,6 +419,19 @@ QtObject {
     // Small now-playing bar total height (ShellState.npb-small-height,
     // npb-small-extra is 0 on Linux).
     readonly property int npbSmallHeight: 42
+    /// The gutter the player bar keeps to the window's left, right and
+    /// bottom edges (2026-09-13): the SAME 8 px the content pane keeps
+    /// inside its frame, so the bar's ends line up with the pane's and
+    /// nothing in it touches the window edge.
+    readonly property int npbGutter: 8
+    /// macOS only: Tahoe's Liquid Glass windows round their corners far
+    /// more than before (Apple: toolbar windows take a larger radius that
+    /// "can clip content that sits close to the edge of the window";
+    /// estimates run from ~12-16 pt for titlebar-only windows to 50 px+
+    /// with a toolbar) and the cover at the bar's left end lost its corner.
+    /// Qt has no LayoutRegion to nest content into the curve, so the bar
+    /// simply keeps a wider gutter there.
+    readonly property int npbGutterMac: 16
     // Every other bar mode (New / Classic / Large) — AppShell.slint:396.
     // The Large dock's sidebar reservation subtracts this, so it must be the
     // SAME value the shell pins the bar to.
