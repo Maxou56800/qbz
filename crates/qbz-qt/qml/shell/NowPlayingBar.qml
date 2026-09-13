@@ -29,8 +29,8 @@ Rectangle {
     QbzTheme { id: theme }
 
     /// The gutter the bar layout keeps to the window's left, right and
-    /// bottom edges: the pane's 8px, wider on macOS (QbzTheme.npbGutterMac).
-    readonly property int gutter: Qt.platform.os === "osx" ? theme.npbGutterMac : theme.npbGutter
+    /// bottom edges: the pane's 8px, the same on every platform.
+    readonly property int gutter: theme.npbGutter
     /// The layout's own height (PlayerBar.slint / PlayerBarSmall.slint).
     readonly property int layoutHeight: QbzShell.npbMode === 2 ? theme.npbSmallHeight : theme.npbLargeHeight
     implicitHeight: layoutHeight + gutter

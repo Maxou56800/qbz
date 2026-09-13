@@ -255,9 +255,8 @@ Rectangle {
     // The bottom chrome band (NowPlayingBar.qml's root): full width, flush
     // on the window's bottom edge, the same tier and paint as the HeaderBar
     // above. The bar layout inside it keeps the content pane's gutter to the
-    // window's left, right and bottom edges — wider on macOS, where the
-    // Liquid Glass corner curve ate the cover's corner (QbzTheme.npbGutterMac)
-    // — and the band sizes itself: the mode-aware layout height (Small
+    // window's left, right and bottom edges, the same on every platform —
+    // and the band sizes itself: the mode-aware layout height (Small
     // collapses to one header-tall row; New/Classic/Large keep the full
     // 112px, AppShell.slint:396) plus that gutter.
     NowPlayingBar {
