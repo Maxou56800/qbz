@@ -90,6 +90,7 @@ const KEY_TABLE: &[(&str, ApplyClass)] = &[
     ("audio.gapless_enabled", ApplyClass::Reload),
     ("audio.normalization_enabled", ApplyClass::Reload),
     ("audio.normalization_target_lufs", ApplyClass::Reload),
+    ("audio.normalization_prevent_clipping", ApplyClass::Reload),
     ("audio.pw_force_bitperfect", ApplyClass::Reload),
     ("audio.reserve_dac_while_running", ApplyClass::Reload),
     ("audio.sync_audio_on_startup", ApplyClass::Reload),
@@ -402,6 +403,7 @@ fn read_all(roots: &ProfileRoots) -> Result<Vec<(&'static str, String)>, String>
             "audio.gapless_enabled" => render_bool(audio.gapless_enabled),
             "audio.normalization_enabled" => render_bool(audio.normalization_enabled),
             "audio.normalization_target_lufs" => audio.normalization_target_lufs.to_string(),
+            "audio.normalization_prevent_clipping" => render_bool(audio.normalization_prevent_clipping),
             "audio.pw_force_bitperfect" => render_bool(audio.pw_force_bitperfect),
             "audio.reserve_dac_while_running" => render_bool(audio.reserve_dac_while_running),
             "audio.sync_audio_on_startup" => render_bool(audio.sync_audio_on_startup),
@@ -758,6 +760,13 @@ pub(crate) fn write_one(
             open_audio(roots)
                 .map_err(SetError::Io)?
                 .set_normalization_target_lufs(v)
+                .map_err(SetError::Io)?
+        }
+        "audio.normalization_prevent_clipping" => {
+            let v = parse_bool(raw).map_err(SetError::Usage)?;
+            open_audio(roots)
+                .map_err(SetError::Io)?
+                .set_normalization_prevent_clipping(v)
                 .map_err(SetError::Io)?
         }
         "audio.pw_force_bitperfect" => {

@@ -681,6 +681,7 @@ const AUDIO_PORTABLE: &[&str] = &[
     "playback_cache",
     "normalization_enabled",
     "normalization_target_lufs",
+    "normalization_prevent_clipping",
     "gapless_enabled",
     "allow_quality_fallback",
     "sync_audio_on_startup",
@@ -1208,6 +1209,9 @@ fn apply_audio_writes(data_root: &Path, writes: &[(&str, &Value)]) -> Result<(),
             "normalization_enabled" => store.set_normalization_enabled(as_bool(value))?,
             "normalization_target_lufs" => {
                 store.set_normalization_target_lufs(value.as_f64().unwrap_or(-14.0) as f32)?
+            }
+            "normalization_prevent_clipping" => {
+                store.set_normalization_prevent_clipping(as_bool(value))?
             }
             "gapless_enabled" => store.set_gapless_enabled(as_bool(value))?,
             "allow_quality_fallback" => store.set_allow_quality_fallback(as_bool(value))?,
