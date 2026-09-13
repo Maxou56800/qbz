@@ -31,10 +31,17 @@ permissions:
 jobs:
   update-aur:
     runs-on: ubuntu-24.04
-    # workflow_run prepares verified metadata only. Publishing is deliberately
-    # manual because the maintainer's AUR key requires an interactive passkey.
-    # Accept only a successful tag push produced inside this repository; the
-    # exact tag and main ancestry are checked again after checkout.
+    # workflow_run prepares verified metadata, and PUBLISHES it when the
+    # repository holds an AUR deploy key (`AUR_SSH_PRIVATE_KEY`, a dedicated
+    # passphrase-less ed25519 key registered on the maintainer's AUR account).
+    # Without that secret the run stays a dry run: the four stamped packages
+    # (PKGBUILD + .SRCINFO + install scripts) land in the
+    # `aur-four-package-metadata` artifact and the maintainer pushes them with
+    # `scripts/packaging/aur_publish.sh <version> --push` (the personal key's
+    # passkey is interactive, which is why 2.1.1 sat at 2.1.0 on AUR after a
+    # green run: nothing pushed). Accept only a successful tag push produced
+    # inside this repository; the exact tag and main ancestry are checked
+    # again after checkout.
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -58,6 +65,8 @@ jobs:
           DISPATCH_VERSION: ${{ inputs.version }}
           DISPATCH_PUBLISH: ${{ inputs.publish }}
           DISPATCH_PKGREL: ${{ inputs.pkgrel }}
+          # true when the deploy key exists; a tag run publishes only then.
+          HAS_AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
         run: |
           set -euo pipefail
 
@@ -65,7 +74,10 @@ jobs:
             tag="$RUN_HEAD_BRANCH"
             version="${tag#v}"
             pkgrel=1
-            should_publish=false
+            should_publish="$HAS_AUR_KEY"
+            if [[ "$should_publish" != true ]]; then
+              echo "::notice::No AUR_SSH_PRIVATE_KEY secret: preparing a dry run. Publish v${version} with scripts/packaging/aur_publish.sh ${version} --push, or add a passphrase-less deploy key as the secret to publish from here."
+            fi
           else
             version="$DISPATCH_VERSION"
             tag="v${version}"
@@ -283,6 +295,9 @@ jobs:
         with:
           name: aur-four-package-metadata
           retention-days: 7
+          # `.SRCINFO` is a dotfile: without this the artifact silently shipped
+          # only the PKGBUILDs (the 2.1.1 dry run had no .SRCINFO at all).
+          include-hidden-files: true
           path: |
             /tmp/aur-qbz-bin/PKGBUILD
             /tmp/aur-qbz-bin/.SRCINFO
