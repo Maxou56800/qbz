@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
+use std::time::{Duration, Instant};
 
 /// Public Discord Application ID for QBZ. Public identifier, not a secret.
 const DISCORD_APP_ID: &str = "1501835855587708988";
@@ -102,6 +103,24 @@ pub struct NowListening {
 pub struct DiscordRpc {
     client: Mutex<Option<DiscordIpcClient>>,
     enabled: AtomicBool,
+    /// Set after a failed IPC connect: no new attempt before this instant.
+    /// Without it every now-playing edge (two per track: the immediate
+    /// publish and the poll's) knocked on a socket that is not there and
+    /// the crate logged a warning each time — with Discord closed, a
+    /// listening session read as an error stream.
+    retry_after: Mutex<Option<Instant>>,
+}
+
+/// How long a failed IPC connect keeps the integration quiet. A track edge
+/// inside the window pushes nothing; the first edge after it retries.
+pub const CONNECT_RETRY_AFTER: Duration = Duration::from_secs(300);
+
+/// Pure backoff rule: attempt when no deadline is set or it has passed.
+pub fn connect_allowed(now: Instant, retry_after: Option<Instant>) -> bool {
+    match retry_after {
+        None => true,
+        Some(deadline) => now >= deadline,
+    }
 }
 
 impl DiscordRpc {
@@ -109,6 +128,7 @@ impl DiscordRpc {
         Self {
             client: Mutex::new(None),
             enabled: AtomicBool::new(false),
+            retry_after: Mutex::new(None),
         }
     }
 
@@ -123,6 +143,11 @@ impl DiscordRpc {
         self.enabled.store(enabled, Ordering::SeqCst);
         if !enabled {
             self.clear();
+        }
+        // Opting in (again) is an explicit request: forget any backoff so the
+        // next update connects right away.
+        if let Ok(mut retry) = self.retry_after.lock() {
+            *retry = None;
         }
     }
 
@@ -151,6 +176,13 @@ impl DiscordRpc {
         };
 
         if guard.is_none() {
+            let now = Instant::now();
+            let Ok(mut retry) = self.retry_after.lock() else {
+                return;
+            };
+            if !connect_allowed(now, *retry) {
+                return;
+            }
             // Bridge the Flatpak sandbox to Discord's IPC socket if we're
             // running under Flatpak. No-op outside that context.
             prepare_flatpak_discord_socket_links();
@@ -159,6 +191,13 @@ impl DiscordRpc {
             let mut client = DiscordIpcClient::new(DISCORD_APP_ID);
             if client.connect().is_ok() {
                 *guard = Some(client);
+                *retry = None;
+            } else {
+                *retry = Some(now + CONNECT_RETRY_AFTER);
+                log::info!(
+                    "[discord] Discord is not reachable (not running, or its socket is not visible); next attempt in {} s",
+                    CONNECT_RETRY_AFTER.as_secs()
+                );
             }
         }
 
@@ -206,5 +245,21 @@ impl DiscordRpc {
         if client.set_activity(act).is_err() {
             *guard = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod backoff_tests {
+    use super::*;
+
+    #[test]
+    fn connect_backoff_waits_for_the_deadline_then_retries() {
+        let now = Instant::now();
+        assert!(connect_allowed(now, None));
+        let deadline = now + CONNECT_RETRY_AFTER;
+        assert!(!connect_allowed(now, Some(deadline)));
+        assert!(!connect_allowed(now + CONNECT_RETRY_AFTER / 2, Some(deadline)));
+        assert!(connect_allowed(deadline, Some(deadline)));
+        assert!(connect_allowed(deadline + Duration::from_secs(1), Some(deadline)));
     }
 }
