@@ -50,6 +50,15 @@ Rectangle {
                 if (root.node.isFolder) folderMenu.openAtCursor(rowArea, mouse.x, mouse.y)
                 return
             }
+            // In select mode a Shift or Ctrl click on the body is a selection
+            // gesture, as in any file list: it ticks (or ranges) the row
+            // instead of opening the folder. A plain click still opens it.
+            if (root.selectMode
+                    && (mouse.modifiers & (Qt.ShiftModifier | Qt.ControlModifier
+                                           | Qt.MetaModifier)) !== 0) {
+                root.toggleSelect(mouse.modifiers)
+                return
+            }
             if (root.node.isFolder) root.activated()
         }
     }

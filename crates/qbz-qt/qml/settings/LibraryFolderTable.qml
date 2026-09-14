@@ -42,10 +42,23 @@ Column {
         })
     }
     function isSelected(id) { return selectedIds.indexOf(id) >= 0 }
-    function toggleSelected(id) {
-        const next = selectedIds.slice()
-        const at = next.indexOf(id)
-        if (at >= 0) next.splice(at, 1); else next.push(id)
+    /// A plain or Ctrl click toggles one folder; Shift adds the range from the
+    /// last plain click over the rows SHOWN (the filter is a view filter) —
+    /// the rule every multi-select list shares (controls/SelectionModel.qml).
+    SelectionModel { id: folderSel }
+    function toggleSelected(id, mods) {
+        const rows = root.shown()
+        const current = {}
+        for (let i = 0; i < selectedIds.length; i++)
+            current[String(selectedIds[i])] = true
+        const picked = folderSel.next(current, id, rows,
+                                      mods === undefined ? Qt.NoModifier : mods)
+        // Back to the ids themselves (the removal action takes them as
+        // numbers), keeping earlier picks the filter currently hides.
+        const next = selectedIds.filter(function (sid) { return picked[String(sid)] === true })
+        for (let j = 0; j < rows.length; j++)
+            if (picked[String(rows[j].id)] === true && next.indexOf(rows[j].id) < 0)
+                next.push(rows[j].id)
         selectedIds = next
     }
     function scanLabel(ts) {
@@ -118,6 +131,7 @@ Column {
                     QbzBridge.settingsString("library-remove-folders",
                         JSON.stringify(root.selectedIds))
                     root.selectedIds = []
+                    folderSel.anchorId = ""
                 }
             }
         }
@@ -279,7 +293,9 @@ Column {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleSelected(folderRow.modelData.id)
+                onClicked: function (mouse) {
+                    root.toggleSelected(folderRow.modelData.id, mouse.modifiers)
+                }
             }
 
             Row {
@@ -292,7 +308,9 @@ Column {
                     width: root.kioskHost ? 44 : 20
                     anchors.verticalCenter: parent.verticalCenter
                     checked: root.isSelected(folderRow.modelData.id)
-                    onToggled: root.toggleSelected(folderRow.modelData.id)
+                    onToggled: function (mods) {
+                        root.toggleSelected(folderRow.modelData.id, mods)
+                    }
                 }
                 // FOLDER: type glyph + name.
                 Row {

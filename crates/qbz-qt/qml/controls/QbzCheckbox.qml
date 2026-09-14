@@ -1,6 +1,11 @@
 // QbzCheckbox (primitives/QbzCheckbox.slint) — 18px square, r4, accent fill
-// with an accent-text check when on, muted border when off. Emits toggled();
-// like the Slint original it never self-flips (the owner of the state does).
+// with an accent-text check when on, muted border when off. Emits
+// toggled(modifiers); like the Slint original it never self-flips (the owner of
+// the state does).
+//
+// `modifiers` is the click's (or the key's), straight through: a multi-select
+// host turns Shift into a range (controls/SelectionModel.qml). Hosts that only
+// flip a flag keep a plain expression handler and never look at it.
 //
 // Used by Settings > Local Library (folder selection) and the Plex library
 // picker, i.e. every place the Slint uses its own QbzCheckbox.
@@ -15,7 +20,7 @@ Rectangle {
     id: root
 
     property bool checked: false
-    signal toggled()
+    signal toggled(int modifiers)
 
     QbzTheme { id: theme }
 
@@ -30,14 +35,14 @@ Rectangle {
     activeFocusOnTab: root.enabled
     Accessible.role: Accessible.CheckBox
     Accessible.checked: root.checked
-    Accessible.onToggleAction: if (root.enabled) root.toggled()
+    Accessible.onToggleAction: if (root.enabled) root.toggled(Qt.NoModifier)
 
     Keys.onPressed: function (event) {
         if (root.enabled && !event.isAutoRepeat
                 && (event.key === Qt.Key_Space
                     || event.key === Qt.Key_Return
                     || event.key === Qt.Key_Enter)) {
-            root.toggled()
+            root.toggled(event.modifiers)
             event.accepted = true
         }
     }
@@ -66,6 +71,6 @@ Rectangle {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         onPressed: root.forceActiveFocus()
-        onClicked: root.toggled()
+        onClicked: function (mouse) { root.toggled(mouse.modifiers) }
     }
 }

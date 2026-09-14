@@ -1187,23 +1187,42 @@ Rectangle {
         return sortRows(rows, genresSort)
     }
 
+    // The Explorer facets follow the spreadsheet rule — a plain click picks
+    // one value, Ctrl adds or removes one, Shift picks the run from the last
+    // click, Ctrl+Shift adds that run (SelectionModel.nextExclusive) — each
+    // column over its values AS LISTED (sorted, and filtered by its own
+    // search box). One anchor per column; a column whose values are rebuilt
+    // by a change upstream starts without one.
+    SelectionModel { id: genreFacetSel; idKey: "key" }
+    SelectionModel { id: yearFacetSel; idKey: "key" }
+    SelectionModel { id: artistFacetSel; idKey: "key" }
+    SelectionModel { id: albumFacetSel; idKey: "key" }
     function toggleGenre(key, modifiers) {
-        selectedGenres = nextFacetSelection(selectedGenres, key, modifiers)
+        selectedGenres = nextFacetSelection(genreFacetSel, selectedGenres, key, modifiers, genreNames)
         selectedGenreYears = ({})
         selectedGenreArtists = ({})
         selectedGenreAlbums = ({})
+        yearFacetSel.anchorId = ""
+        artistFacetSel.anchorId = ""
+        albumFacetSel.anchorId = ""
     }
     function toggleGenreYear(key, modifiers) {
-        selectedGenreYears = nextFacetSelection(selectedGenreYears, key, modifiers)
+        selectedGenreYears = nextFacetSelection(yearFacetSel, selectedGenreYears, key, modifiers,
+                                                genreYearOptions)
         selectedGenreArtists = ({})
         selectedGenreAlbums = ({})
+        artistFacetSel.anchorId = ""
+        albumFacetSel.anchorId = ""
     }
     function toggleGenreArtist(key, modifiers) {
-        selectedGenreArtists = nextFacetSelection(selectedGenreArtists, key, modifiers)
+        selectedGenreArtists = nextFacetSelection(artistFacetSel, selectedGenreArtists, key,
+                                                  modifiers, genreArtistOptions)
         selectedGenreAlbums = ({})
+        albumFacetSel.anchorId = ""
     }
     function toggleGenreAlbum(key, modifiers) {
-        selectedGenreAlbums = nextFacetSelection(selectedGenreAlbums, key, modifiers)
+        selectedGenreAlbums = nextFacetSelection(albumFacetSel, selectedGenreAlbums, key, modifiers,
+                                                 genreAlbumOptions)
     }
     function setExplorerColumns(mode) {
         if (["genre", "year", "both"].indexOf(mode) < 0 || mode === explorerColumns)
@@ -1219,17 +1238,14 @@ Rectangle {
     readonly property int explorerFacetCount: explorerColumns === "both" ? 4 : 3
     readonly property int explorerLeadingCount: explorerColumns === "year"
         ? genreYearOptions.length : genreNames.length
-    function nextFacetSelection(current, key, modifiers) {
-        if (key === "") return ({})
-        var additive = (modifiers & Qt.ControlModifier) !== 0
-            || (modifiers & Qt.MetaModifier) !== 0
-        if (!additive) {
-            var only = {}; only[key] = true; return only
+    /// `key` "" is the column's "All" row: it clears the column.
+    function nextFacetSelection(rule, current, key, modifiers, options) {
+        if (key === "") {
+            rule.anchorId = ""
+            return ({})
         }
-        var out = Object.assign({}, current)
-        if (out[key]) delete out[key]
-        else out[key] = true
-        return out
+        return rule.nextExclusive(current, key, options || [],
+                                  modifiers === undefined ? Qt.NoModifier : modifiers)
     }
 
     // The selected artist's albums.

@@ -33,6 +33,16 @@
 # run BEFORE the build — failing in one second beats failing after two minutes,
 # or worse, at the owner's smoke. NO_AUDIT=1 skips them.
 #
+# ─── EACH WORKTREE BUILDS IN ITS OWN TARGET ─────────────────────────────────
+# scripts/qt-target.py decides where. With Cargo's default target (inside the
+# checkout: macOS, CI) nothing changes. When the host configures ONE target
+# outside the checkout for every worktree, this worktree builds in its own
+# sibling of it, `<target>-worktrees/<worktree>`, so a build in another worktree
+# can never replace the binary built here; rebuilding THIS worktree still does.
+# Its first build of a profile is seeded from the shared target with
+# copy-on-write clones, and crates/target is re-pointed after each successful
+# build. An explicit CARGO_TARGET_DIR is used exactly as given.
+#
 # Usage: ./scripts/qt-run.sh [extra app args]
 #   DEBUG=1     ./scripts/qt-run.sh   # debug profile (the binary the gate uses)
 #   NORUN=1     ./scripts/qt-run.sh   # build only, don't exec
@@ -127,7 +137,6 @@ if [[ "${DEBUG:-0}" == 1 ]]; then
 else
   PROFILE=release; PROFILE_ARGS=(--release)
 fi
-BIN="${CARGO_TARGET_DIR:-crates/target}/${PROFILE}/qbz"
 
 # --- ONE BUILD AT A TIME, BOX-WIDE ------------------------------------------
 # Not paranoia: a Slint `qbz-ui` rustc in another worktree peaks 20-30 GB on a
@@ -140,6 +149,13 @@ if [[ "${FORCE:-0}" != 1 ]]; then
     die "another cargo/rustc is running (${others}). Builds are serialized box-wide — wait, or FORCE=1 if you know it is harmless."
   fi
 fi
+
+# --- Where this worktree builds (see the header) -----------------------------
+# The PHYSICAL path: moc/cc-rs resolve includes wrongly through the crates/target
+# symlink.
+CARGO_TARGET_DIR="$(python3 scripts/qt-target.py resolve)" || die "could not resolve the Cargo target directory"
+export CARGO_TARGET_DIR
+BIN="${CARGO_TARGET_DIR}/${PROFILE}/qbz"
 
 # --- The QML audits (fail fast; cargo cannot see QML) ------------------------
 if [[ "${NO_AUDIT:-0}" != 1 ]]; then
@@ -198,6 +214,17 @@ eta_secs=0
 
 avail_mb=$(mem_avail_mb)
 say "profile=${PROFILE} jobs=${CARGO_BUILD_JOBS} avail=${avail_mb}MB rustflags='${RUSTFLAGS:-}'"
+say "target=${CARGO_TARGET_DIR}"
+
+# A worktree target's first build of a profile starts from the shared target's
+# artifacts (copy-on-write, nothing duplicated) instead of from nothing. After
+# the one-build guard on purpose: never clone a target another build is writing.
+seed_profiles=("${PROFILE}")
+[[ "${TEST:-0}" == 1 && "${PROFILE}" != debug ]] && seed_profiles+=(debug)
+if [[ -z "$(other_builds)" ]]; then
+  python3 scripts/qt-target.py seed --target-dir "${CARGO_TARGET_DIR}" "${seed_profiles[@]}" \
+    || warn "could not seed ${CARGO_TARGET_DIR}; Cargo builds it from scratch"
+fi
 
 # --- Start banner ------------------------------------------------------------
 build_start=$(date +%s)
@@ -232,6 +259,11 @@ fi
 # --- The build ---------------------------------------------------------------
 python3 scripts/qt-cargo.py build "${PROFILE_ARGS[@]}" --manifest-path crates/Cargo.toml -p qbz-qt
 
+# The familiar crates/target path follows the target this worktree just built,
+# and only after a successful build.
+python3 scripts/qt-target.py link --target-dir "${CARGO_TARGET_DIR}" \
+  || warn "crates/target was not re-pointed; the binary is ${BIN}"
+
 # --- Stop the ticker, record the duration, print the final banner ------------
 [[ -n "${tick_pid}" ]] && { kill "${tick_pid}" 2>/dev/null || true; wait "${tick_pid}" 2>/dev/null || true; }
 trap - EXIT
@@ -239,6 +271,7 @@ build_secs=$(( $(date +%s) - build_start ))
 mkdir -p "${eta_dir}" 2>/dev/null && printf '%s\n' "${build_secs}" > "${eta_file}" 2>/dev/null || true
 printf '%s[qt-run] ✔ build finished %s  ·  took %s  (%s)%s\n' \
   "${C_BOLD}${C_GRN}" "$(date '+%H:%M:%S')" "$(fmt_dur "${build_secs}")" "${PROFILE}" "${C_RST}"
+say "binary=${BIN}"
 
 # --- Tests (opt-in) ----------------------------------------------------------
 if [[ "${TEST:-0}" == 1 ]]; then
@@ -260,7 +293,7 @@ if [[ "${SMOKE:-0}" == 1 ]]; then
   # template path so the two agree.
   log="$(mktemp "${TMPDIR:-/tmp}/qbz-qt-smoke-XXXXXX")"
   say "offscreen smoke (75s max) → ${log}"
-  QT_QPA_PLATFORM=offscreen RUST_LOG=info run_timeout 75 "./${BIN}" > "${log}" 2>&1 || true
+  QT_QPA_PLATFORM=offscreen RUST_LOG=info run_timeout 75 "${BIN}" > "${log}" 2>&1 || true
   # A log this short means the process never really started (the macOS
   # `timeout`-not-found case did exactly that). Zero complaints in an empty log
   # is not a pass.

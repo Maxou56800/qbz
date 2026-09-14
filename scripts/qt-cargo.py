@@ -12,9 +12,15 @@ Use this entry point for Qt builds/tests, including direct Cargo invocations:
 No target cleanup, profile changes, or RUSTFLAGS: a content-derived, unused
 C++ define invalidates cc-rs consumers when the SDK changes, in either profile
 and with any Rust toolchain. Existing CXXFLAGS (including MSVC flags) survive.
+
+Where Cargo builds follows scripts/qt-target.py: a host-level target shared by
+every worktree becomes this worktree's own sibling of it, so a direct build or
+test here cannot replace a binary another worktree built. An explicit
+CARGO_TARGET_DIR, or a target inside the checkout, is left to Cargo.
 """
 
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 import re
@@ -112,12 +118,56 @@ def cargo_environment(env):
     return result, version, fingerprint
 
 
+def load_targets():
+    # A hyphenated sibling loaded by path: without this, every build would leave
+    # an untracked scripts/__pycache__ in the checkout.
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location(
+        "qt_target", Path(__file__).with_name("qt-target.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def manifest_argument(arguments):
+    for index, argument in enumerate(arguments):
+        if argument == "--manifest-path" and index + 1 < len(arguments):
+            return Path(arguments[index + 1])
+        if argument.startswith("--manifest-path="):
+            return Path(argument.split("=", 1)[1])
+    return None
+
+
+def target_environment(env, arguments, targets=None):
+    """`env` with CARGO_TARGET_DIR set to this worktree's own target, when the
+    target Cargo would use is shared with other worktrees (qt-target.py)."""
+    targets = targets or load_targets()
+    if targets.explicit(env):
+        return env
+    try:
+        metadata = targets.cargo_metadata(manifest_argument(arguments), dict(env))
+        configured = Path(metadata["target_directory"]).resolve()
+        target = targets.worktree_target(
+            configured, targets.worktree_root(metadata["workspace_root"]), env)
+    except (OSError, subprocess.SubprocessError, KeyError, ValueError) as error:
+        print(f"[qt-cargo] target not resolved ({error}); Cargo's own choice stands",
+              file=sys.stderr, flush=True)
+        return env
+    if target == configured:
+        return env
+    result = dict(env)
+    result["CARGO_TARGET_DIR"] = str(target)
+    print(f"[qt-cargo] worktree target {target}", file=sys.stderr, flush=True)
+    return result
+
+
 def main():
     if len(sys.argv) < 2:
         raise RuntimeError("usage: qt-cargo.py <cargo subcommand> [arguments...]")
     env, version, fingerprint = cargo_environment(os.environ)
     print(f"[qt-cargo] Qt {version}, SDK {fingerprint}, qmake={env['QMAKE']}",
           file=sys.stderr, flush=True)
+    env = target_environment(env, sys.argv[2:])
     # subprocess.run, NOT os.execvpe: on Windows os.exec* is emulated (spawn +
     # terminate) and segfaulted here — the release-windows build died with
     # "Segmentation fault ... exit code 139" right after this line on

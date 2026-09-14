@@ -593,11 +593,14 @@ Item {
                                 selected: root.nativeActive
                                     ? cardCell.slot.selected === true
                                     : root.selected[cardCell.slot.id] === true
-                                onSelectToggled: {
+                                // The card's modifiers, straight through: the
+                                // paged grid (299dcde5b) passed NoModifier here,
+                                // so a Shift-click on a card was a toggle.
+                                onSelectToggled: function (mods) {
                                     if (root.nativeActive)
-                                        root.nativeToggleSelect(cardCell.slot.nativeIndex, Qt.NoModifier)
+                                        root.nativeToggleSelect(cardCell.slot.nativeIndex, mods)
                                     else
-                                        root.toggleSelect(cardCell.slot.id, Qt.NoModifier)
+                                        root.toggleSelect(cardCell.slot.id, mods)
                                 }
                                 // Non-select mode only — the card routes a
                                 // select-mode click to `selectToggled` and never

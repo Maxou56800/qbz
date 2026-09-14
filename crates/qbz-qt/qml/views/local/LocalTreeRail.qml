@@ -20,6 +20,52 @@ Item {
 
     QbzTheme { id: theme }
 
+    // ---- Shift / Ctrl on the rail's checkboxes ----
+    // The selection lives in RUST (QbzLocal.tree*Select owns the set of
+    // paths); what the rail holds is the one piece the rule needs on top of
+    // it, the ANCHOR: the path of the last plain or Ctrl click. A Shift-click
+    // looks it up among the rows drawn right now and SELECTS every row from
+    // there to the clicked one (QbzLocal.treeSelectRange — additive, like
+    // controls/SelectionModel.qml); an anchor that is not drawn any more
+    // (collapsed, filtered away) makes it a plain toggle again.
+    property string selectAnchor: ""
+    Connections {
+        target: root.view
+        function onTreeSelectModeChanged() {
+            if (!root.view.treeSelectMode)
+                root.selectAnchor = ""
+        }
+    }
+    /// The rows from `anchorPath` to `path`, inclusive, in rail order, as the
+    /// `{path, isFolder}` pairs treeSelectRange takes. [] when either is not
+    /// drawn.
+    function rangeNodes(rows, anchorPath, path) {
+        var from = -1
+        var to = -1
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].path === anchorPath) from = i
+            if (rows[i].path === path) to = i
+        }
+        if (from < 0 || to < 0)
+            return []
+        var out = []
+        for (var j = Math.min(from, to); j <= Math.max(from, to); j++)
+            out.push({ "path": rows[j].path, "isFolder": rows[j].isFolder === true })
+        return out
+    }
+    function toggleNodeSelect(node, mods) {
+        if (((mods || 0) & Qt.ShiftModifier) !== 0 && root.selectAnchor !== "") {
+            var nodes = root.rangeNodes(root.view.tree || [], root.selectAnchor, node.path)
+            if (nodes.length > 0) {
+                QbzLocal.treeSelectRange(JSON.stringify(nodes))
+                return
+            }
+        }
+        if (node.isFolder) QbzLocal.treeToggleFolderSelect(node.path)
+        else QbzLocal.treeToggleTrackSelect(node.path)
+        root.selectAnchor = node.path
+    }
+
     Column {
         anchors.fill: parent
         anchors.leftMargin: 12
@@ -149,16 +195,9 @@ Item {
                     selectMode: root.view.treeSelectMode
                     onToggled: QbzLocal.treeToggle(modelData.path, !modelData.expanded)
                     onActivated: root.view.selectFolder(modelData.path)
-                    // NO Shift-range here, deliberately: this rail's selection
-                    // lives in RUST (QbzLocal.treeToggle*Select owns the set),
-                    // not in a QML map, so controls/SelectionModel.qml has
-                    // nothing to hold an anchor against. Giving the tree ranges
-                    // means teaching the Rust side about an anchor, which is a
-                    // change of its own and not part of this port.
-                    onToggleSelect: {
-                        if (modelData.isFolder) QbzLocal.treeToggleFolderSelect(modelData.path)
-                        else QbzLocal.treeToggleTrackSelect(modelData.path)
-                    }
+                    // Shift ranges from the rail's anchor (see
+                    // `toggleNodeSelect` at the top of this file).
+                    onToggleSelect: function (mods) { root.toggleNodeSelect(modelData, mods) }
                 }
             }
             QbzScrollBar {

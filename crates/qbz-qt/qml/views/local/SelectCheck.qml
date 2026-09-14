@@ -5,6 +5,10 @@
 // Slint declares this inline inside TreeRow; the Qt port also needs it on
 // the album cards and the track rows in multi-select, so it is its own file
 // (three call sites, one shape).
+//
+// `toggled` carries the click's modifiers: this disc IS a select-mode click
+// target, and one that dropped them turned every Shift-click on it into a
+// plain toggle (controls/SelectionModel.qml).
 
 import QtQuick
 import com.blitzfc.qbz
@@ -16,7 +20,7 @@ Rectangle {
     property bool on: false
     property bool partial: false
     property int diameter: 13
-    signal toggled()
+    signal toggled(int modifiers)
 
     QbzTheme { id: theme }
 
@@ -52,6 +56,6 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.toggled()
+        onClicked: function (mouse) { root.toggled(mouse.modifiers) }
     }
 }

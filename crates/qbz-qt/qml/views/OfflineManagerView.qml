@@ -107,18 +107,34 @@ Rectangle {
         var p = root.livePatch[row.trackId]
         return (row.kind === "track" && p !== undefined) ? p.status : row.status
     }
-    function toggleSelect(trackId) {
-        var s = Object.assign({}, root.selected)
-        if (s[trackId] === true)
-            delete s[trackId]
-        else
-            s[trackId] = true
-        root.selected = s
+    /// The rule every multi-select list shares (controls/SelectionModel.qml):
+    /// a plain or Ctrl click toggles one track, Shift adds the range from the
+    /// last one — over the TRACK rows as drawn, never the album headers
+    /// between them. The Slint had this surface on its Shift-range table
+    /// (selection.rs SURFACE_OFFLINE); the port left it toggle-only.
+    SelectionModel { id: offlineSel; idKey: "trackId" }
+    function toggleSelect(trackId, mods) {
+        var tracks = root.rows.filter(function (row) { return row.kind === "track" })
+        root.selected = offlineSel.next(root.selected, trackId, tracks,
+                                        mods === undefined ? Qt.NoModifier : mods)
+    }
+
+    // Ctrl+A / Escape hotkey seam (AppShell duck-types these). The selection
+    // here is always on (no select mode), so Ctrl+A ticks every track — as
+    // the Slint's select_all_active_surface did for this view — and Escape
+    // drops a non-empty selection.
+    readonly property bool multiSelectOn: Object.keys(root.selected).length > 0
+    function selectAll() {
+        root.bulkAction("select-all")
+    }
+    function exitMultiSelectMode() {
+        root.bulkAction("clear")
     }
 
     function bulkAction(id) {
         if (id === "clear") {
             root.selected = ({})
+            offlineSel.anchorId = ""
             return
         }
         if (id === "select-all") {
@@ -507,8 +523,19 @@ Rectangle {
                                 hoverEnabled: true
                                 cursorShape: rowItem.isAlbum
                                     ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                onClicked: if (!rowItem.isAlbum)
-                                    QbzOffline.playTrack(rowItem.modelData.trackId)
+                                // A plain click plays; a Shift or Ctrl click is
+                                // a selection gesture, as in any file list, so
+                                // it ticks (or ranges) instead of starting
+                                // playback.
+                                onClicked: function (mouse) {
+                                    if (rowItem.isAlbum)
+                                        return
+                                    if ((mouse.modifiers & (Qt.ShiftModifier | Qt.ControlModifier
+                                                            | Qt.MetaModifier)) !== 0)
+                                        root.toggleSelect(rowItem.modelData.trackId, mouse.modifiers)
+                                    else
+                                        QbzOffline.playTrack(rowItem.modelData.trackId)
+                                }
                             }
 
                             Row {
@@ -526,7 +553,9 @@ Rectangle {
                                         anchors.centerIn: parent
                                         visible: !rowItem.isAlbum
                                         checked: rowItem.checked
-                                        onToggled: root.toggleSelect(rowItem.modelData.trackId)
+                                        onToggled: function (mods) {
+                                            root.toggleSelect(rowItem.modelData.trackId, mods)
+                                        }
                                     }
                                 }
 

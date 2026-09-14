@@ -463,6 +463,43 @@ static RESOLVE_CACHE: LazyLock<Mutex<HashMap<String, ResolvedItem>>> =
 /// the bulk actions in agreement with what the user sees (spec 02 §12 #13).
 static SELECTED: LazyLock<Mutex<HashSet<i32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
+/// The POSITION a Shift-click ranges from (the last plain or Ctrl click).
+/// Dropped wherever `SELECTED` is cleared, so a range never measures from a
+/// row of a previous derive. Lock order: DOC, then SELECTED, then this.
+static SELECT_ANCHOR: Mutex<Option<i32>> = Mutex::new(None);
+
+fn clear_select_anchor() {
+    *SELECT_ANCHOR.lock().unwrap() = None;
+}
+
+/// One select-mode click over the rows as DRAWN (`order` = the rendered
+/// positions, top to bottom). The rule every select-mode surface shares
+/// (qml/controls/SelectionModel.qml): a plain or Ctrl click toggles `position`
+/// and becomes the anchor; Shift ADDS every row from the anchor to `position`
+/// and leaves the anchor where it is, so the range can be adjusted. Without a
+/// drawn anchor a Shift-click is a plain toggle.
+fn apply_item_click(
+    order: &[i32],
+    selected: &mut HashSet<i32>,
+    anchor: &mut Option<i32>,
+    position: i32,
+    shift: bool,
+) {
+    if shift {
+        let from = anchor.and_then(|a| order.iter().position(|p| *p == a));
+        let to = order.iter().position(|p| *p == position);
+        if let (Some(from), Some(to)) = (from, to) {
+            let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+            selected.extend(order[lo..=hi].iter().copied());
+            return;
+        }
+    }
+    if !selected.remove(&position) {
+        selected.insert(position);
+    }
+    *anchor = Some(position);
+}
+
 /// Fingerprint of the last derive's filter/sort/search inputs — what decides
 /// whether a rebuild is a RE-DERIVE (clears the selection) or a row patch.
 static LAST_FILTER_KEY: Mutex<Option<String>> = Mutex::new(None);
@@ -1080,6 +1117,7 @@ fn rebuild(d: &mut DetailDoc) {
         // reference, the COUNT below is recomputed from the same set, so the
         // bulk bar can never claim a selection the rows do not show.
         SELECTED.lock().unwrap().clear();
+        clear_select_anchor();
     }
 
     let view = filtered_sorted(d);
@@ -1431,6 +1469,7 @@ fn reset() {
     // `apply` seeds this one back from it.
     OPEN_ROWS.lock().unwrap().clear();
     SELECTED.lock().unwrap().clear();
+    clear_select_anchor();
     *LAST_FILTER_KEY.lock().unwrap() = None;
     // Close the persist gate until `apply` restores this collection's prefs.
     PREFS_HYDRATED.store(false, Ordering::SeqCst);
@@ -2158,6 +2197,7 @@ pub(crate) fn toggle_select_mode() {
         let on = !d.select_mode;
         if !on {
             SELECTED.lock().unwrap().clear();
+            clear_select_anchor();
             for row in d.items.iter_mut() {
                 row.selected = false;
             }
@@ -2169,24 +2209,19 @@ pub(crate) fn toggle_select_mode() {
     publish(&doc);
 }
 
-/// Toggle one row's selection by its stable POSITION, then recount. A row patch
-/// — never a re-derive.
-pub(crate) fn toggle_item_select(position: i32) {
+/// One select-mode click on a row, by its stable POSITION: a toggle, or with
+/// `shift` the range from the anchor (`apply_item_click`). Then every drawn
+/// row's tick and the count follow the set. A row patch — never a re-derive.
+pub(crate) fn toggle_item_select(position: i32, shift: bool) {
     let doc = with_doc(|d| {
-        let now_selected = {
-            let mut set = SELECTED.lock().unwrap();
-            if set.contains(&position) {
-                set.remove(&position);
-                false
-            } else {
-                set.insert(position);
-                true
-            }
-        };
-        if let Some(row) = d.items.iter_mut().find(|r| r.position == position) {
-            row.selected = now_selected;
+        let order: Vec<i32> = d.items.iter().map(|r| r.position).collect();
+        let mut set = SELECTED.lock().unwrap();
+        let mut anchor = SELECT_ANCHOR.lock().unwrap();
+        apply_item_click(&order, &mut set, &mut anchor, position, shift);
+        for row in d.items.iter_mut() {
+            row.selected = set.contains(&row.position);
         }
-        d.selected_count = SELECTED.lock().unwrap().len() as i32;
+        d.selected_count = set.len() as i32;
         d.clone()
     });
     publish(&doc);
@@ -2197,6 +2232,7 @@ pub(crate) fn toggle_item_select(position: i32) {
 pub(crate) fn clear_selection() {
     let doc = with_doc(|d| {
         SELECTED.lock().unwrap().clear();
+        clear_select_anchor();
         for row in d.items.iter_mut() {
             row.selected = false;
         }
@@ -2374,6 +2410,7 @@ pub(crate) fn teardown() {
     RESOLVE_CACHE.lock().unwrap().clear();
     OPEN_ROWS.lock().unwrap().clear();
     SELECTED.lock().unwrap().clear();
+    clear_select_anchor();
     *LAST_FILTER_KEY.lock().unwrap() = None;
     PREFS_HYDRATED.store(false, Ordering::SeqCst);
     let doc = with_doc(|d| {
@@ -2494,6 +2531,45 @@ pub(crate) fn bulk_action(id: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn picked(set: &HashSet<i32>) -> Vec<i32> {
+        let mut out: Vec<i32> = set.iter().copied().collect();
+        out.sort_unstable();
+        out
+    }
+
+    #[test]
+    fn select_click_ranges_over_the_drawn_order() {
+        // Rows drawn in a sorted order that is NOT the position order.
+        let order = [4, 0, 7, 2, 9, 5];
+        let mut set = HashSet::new();
+        let mut anchor = None;
+        apply_item_click(&order, &mut set, &mut anchor, 0, false);
+        assert_eq!(anchor, Some(0));
+        apply_item_click(&order, &mut set, &mut anchor, 9, true);
+        // 0, 7, 2, 9 are the drawn rows between them; 4 and 5 are outside.
+        assert_eq!(picked(&set), vec![0, 2, 7, 9]);
+        assert_eq!(anchor, Some(0), "a Shift-click keeps the anchor");
+        // Re-dragging the range upward only ever adds.
+        apply_item_click(&order, &mut set, &mut anchor, 4, true);
+        assert_eq!(picked(&set), vec![0, 2, 4, 7, 9]);
+    }
+
+    #[test]
+    fn select_click_toggles_and_moves_the_anchor() {
+        let order = [1, 2, 3, 4];
+        let mut set = HashSet::new();
+        let mut anchor = None;
+        apply_item_click(&order, &mut set, &mut anchor, 3, false);
+        apply_item_click(&order, &mut set, &mut anchor, 3, false);
+        assert!(set.is_empty(), "a second plain click unticks the row");
+        assert_eq!(anchor, Some(3));
+        // Shift without a drawn anchor is a plain toggle that anchors there.
+        let mut gone = Some(42);
+        apply_item_click(&order, &mut set, &mut gone, 2, true);
+        assert_eq!(picked(&set), vec![2]);
+        assert_eq!(gone, Some(2));
+    }
 
     fn item(
         position: i32,

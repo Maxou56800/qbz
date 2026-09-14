@@ -350,15 +350,18 @@ Rectangle {
     property string albumSelectKey: ""
     property var albumSelected: ({})
     readonly property int albumSelectedCount: Object.keys(root.albumSelected).length
-    function albumSelectToggle(id) {
-        var m = Object.assign({}, root.albumSelected)
-        if (m[id]) delete m[id]
-        else m[id] = true
-        root.albumSelected = m
+    /// The armed section's cards follow the same rule as every other
+    /// select-mode surface: Shift-click ranges over the section's cards in
+    /// their CURRENT sort order, Ctrl adds one (controls/SelectionModel.qml).
+    SelectionModel { id: albumSectionSel }
+    function albumSelectToggle(id, cards, mods) {
+        root.albumSelected = albumSectionSel.next(root.albumSelected, id, cards || [],
+                                                  mods === undefined ? Qt.NoModifier : mods)
     }
     function albumSelectClear() {
         root.albumSelectKey = ""
         root.albumSelected = ({})
+        albumSectionSel.anchorId = ""
     }
     function albumSectionLabel(key) {
         return root.albumSelectKey === key
@@ -393,6 +396,7 @@ Rectangle {
         } else if (action === "play-selected") {
             root.albumSelectKey = key
             root.albumSelected = ({})
+            albumSectionSel.anchorId = ""
         } else if (action === "cancel-selection") {
             root.albumSelectClear()
         }
@@ -2261,7 +2265,9 @@ Rectangle {
                     selectMode: root.albumSelectKey === (relSection.section.releaseType || "")
                     selected: root.albumSelected[modelData.id] === true
                     selectMarkBottom: true
-                    onSelectToggled: root.albumSelectToggle(modelData.id)
+                    onSelectToggled: function (mods) {
+                        root.albumSelectToggle(modelData.id, relSection.section.cards || [], mods)
+                    }
 
                     // ---- smooth append (owner, 2026-08-02) ---------------
                     // "que la aparicion de lo que se cargue, sea smooth" —
@@ -3273,7 +3279,9 @@ Rectangle {
                             selectMode: root.albumSelectKey === "library"
                             selected: root.albumSelected[modelData.id] === true
                             selectMarkBottom: true
-                            onSelectToggled: root.albumSelectToggle(modelData.id)
+                            onSelectToggled: function (mods) {
+                                root.albumSelectToggle(modelData.id, root.libAlbumsSorted, mods)
+                            }
                             albumId: modelData.id
                             title: modelData.title
                             artist: modelData.artist

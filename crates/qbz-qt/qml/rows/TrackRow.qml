@@ -749,7 +749,10 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleSelect(Qt.NoModifier)
+                    // The disc is where a select-mode click most often lands,
+                    // so it hands over the modifiers exactly like the body:
+                    // a plain `NoModifier` here made Shift-click a toggle.
+                    onClicked: function (mouse) { root.toggleSelect(mouse.modifiers) }
                 }
             }
             Text {
@@ -969,6 +972,9 @@ Rectangle {
                         MouseArea {
                             anchors.fill: parent
                             hoverEnabled: true
+                            // Hover only: a tooltip must not eat the click the
+                            // row body (play, or a select-mode toggle) owns.
+                            acceptedButtons: Qt.NoButton
                             ToolTip.visible: containsMouse
                             ToolTip.delay: 300
                             // NEW msgid — the one string this state needs and
@@ -1078,7 +1084,12 @@ Rectangle {
                 MouseArea {
                     id: artistLinkArea
                     anchors.fill: parent
-                    enabled: root.artistLink && (artistLine.linkMode || !!root.item.artistId)
+                    // In select mode the whole row is a selection target
+                    // (TrackRow.slint:174): the names stop being links so the
+                    // click — and its Shift / Ctrl — reaches the row body
+                    // instead of opening an artist page mid-selection.
+                    enabled: !root.selectMode
+                        && root.artistLink && (artistLine.linkMode || !!root.item.artistId)
                     hoverEnabled: true
                     cursorShape: (artistLine.linkMode
                                   ? (artistLine.hotSpan >= 0 && artistLine.spans[artistLine.hotSpan].href !== "")
@@ -1088,6 +1099,9 @@ Rectangle {
                             artistLine.hotSpan = artistLine.spanAt(mouse.x)
                     }
                     onExited: artistLine.hotSpan = -1
+                    // Entering select mode under the pointer disables the area
+                    // without an `exited`; the hot name must not stay lit.
+                    onEnabledChanged: if (!enabled) artistLine.hotSpan = -1
                     // Same routing as the menu's "Go to artist" — Slint drives
                     // both through one handler, so gating only the menu would
                     // leave the LINK navigating to the track's own artist.
@@ -1116,7 +1130,8 @@ Rectangle {
             MouseArea {
                 id: albumArea
                 anchors.fill: parent
-                enabled: !!root.item.albumId && !root.releaseGone
+                // Not a link in select mode, for the artist line's reason.
+                enabled: !root.selectMode && !!root.item.albumId && !root.releaseGone
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 // The names ride along so a release the catalog lost can

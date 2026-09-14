@@ -171,7 +171,9 @@ Rectangle {
         }
         onClicked: function (mouse) {
             if (mouse.button !== Qt.LeftButton) return
-            if (root.selectMode) QbzMyQbz.detailToggleItemSelect(root.itemPosition)
+            if (root.selectMode)
+                QbzMyQbz.detailToggleItemSelect(root.itemPosition,
+                                                (mouse.modifiers & Qt.ShiftModifier) !== 0)
             else root.openThis()
         }
     }
@@ -247,7 +249,10 @@ Rectangle {
                 visible: root.selectMode
                 anchors.centerIn: parent
                 on: root.selected
-                onToggled: QbzMyQbz.detailToggleItemSelect(root.itemPosition)
+                onToggled: function (mods) {
+                    QbzMyQbz.detailToggleItemSelect(root.itemPosition,
+                                                    (mods & Qt.ShiftModifier) !== 0)
+                }
             }
         }
 
@@ -295,6 +300,10 @@ Rectangle {
                 MouseArea {
                     id: artArea
                     anchors.fill: parent
+                    // In select mode the whole row selects (Shift / Ctrl
+                    // included): the artwork, title and artist stop playing
+                    // or navigating so the click reaches the row body.
+                    enabled: !root.selectMode
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: QbzMyQbz.playItem(root.sourceItemId)
@@ -321,6 +330,7 @@ Rectangle {
                     MouseArea {
                         id: titleArea
                         anchors.fill: parent
+                        enabled: !root.selectMode
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.openThis()
@@ -343,6 +353,7 @@ Rectangle {
                     MouseArea {
                         id: subArea
                         anchors.fill: parent
+                        enabled: !root.selectMode
                         hoverEnabled: true
                         cursorShape: root.subtitleIsLink ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {

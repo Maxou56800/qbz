@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """SDK-cache and crash-aware smoke regressions; no Qt or Cargo build needed."""
 
+import contextlib
 import importlib.util
+import io
+import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 import sys
@@ -21,6 +26,222 @@ def load(name, filename):
 
 qt = load("qt_cargo", "qt-cargo.py")
 smoke = load("qt_smoke", "qt-smoke.py")
+targets = load("qt_target", "qt-target.py")
+
+
+@unittest.skipIf(os.name == "nt", "unprivileged Windows symlinks may be unavailable")
+class TargetTests(unittest.TestCase):
+    """Each worktree keeps its own binaries when the host shares one target."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.worktree = self.root / "checkouts" / "main-tree"
+        self.crates = self.worktree / "crates"
+        self.crates.mkdir(parents=True)
+        self.manifest = self.crates / "Cargo.toml"
+        self.manifest.touch()
+        self.shared = self.root / "nvme" / "qbz"
+        (self.shared / "release" / "deps").mkdir(parents=True)
+        (self.shared / "release" / "incremental").mkdir()
+        (self.shared / "release" / "deps" / "libdep.rlib").write_bytes(b"registry crate")
+        (self.shared / "release" / "incremental" / "session").write_bytes(b"workspace cache")
+        (self.shared / "release" / "qbz").write_bytes(b"another worktree's binary")
+        self.derived = self.root / "nvme" / "qbz-worktrees" / "main-tree"
+
+    def test_shared_host_target_becomes_this_worktrees_own_sibling(self):
+        self.assertEqual(targets.worktree_target(self.shared, self.worktree, {}), self.derived)
+        other = self.root / "checkouts" / "codex-tree"
+        self.assertEqual(targets.worktree_target(self.shared, other, {}),
+                         self.root / "nvme" / "qbz-worktrees" / "codex-tree")
+
+    def test_explicit_override_and_checkout_target_are_used_as_given(self):
+        for name in targets.EXPLICIT_ENV:
+            with self.subTest(env=name):
+                self.assertEqual(targets.worktree_target(self.shared, self.worktree, {name: "/pinned"}),
+                                 self.shared)
+        inside = self.crates / "target"
+        self.assertEqual(targets.worktree_target(inside, self.worktree, {}), inside)
+
+    def test_two_checkouts_with_one_directory_name_never_share_a_target(self):
+        self.derived.mkdir(parents=True)
+        (self.derived / targets.MARKER).write_text(str(self.root / "elsewhere" / "main-tree") + "\n")
+        second = targets.worktree_target(self.shared, self.worktree, {})
+        self.assertNotEqual(second, self.derived)
+        self.assertTrue(second.name.startswith("main-tree-"))
+        self.assertEqual(second, targets.worktree_target(self.shared, self.worktree, {}))
+        (self.derived / targets.MARKER).write_text(str(self.worktree) + "\n")
+        self.assertEqual(targets.worktree_target(self.shared, self.worktree, {}), self.derived)
+
+    def test_resolve_reads_cargo_metadata_for_the_manifest(self):
+        metadata = {"target_directory": str(self.shared), "workspace_root": str(self.crates)}
+        with patch.object(targets, "cargo_metadata", return_value=metadata) as cargo, \
+                patch.object(targets, "worktree_root", return_value=self.worktree):
+            self.assertEqual(targets.resolve_target(self.manifest, {}), self.derived)
+        self.assertEqual(cargo.call_args.args[0], self.manifest)
+
+    def test_link_keeps_the_familiar_path_and_claims_the_worktree_target(self):
+        (self.derived / "release").mkdir(parents=True)
+        (self.derived / "release" / "qbz").write_bytes(b"this worktree's binary")
+        targets.link_target(self.manifest, self.derived, self.worktree)
+        targets.link_target(self.manifest, self.derived, self.worktree)
+        alias = self.crates / "target"
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual((alias / "release" / "qbz").read_bytes(), b"this worktree's binary")
+        self.assertEqual((self.derived / targets.MARKER).read_text().strip(), str(self.worktree))
+        # A pinned target is linked but never claimed.
+        targets.link_target(self.manifest, self.shared, self.worktree)
+        self.assertFalse((self.shared / targets.MARKER).exists())
+
+    def test_real_directory_is_never_removed(self):
+        alias = self.crates / "target"
+        alias.mkdir()
+        sentinel = alias / "keep"
+        sentinel.write_text("preserve")
+        targets.link_target(self.manifest, alias)
+        with self.assertRaisesRegex(RuntimeError, "preserving"):
+            targets.link_target(self.manifest, self.shared)
+        self.assertEqual(sentinel.read_text(), "preserve")
+        self.assertFalse(alias.is_symlink())
+
+    def test_old_shortcut_is_replaced_but_a_missing_build_cannot_replace_it(self):
+        alias = self.crates / "target"
+        alias.symlink_to(self.root / "old", target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, "does not exist"):
+            targets.link_target(self.manifest, self.root / "missing")
+        self.assertEqual(os.readlink(alias), str(self.root / "old"))
+        targets.link_target(self.manifest, self.shared)
+        self.assertEqual(alias.resolve(), self.shared)
+
+    @staticmethod
+    def copy(entries, destination):
+        for entry in entries:
+            if entry.is_dir():
+                shutil.copytree(entry, destination / entry.name)
+            else:
+                shutil.copy2(entry, destination / entry.name)
+
+    def test_seed_clones_a_missing_profile_once_and_skips_incremental(self):
+        self.assertEqual(targets.seed_target(self.derived, self.shared, ["release", "debug"], self.copy),
+                         ["release"])
+        self.assertEqual((self.derived / "release" / "deps" / "libdep.rlib").read_bytes(), b"registry crate")
+        self.assertFalse((self.derived / "release" / "incremental").exists())
+        (self.derived / "release" / "qbz").write_bytes(b"this worktree's binary")
+        self.assertEqual(targets.seed_target(self.derived, self.shared, ["release"], self.copy), [])
+        self.assertEqual((self.derived / "release" / "qbz").read_bytes(), b"this worktree's binary")
+        self.assertEqual((self.shared / "release" / "qbz").read_bytes(), b"another worktree's binary")
+
+    def test_seed_never_touches_pinned_targets_and_leaves_no_partial_clone(self):
+        pinned = self.root / "pinned"
+        self.assertEqual(targets.seed_target(pinned, self.shared, ["release"], self.copy), [])
+        self.assertFalse(pinned.exists())
+        self.assertEqual(targets.seed_target(self.shared, self.shared, ["release"], self.copy), [])
+
+        def broken(entries, destination):
+            (destination / "half").write_bytes(b"partial")
+            raise OSError("clone not supported")
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(targets.seed_target(self.derived, self.shared, ["release"], broken), [])
+        self.assertEqual(list(self.derived.iterdir()), [])
+
+
+class CargoTargetEnvironmentTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.worktree = self.root / "tree"
+        self.shared = self.root / "shared" / "qbz"
+        self.metadata = {"target_directory": str(self.shared), "workspace_root": str(self.worktree / "crates")}
+        for name, value in (("cargo_metadata", lambda *_: self.metadata),
+                            ("worktree_root", lambda *_: self.worktree)):
+            mock = patch.object(targets, name, side_effect=value)
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    def environment(self, env, arguments=("--manifest-path", "crates/Cargo.toml")):
+        with contextlib.redirect_stderr(io.StringIO()):
+            return qt.target_environment(env, list(arguments), targets)
+
+    def test_direct_builds_and_tests_use_the_worktree_target(self):
+        env = self.environment({"PATH": "/bin"})
+        self.assertEqual(env["CARGO_TARGET_DIR"], str(self.root / "shared" / "qbz-worktrees" / "tree"))
+        self.assertEqual(targets.cargo_metadata.call_args.args[0], Path("crates/Cargo.toml"))
+
+    def test_explicit_and_checkout_targets_are_left_to_cargo(self):
+        pinned = {"CARGO_TARGET_DIR": "/pinned"}
+        self.assertIs(self.environment(pinned), pinned)
+        self.metadata["target_directory"] = str(self.worktree / "crates" / "target")
+        plain = {"PATH": "/bin"}
+        self.assertIs(self.environment(plain), plain)
+
+    def test_unresolvable_metadata_keeps_cargos_own_choice(self):
+        targets.cargo_metadata.side_effect = subprocess.CalledProcessError(101, "cargo")
+        plain = {"PATH": "/bin"}
+        self.assertIs(self.environment(plain), plain)
+
+    def test_manifest_argument_forms(self):
+        self.assertEqual(qt.manifest_argument(["-p", "qbz-qt", "--manifest-path", "a/Cargo.toml"]),
+                         Path("a/Cargo.toml"))
+        self.assertEqual(qt.manifest_argument(["--manifest-path=b/Cargo.toml"]), Path("b/Cargo.toml"))
+        self.assertIsNone(qt.manifest_argument(["--release"]))
+
+
+@unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "requires bash")
+class RunnerTargetTests(unittest.TestCase):
+    def test_runner_builds_in_the_worktree_target_links_after_success_and_runs_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            root = base / "main tree"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            (root / "crates").mkdir()
+            (root / "crates/Cargo.toml").touch()
+            shared = base / "shared target"
+            expected = base / "shared target-worktrees" / "main-tree"
+            for filename in ("qt-run.sh", "qt-target.py"):
+                shutil.copyfile(Path(__file__).with_name(filename), scripts / filename)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            cargo = fake_bin / "cargo"
+            cargo.write_text('#!/bin/sh\n[ "$FAIL_METADATA" = 1 ] && exit 7\nprintf \'%s\\n\' "$TARGET_METADATA"\n')
+            cargo.chmod(0o755)
+            git = fake_bin / "git"
+            git.write_text("#!/bin/sh\nexit 128\n")
+            git.chmod(0o755)
+            (scripts / "qt-cargo.py").write_text(
+                'import os, pathlib, sys\n'
+                'target = pathlib.Path(os.environ["CARGO_TARGET_DIR"])\n'
+                'assert target == pathlib.Path(os.environ["EXPECTED_TARGET"]), target\n'
+                'if os.environ.get("FAIL_BUILD") == "1": sys.exit(9)\n'
+                '(target / "release").mkdir(parents=True, exist_ok=True)\n'
+                'binary = target / "release/qbz"\n'
+                'binary.write_text("#!/bin/sh\\nprintf \'artifact executed: %s\\\\n\' \\"$1\\"\\n")\n'
+                'binary.chmod(0o755)\n'
+            )
+            metadata = json.dumps({"target_directory": str(shared), "workspace_root": str(root / "crates")})
+            env = dict(os.environ, PATH=str(fake_bin) + os.pathsep + os.environ["PATH"],
+                       TARGET_METADATA=metadata, EXPECTED_TARGET=str(expected), NO_AUDIT="1",
+                       NO_TICKER="1", FORCE="1", NORUN="0", SMOKE="0", TEST="0", DEBUG="0",
+                       MOLD="0", XDG_CACHE_HOME=str(base / "cache"), FAIL_METADATA="1", FAIL_BUILD="0")
+            for name in targets.EXPLICIT_ENV:
+                env.pop(name, None)
+            command = ["bash", str(scripts / "qt-run.sh"), "fixture-argument"]
+            failed = subprocess.run(command, env=env, text=True, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(expected.exists())
+            env.update(FAIL_METADATA="0", FAIL_BUILD="1")
+            failed = subprocess.run(command, env=env, text=True, capture_output=True)
+            self.assertEqual(failed.returncode, 9, failed.stderr)
+            self.assertFalse((root / "crates/target").is_symlink())
+            env["FAIL_BUILD"] = "0"
+            result = subprocess.run(command, env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("artifact executed: fixture-argument", result.stdout)
+            self.assertEqual((root / "crates/target/release/qbz").resolve(), expected / "release/qbz")
+            self.assertFalse((shared / "release/qbz").exists(), "the shared target is never built into")
 
 
 class SdkTests(unittest.TestCase):

@@ -365,6 +365,11 @@ pub mod qbz_local {
         /// Track checkbox: toggle one row by file path.
         #[qinvokable]
         fn tree_toggle_track_select(self: Pin<&mut QbzLocal>, path: QString);
+        /// Shift-click on a rail checkbox: SELECT every visible row from the
+        /// anchor to the clicked one. `nodes_json` =
+        /// `[{"path": …, "isFolder": …}]` in rail order.
+        #[qinvokable]
+        fn tree_select_range(self: Pin<&mut QbzLocal>, nodes_json: QString);
         /// Tree-rail bulk bar.
         #[qinvokable]
         fn folders_bulk_action(self: Pin<&mut QbzLocal>, action: QString);
@@ -1755,6 +1760,10 @@ impl qbz_local::QbzLocal {
 
     pub fn tree_toggle_track_select(self: Pin<&mut Self>, path: QString) {
         crate::local_bulk::toggle_track_select(path.to_string());
+    }
+
+    pub fn tree_select_range(self: Pin<&mut Self>, nodes_json: QString) {
+        crate::local_bulk::select_tree_range(nodes_json.to_string());
     }
 
     pub fn folders_bulk_action(self: Pin<&mut Self>, action: QString) {
