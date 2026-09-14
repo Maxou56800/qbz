@@ -25,7 +25,10 @@ Item {
     readonly property real travel: Math.max(0, height - thumbH)
     // Shown while scrolling, hovering, or dragging (auto-hide).
     property bool scrollActive: false
-    readonly property bool shown: scrollActive || barArea.containsMouse || barArea.pressed
+    /// Keep the track and thumb painted while there is anything to scroll
+    /// (the shared text modal: a long biography must read as scrollable).
+    property bool alwaysShown: false
+    readonly property bool shown: alwaysShown || scrollActive || barArea.containsMouse || barArea.pressed
 
     Connections {
         target: root.target

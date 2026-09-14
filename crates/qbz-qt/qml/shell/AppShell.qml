@@ -687,6 +687,32 @@ Rectangle {
         textModalOpen = true
     }
 
+    // Bodies arrive as plain text with blank lines between paragraphs (the
+    // biography and review sources). Rendered as rich text so the line height
+    // can breathe — TextEdit has no lineHeight — and the paragraphs keep
+    // their gap; single newlines stay line breaks.
+    function textModalHtml(body) {
+        var esc = function (s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        }
+        var paras = String(body || "").replace(/\r\n/g, "\n").split(/\n{2,}/)
+        var out = []
+        for (var i = 0; i < paras.length; i++) {
+            var p = paras[i].trim()
+            if (p === "") continue
+            out.push("<p style=\"line-height:150%; margin-top:0; margin-bottom:14px\">"
+                     + esc(p).replace(/\n/g, "<br>") + "</p>")
+        }
+        return out.join("")
+    }
+    property bool textModalCopied: false
+    Timer {
+        id: textModalCopiedTimer
+        interval: 1400
+        onTriggered: root.textModalCopied = false
+    }
+    QbzClipboard { id: textModalClipboard }
+
     Rectangle {
         visible: root.textModalOpen
         anchors.fill: parent
@@ -699,8 +725,11 @@ Rectangle {
         }
         Rectangle {
             anchors.centerIn: parent
-            width: Math.min(root.width - 80, 560)
-            height: Math.min(root.height - 120, 460)
+            // At least 75% x 65% of the window (2026-09-13): the old 560 x 460
+            // card crammed a biography into a column the reader had to squint
+            // at. Floors for small windows, ceilings that keep a margin.
+            width: Math.min(root.width - 32, Math.max(Math.round(root.width * 0.75), 560))
+            height: Math.min(root.height - 40, Math.max(Math.round(root.height * 0.65), 400))
             radius: theme.radiusMd
             color: theme.surfaceCard
             border.width: 1
@@ -712,23 +741,55 @@ Rectangle {
             }
             Column {
                 anchors.fill: parent
-                anchors.margins: 24
-                spacing: 14
+                anchors.margins: 28
+                spacing: 16
                 Row {
                     width: parent.width
+                    spacing: 8
                     Text {
-                        width: parent.width - 28
+                        width: parent.width - 28 - 28 - 16
                         text: root.textModalTitle
                         color: theme.textPrimary
                         font.pixelSize: theme.fontHeading
                         font.weight: theme.weightSemibold
+                        elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                    // Copy the whole body (plain text) to the clipboard; the
+                    // glyph turns into a check for a moment as the receipt.
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        color: tmCopyArea.containsMouse ? theme.surfaceHover : "transparent"
+                        radius: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        QbzIcon {
+                            name: root.textModalCopied ? "check" : "copy"
+                            width: 16
+                            height: 16
+                            anchors.centerIn: parent
+                            tintName: root.textModalCopied ? "accent"
+                                : (tmCopyArea.containsMouse ? "textPrimary" : "muted")
+                        }
+                        MouseArea {
+                            id: tmCopyArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (textModalClipboard.copy(root.textModalBody)) {
+                                    root.textModalCopied = true
+                                    textModalCopiedTimer.restart()
+                                }
+                            }
+                        }
                     }
                     Rectangle {
                         width: 28
                         height: 28
                         color: tmCloseArea.containsMouse ? theme.surfaceHover : "transparent"
                         radius: 6
+                        anchors.verticalCenter: parent.verticalCenter
                         QbzIcon {
                             name: "x"
                             width: 18
@@ -745,19 +806,34 @@ Rectangle {
                         }
                     }
                 }
-                Flickable {
+                Item {
                     width: parent.width
-                    height: parent.height - 42
-                    clip: true
-                    contentWidth: width
-                    contentHeight: tmText.implicitHeight
-                    Text {
-                        id: tmText
-                        width: parent.width
-                        text: root.textModalBody
-                        color: theme.textSecondary
-                        font.pixelSize: theme.fontBody
-                        wrapMode: Text.WordWrap
+                    height: parent.height - 28 - 16
+                    Flickable {
+                        id: tmFlick
+                        anchors.fill: parent
+                        anchors.rightMargin: 22
+                        clip: true
+                        contentWidth: width
+                        contentHeight: tmText.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        // Selectable, one size up from body text, paragraphs
+                        // with room between them.
+                        QbzSelectableText {
+                            id: tmText
+                            width: tmFlick.width
+                            rich: true
+                            text: root.textModalHtml(root.textModalBody)
+                            color: theme.textPrimary
+                            pixelSize: theme.fontBody + 1
+                        }
+                    }
+                    QbzScrollBar {
+                        target: tmFlick
+                        alwaysShown: true
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                     }
                 }
             }

@@ -13,6 +13,7 @@
 //   }
 
 import QtQuick
+import "../controls"
 import "../theme"
 
 Column {
@@ -28,15 +29,13 @@ Column {
     width: cellWidth
     spacing: 6
 
-    Text {
+    QbzSelectableText {
         width: mc.cellWidth
         text: mc.label
         color: mc.overAmbient ? "#b3ffffff" : theme.textMuted
-        style: mc.overAmbient ? Text.Raised : Text.Normal
-        styleColor: "#b0000000"
-        font.pixelSize: 11
-        font.weight: theme.weightSemibold
-        font.letterSpacing: 0.5
-        elide: Text.ElideRight
+        raised: mc.overAmbient
+        pixelSize: 11
+        weight: theme.weightSemibold
+        letterSpacing: 0.5
     }
 }

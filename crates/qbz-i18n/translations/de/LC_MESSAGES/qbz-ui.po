@@ -7639,3 +7639,11 @@ msgstr "Playlist löschen?"
 #: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
 msgid "“{}” will be deleted. This cannot be undone."
 msgstr "„{}“ wird gelöscht. Das lässt sich nicht rückgängig machen."
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy basic data"
+msgstr "Basisdaten kopieren"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy full"
+msgstr "Alles kopieren"
