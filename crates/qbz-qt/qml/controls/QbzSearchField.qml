@@ -22,6 +22,14 @@ Rectangle {
 
     property alias text: input.text
     property string placeholder: ""
+    /// The leading magnifier; off for hosts whose own toggle already shows one
+    /// (the sidebar's inline filters).
+    property bool showGlyph: true
+    /// Escape emptied the field and handed the keyboard back; a host that
+    /// folds the field away listens here.
+    signal escaped()
+    /// The clear cross scales with a short field (the sidebar's 22px rows).
+    readonly property int clearSize: Math.min(22, Math.max(16, height - 2))
     property int glyphSize: 14
     property int fontPx: 13
     property int sidePadding: 10
@@ -80,6 +88,7 @@ Rectangle {
     }
 
     QbzIcon {
+        visible: root.showGlyph
         name: "search"
         width: root.glyphSize
         height: root.glyphSize
@@ -92,7 +101,7 @@ Rectangle {
         QbzTextEditMenu { }
         anchors.left: parent.left
         anchors.right: clearSlot.left
-        anchors.leftMargin: root.sidePadding + root.glyphSize + 7
+        anchors.leftMargin: root.sidePadding + (root.showGlyph ? root.glyphSize + 7 : 0)
         anchors.rightMargin: 4
         height: parent.height
         color: theme.textPrimary
@@ -106,6 +115,7 @@ Rectangle {
         }
         Keys.onEscapePressed: function (event) {
             root.clearAndBlur()
+            root.escaped()
             event.accepted = true
         }
         Text {
@@ -124,19 +134,19 @@ Rectangle {
         id: clearSlot
         anchors.right: parent.right
         anchors.rightMargin: 5
-        width: input.text !== "" ? 22 : 0
+        width: input.text !== "" ? root.clearSize : 0
         height: parent.height
         visible: input.text !== ""
         Rectangle {
             anchors.centerIn: parent
-            width: 22
-            height: 22
-            radius: 11
+            width: root.clearSize
+            height: root.clearSize
+            radius: root.clearSize / 2
             color: clearArea.containsMouse ? theme.surfaceHover : "transparent"
             QbzIcon {
                 name: "x"
-                width: 12
-                height: 12
+                width: Math.round(root.clearSize * 0.55)
+                height: Math.round(root.clearSize * 0.55)
                 anchors.centerIn: parent
                 tintName: clearArea.containsMouse ? "textPrimary" : "muted"
             }

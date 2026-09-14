@@ -903,12 +903,10 @@ Rectangle {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.myqbzSearchOpen = !root.myqbzSearchOpen
-                                    if (!root.myqbzSearchOpen) {
-                                        myqbzSearchEdit.text = ""
-                                        root.myqbzSearch = ""
-                                    } else {
-                                        myqbzSearchEdit.forceActiveFocus()
-                                    }
+                                    if (!root.myqbzSearchOpen)
+                                        myqbzSearchEdit.clear()
+                                    else
+                                        myqbzSearchEdit.focusField()
                                 }
                             }
                         }
@@ -999,8 +997,11 @@ Rectangle {
                             onClicked: QbzShell.navigateTo("collections")
                         }
                     }
-                    // Inline search field (filters the tree client-side).
-                    Rectangle {
+                    // Inline search field (filters the tree client-side). The
+                    // shared search box: Escape empties it AND folds it away,
+                    // the cross empties it and keeps the caret.
+                    QbzSearchField {
+                        id: myqbzSearchEdit
                         visible: root.myqbzSearchOpen
                         anchors.left: myqbzBrandIcon.right
                         anchors.leftMargin: 8
@@ -1009,28 +1010,12 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 22
                         radius: 4
-                        color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
-                        border.width: 1
-                        border.color: theme.borderSubtle
-                        TextInput {
-                            QbzTextEditMenu { }
-                            id: myqbzSearchEdit
-                            anchors.fill: parent
-                            anchors.leftMargin: 6
-                            color: theme.textPrimary
-                            font.pixelSize: 12
-                            verticalAlignment: Text.AlignVCenter
-                            clip: true
-                            onTextEdited: root.myqbzSearch = text
-                            Text {
-                                visible: myqbzSearchEdit.text === ""
-                                anchors.fill: parent
-                                text: QbzSession.tr("Search My QBZ", QbzSession.trRev)
-                                color: theme.textMuted
-                                font.pixelSize: 12
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
+                        showGlyph: false
+                        sidePadding: 6
+                        fontPx: 12
+                        placeholder: QbzSession.tr("Search My QBZ", QbzSession.trRev)
+                        onEdited: function (text) { root.myqbzSearch = text }
+                        onEscaped: root.myqbzSearchOpen = false
                     }
                 }
 
@@ -1280,34 +1265,21 @@ Rectangle {
                 font.letterSpacing: 1
                 verticalAlignment: Text.AlignVCenter
             }
-            // Inline search input (filters entries, recursive).
-            Rectangle {
+            // Inline search input (filters entries, recursive). The shared
+            // search box: Escape empties it AND folds it back into the title,
+            // the cross empties it and keeps the caret.
+            QbzSearchField {
+                id: searchEdit
                 visible: root.searchOpen
                 width: parent.width - 4 * 26
                 height: 22
                 radius: 4
-                color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
-                border.width: 1
-                border.color: theme.borderSubtle
-                TextInput {
-                    QbzTextEditMenu { }
-                    id: searchEdit
-                    anchors.fill: parent
-                    anchors.leftMargin: 6
-                    color: theme.textPrimary
-                    font.pixelSize: 12
-                    verticalAlignment: Text.AlignVCenter
-                    clip: true
-                    onTextEdited: QbzShell.sidebarSearch(text)
-                    Text {
-                        visible: searchEdit.text === ""
-                        anchors.fill: parent
-                        text: QbzSession.tr("Search playlists", QbzSession.trRev)
-                        color: theme.textMuted
-                        font.pixelSize: 12
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
+                showGlyph: false
+                sidePadding: 6
+                fontPx: 12
+                placeholder: QbzSession.tr("Search playlists", QbzSession.trRev)
+                onEdited: function (text) { QbzShell.sidebarSearch(text) }
+                onEscaped: root.searchOpen = false
             }
 
             // Search toggle.
@@ -1330,12 +1302,10 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         root.searchOpen = !root.searchOpen
-                        if (!root.searchOpen) {
-                            searchEdit.text = ""
-                            QbzShell.sidebarSearch("")
-                        } else {
-                            searchEdit.forceActiveFocus()
-                        }
+                        if (!root.searchOpen)
+                            searchEdit.clear()
+                        else
+                            searchEdit.focusField()
                     }
                 }
             }
