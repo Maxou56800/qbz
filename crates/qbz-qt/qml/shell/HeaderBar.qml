@@ -942,6 +942,24 @@ Rectangle {
     function focusSearch() {
         searchInput.forceActiveFocus()
     }
+    // FOCUS RETENTION (2026-09-13, every search box): after an edit, once the
+    // event loop settles, reclaim the keyboard unless another text input took
+    // it — the dropdown opening or closing must never steal it mid-word.
+    property bool _searchReclaim: false
+    function _reclaimSearchFocus() {
+        if (!root._searchReclaim)
+            return
+        root._searchReclaim = false
+        if (searchInput.activeFocus)
+            return
+        var win = root.Window.window
+        var current = win ? win.activeFocusItem : null
+        if (current instanceof TextInput || current instanceof TextEdit)
+            return
+        console.log("[HeaderBar] search lost focus after an edit; reclaimed (holder was "
+                    + (current ? current.toString() : "none") + ")")
+        searchInput.forceActiveFocus()
+    }
 
     Rectangle {
         id: searchBox
@@ -1001,7 +1019,11 @@ Rectangle {
                     QbzSearch.searchLive(text)
                 }
             }
-            onTextEdited: applyLiveQuery()
+            onTextEdited: {
+                applyLiveQuery()
+                root._searchReclaim = true
+                Qt.callLater(root._reclaimSearchFocus)
+            }
 
             // The Enter rule (HeaderBar.slint on-enter): cortinilla open +
             // a keyboard selection -> activate the row; open + none -> full
@@ -1045,8 +1067,9 @@ Rectangle {
                     // the modals use, not merely cleared: a null
                     // activeFocusItem passes the gate but leaves AppShell's
                     // Keys handler receiving nothing at all.
-                    if (QbzSearch.cortinillaOpen)
-                        QbzSearch.cortinillaDismiss()
+                    // …and it empties the box too (2026-09-13, every search
+                    // box): clearSearch() drops the text and the dropdown.
+                    root.clearSearch()
                     event.accepted = true
                     var p = searchInput
                     while (p.parent) {
@@ -1078,6 +1101,7 @@ Rectangle {
         // open (Slint: it lives in the box, opposite the magnifier), else
         // the × clear.
         Text {
+            id: enterHint
             visible: QbzSearch.cortinillaOpen
             anchors.right: parent.right
             anchors.rightMargin: 10
@@ -1087,10 +1111,13 @@ Rectangle {
             font.pixelSize: 12
             verticalAlignment: Text.AlignVCenter
         }
+        // The clear cross: always there while there is text (2026-09-13); it
+        // sits to the LEFT of the ↵ hint while the dropdown is open, at the
+        // right edge otherwise.
         Rectangle {
-            visible: !QbzSearch.cortinillaOpen && searchInput.text !== ""
-            anchors.right: parent.right
-            anchors.rightMargin: 5
+            visible: searchInput.text !== ""
+            anchors.right: QbzSearch.cortinillaOpen ? enterHint.left : parent.right
+            anchors.rightMargin: QbzSearch.cortinillaOpen ? 4 : 5
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter

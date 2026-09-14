@@ -722,39 +722,14 @@ Rectangle {
                     }
 
                     // In-playlist search.
-                    Rectangle {
+                    QbzSearchField {
                         width: 220
                         height: 30
-                        radius: 6
+                        sidePadding: 9
+                        glyphSize: 13
                         anchors.verticalCenter: parent.verticalCenter
-                        color: theme.surfaceElevated
-                        border.width: 1
-                        border.color: theme.borderSubtle
-                        Row {
-                            anchors.fill: parent
-                            anchors.leftMargin: 9
-                            anchors.rightMargin: 9
-                            spacing: 6
-                            QbzIcon { name: "search"; width: 13; height: 13; anchors.verticalCenter: parent.verticalCenter; tintName: "muted" }
-                            TextInput {
-                                QbzTextEditMenu { }
-                                width: parent.width - 19
-                                height: parent.height
-                                color: theme.textPrimary
-                                font.pixelSize: 13
-                                verticalAlignment: Text.AlignVCenter
-                                clip: true
-                                onTextEdited: QbzBridge.playlistSetSearch(text)
-                                Text {
-                                    visible: parent.text === ""
-                                    anchors.fill: parent
-                                    text: QbzSession.tr("Search tracks", QbzSession.trRev)
-                                    color: theme.textMuted
-                                    font.pixelSize: 13
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-                        }
+                        placeholder: QbzSession.tr("Search tracks", QbzSession.trRev)
+                        onEdited: function (text) { QbzBridge.playlistSetSearch(text) }
                     }
                     // Sort dropdown.
                     Rectangle {

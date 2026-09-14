@@ -597,6 +597,7 @@ fn main() {
                 "qml/controls/ScrollMemory.qml",
                 "qml/controls/ScopePanel.qml",
                 "qml/controls/QbzSegToggle.qml",
+                "qml/controls/QbzSearchField.qml",
                 "qml/controls/QbzSelect.qml",
                 "qml/controls/QbzSelectableText.qml",
                 "qml/controls/QbzSplitButton.qml",

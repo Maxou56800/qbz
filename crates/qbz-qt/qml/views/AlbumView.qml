@@ -1560,45 +1560,14 @@ Rectangle {
                                 - 168 - 30 - 2 * 16)
                             height: 1
                         }
-                        Rectangle {
+                        // Track filter (QbzSearchField: Escape clears + blurs,
+                        // clear cross, focus kept across the list rebuild).
+                        QbzSearchField {
                             width: 168
                             height: 34
-                            radius: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            color: theme.surfaceElevated
-                            border.width: 1
-                            border.color: theme.borderSubtle
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 7
-                                QbzIcon {
-                                    name: "search"
-                                    width: 14
-                                    height: 14
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    tintName: "muted"
-                                }
-                                TextInput {
-                                    QbzTextEditMenu { }
-                                    width: parent.width - 21
-                                    height: parent.height
-                                    color: theme.textPrimary
-                                    font.pixelSize: 13
-                                    verticalAlignment: Text.AlignVCenter
-                                    clip: true
-                                    onTextEdited: root.trackQuery = text
-                                    Text {
-                                        visible: parent.text === ""
-                                        anchors.fill: parent
-                                        text: QbzSession.tr("Search tracks...", QbzSession.trRev)
-                                        color: theme.textMuted
-                                        font.pixelSize: 13
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
+                            placeholder: QbzSession.tr("Search tracks...", QbzSession.trRev)
+                            onEdited: function (text) { root.trackQuery = text }
                         }
                         // Multi-select toggle (AlbumPageView.slint:752-787):
                         // accent border + tint while active; leaving the mode
