@@ -59,6 +59,18 @@ QtObject {
     readonly property color surfaceCard: _c("surfaceCard")
     readonly property color surfaceElevated: _c("surfaceElevated")
     readonly property color surfaceHover: _c("surfaceHover")
+    /// Hover fill for a control whose REST fill is surfaceElevated: a lift of
+    /// that surface. NOT `surfaceHover` — that is a 6% white wash meant for
+    /// rows that rest transparent, and over an elevated button it lands
+    /// DARKER than the rest fill (the modal buttons that "went black on
+    /// hover", 2026-09-14). Derived, so every palette gets it for free.
+    readonly property color surfaceElevatedHover: Qt.lighter(surfaceElevated, isDark ? 1.35 : 0.94)
+    /// The same lift for the ambient half-alpha fill, a little more opaque so
+    /// the hover still reads as a lift over the field.
+    readonly property color surfaceElevatedHoverA50: Qt.rgba(surfaceElevatedHover.r, surfaceElevatedHover.g, surfaceElevatedHover.b, 0.62)
+    /// The ambient-aware pair an elevated control paints: rest and hover.
+    readonly property color elevatedFill: ambientOn ? surfaceElevatedA50 : surfaceElevated
+    readonly property color elevatedHoverFill: ambientOn ? surfaceElevatedHoverA50 : surfaceElevatedHover
     readonly property color bgHover: _c("bgHover")
     readonly property color textPrimary: _c("textPrimary")
     // Weak-ramp hardening under ambient on LIGHT themes (owner, 2026-08-31):
@@ -149,7 +161,10 @@ QtObject {
     // renderer-tier arm: the Qt field renders on the software path too
     // (ShaderEffect where shaders exist, Canvas where they do not), so the
     // feature is never taken away from a weak GPU here.
-    readonly property bool ambientOn: QbzShell.ambientMode > 0 && QbzPlayer.npHasTrack
+    // The wallpaper modes (3, 4) do not depend on a playing track: the
+    // picture is always there.
+    readonly property bool ambientOn: QbzShell.ambientMode > 0
+        && (QbzShell.ambientMode >= 3 || QbzPlayer.npHasTrack)
 
     // --- ON AN ACCENT FILL: the glyph tint and its colour twin -----------
     //

@@ -35,7 +35,7 @@ Rectangle {
 
     height: 26
     radius: 6
-    color: selected ? theme.surfaceElevated
+    color: selected ? (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
          : rowArea.containsMouse ? theme.surfaceHover : "transparent"
 
     // Row body — declared FIRST so the chevron / checkbox win their clicks.

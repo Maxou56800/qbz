@@ -711,30 +711,30 @@ pub fn set_open_mixed_snapshot(
 pub fn local_picker_ref_for_row(id: &str) -> Option<String> {
     let queue = CURRENT_QUEUE.lock().ok()?;
     let q = queue.iter().find(|q| q.id.to_string() == id)?;
+    local_picker_ref_for_queue_track(q)
+}
+
+/// The picker ref for a QUEUE row, source-aware like
+/// `local_picker_ref_for_track`: Plex and the media servers ride the key
+/// their row keeps in the hint slot (the rating key / the server item id —
+/// `local_playback::local_queue_track`, `media_servers_qt::cached_to_local_track`),
+/// an offline copy its library row id (ALSO in the hint: its queue id is the
+/// catalog id when the copy has one, which is what `local_row_input` needs to
+/// re-derive the right input kind), a local file its row id. `None` = a
+/// local row this port cannot file (a media row that lost its key). The
+/// queue's "save as playlist" and per-row "Add to playlist" build their local
+/// refs here — never by hand (the module header's rule).
+pub fn local_picker_ref_for_queue_track(q: &QueueTrack) -> Option<String> {
     match q.source.as_deref() {
         Some("plex") => q
             .source_item_id_hint
             .as_ref()
             .map(|key| format!("plex:{key}")),
-        // Remote rows carry the server item id in the hint slot, same as
-        // Plex carries the rating key (media_servers_qt::cached_to_local_track).
         Some(source @ ("jellyfin" | "subsonic")) => q
             .source_item_id_hint
             .as_ref()
             .map(|item| format!("{source}:{item}")),
         Some("local") => Some(q.id.to_string()),
-        // An OFFLINE COPY row (`local_playback::local_queue_track` tags these
-        // "qobuz_download"). It reaches this function because `row_to_display`
-        // publishes every non-Plex `RowItem::Local` with `source: "local"`, so
-        // TrackRow.qml offers the entry — returning `None` here would render it
-        // and no-op, which is the defect class this round is closing.
-        //
-        // Its `q.id` is NOT a library row id: `local_queue_track` sets the
-        // queue id to `qobuz_track_id` when the row has one. The library row id
-        // is carried in `source_item_id_hint` for exactly this reason, and it
-        // is what `local_row_input` needs to re-derive the right input kind
-        // (`Qobuz(qid)` when the copy has a catalog id, the file path when it
-        // does not).
         Some("qobuz_download") => q.source_item_id_hint.clone(),
         _ => None,
     }
@@ -876,11 +876,9 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
             // opaque token `cached_path` could not classify — which is why
             // media rows were art-less in the TrackRow while the queue and NPB,
             // going through this same ref, showed the cover fine.
-            let art_ref = crate::local_rows::portable_artwork_ref(
-                t,
-                crate::local_rows::ArtworkScope::Track,
-            )
-            .unwrap_or_default();
+            let art_ref =
+                crate::local_rows::portable_artwork_ref(t, crate::local_rows::ArtworkScope::Track)
+                    .unwrap_or_default();
             let row = PlaylistTrackRow {
                 position: 0,
                 featured: Vec::new(),
@@ -934,7 +932,7 @@ pub(crate) fn row_to_display(item: &RowItem) -> (PlaylistTrackRow, Option<QueueT
                 .unwrap_or_else(|| path.clone());
             (
                 PlaylistTrackRow {
-                position: 0,
+                    position: 0,
                     featured: Vec::new(),
                     id: path.clone(),
                     title: name,
@@ -1579,6 +1577,48 @@ pub async fn remove_row(runtime: &Runtime, row_id: &str) {
     // is the offline-safe verb — `reload_sidebar()` early-returns offline and
     // would leave the collage stale for exactly the users local playlists
     // exist for.
+    crate::reload_sidebar_including_local();
+}
+
+/// `remove_row` for a SELECTION: the repo positions are taken up front and
+/// removed HIGHEST FIRST — `repo::remove_track` compacts the positions above
+/// the one it deletes, so any other order would shift the rows still to
+/// come — then one reload and one sidebar refresh.
+pub async fn remove_rows(runtime: &Runtime, row_ids: &[String]) {
+    let Some((playlist_id, _)) = CURRENT_META.lock().ok().and_then(|m| m.clone()) else {
+        return;
+    };
+    let mut positions: Vec<i32> = {
+        let Ok(map) = ROW_POSITIONS.lock() else {
+            return;
+        };
+        row_ids
+            .iter()
+            .filter_map(|id| map.get(id).copied())
+            .collect()
+    };
+    positions.sort_unstable_by(|a, b| b.cmp(a));
+    positions.dedup();
+    if positions.is_empty() {
+        log::warn!(
+            "[qbz-qt] local playlist bulk remove: no known rows among {} id(s)",
+            row_ids.len()
+        );
+        return;
+    }
+    let pid = playlist_id.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        with_db(true, |db| {
+            Ok(db.with_connection(|conn| -> rusqlite::Result<()> {
+                for position in positions {
+                    repo::remove_track(conn, &pid, position)?;
+                }
+                Ok(())
+            }))
+        })
+    })
+    .await;
+    load(runtime, &playlist_id).await;
     crate::reload_sidebar_including_local();
 }
 

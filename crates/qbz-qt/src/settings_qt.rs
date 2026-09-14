@@ -778,6 +778,34 @@ pub fn ambient_bar_alpha() -> f32 {
 /// Same one-document rule as `toggle_system_title_bar`: the current key is
 /// read inside the write closure, so a torn read can no longer make the app
 /// commit "ambient" over a user who had just turned it off (or the reverse).
+/// Settings > Appearance > Background image > "Choose image…": the user's
+/// own picture behind the wallpaper modes, outranking the desktop's.
+pub fn pick_background_image() {
+    crate::spawn(async {
+        let Some(file) = rfd::AsyncFileDialog::new()
+            .set_title(qbz_i18n::t("Background image"))
+            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "avif"])
+            .pick_file()
+            .await
+        else {
+            return;
+        };
+        let path = file.path().to_string_lossy().to_string();
+        save_pref("app_background_image", serde_json::json!(path));
+        publish_snapshot().await;
+        crate::wallpaper_qt::refresh();
+    });
+}
+
+/// "System wallpaper": drop the user's own picture.
+pub fn clear_background_image() {
+    save_pref("app_background_image", serde_json::json!(""));
+    crate::spawn(async {
+        publish_snapshot().await;
+        crate::wallpaper_qt::refresh();
+    });
+}
+
 pub fn toggle_ambient_background() -> i32 {
     edit_prefs(|doc| {
         let current = doc
@@ -1643,8 +1671,10 @@ const QCONNECT_CONFLICT_POLICY_LABELS: &[&str] = &[
     "Continue local playback and replace the Qobuz Connect queue",
 ];
 // Appearance option tables (AppearanceSettings.slint / ui_prefs.rs).
-const APP_BACKGROUND_LABELS: &[&str] = &["Off", "Ambient", "Blurred art"];
-const APP_BACKGROUND_VALUES: &[&str] = &["off", "ambient", "blurred"];
+// 3 and 4 paint the desktop wallpaper (wallpaper_qt.rs): behind the window,
+// or through the Blurred-art atmosphere pass.
+const APP_BACKGROUND_LABELS: &[&str] = &["Off", "Ambient", "Blurred art", "Wallpaper", "Wallpaper, blurred"];
+const APP_BACKGROUND_VALUES: &[&str] = &["off", "ambient", "blurred", "wallpaper", "wallpaper-blurred"];
 const LANGUAGE_LABELS: &[&str] = &[
     "Auto",
     "English",
@@ -2155,6 +2185,9 @@ pub struct SettingsDoc {
     pub app_background_modes: Vec<String>,
     #[serde(rename = "appBackgroundIndex")]
     pub app_background_index: i32,
+    /// The user's own background image ("" = the desktop wallpaper).
+    #[serde(rename = "appBackgroundImage")]
+    pub app_background_image: String,
     #[serde(rename = "autoThemeSources")]
     pub auto_theme_sources: Vec<String>,
     #[serde(rename = "autoThemeSourceIndex")]
@@ -2714,6 +2747,7 @@ pub async fn publish_snapshot() {
                 .iter()
                 .position(|v| *v == pref_str("app_background", "off"))
                 .unwrap_or(0) as i32,
+            app_background_image: pref_str("app_background_image", ""),
             auto_theme_sources: AUTO_THEME_SOURCE_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -4225,6 +4259,8 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             // ImmersiveAtmosphere for 2, exactly like AppShell.slint:213-231).
             let ambient = index as i32;
             crate::shell_bridge::ui(move |mut b| b.as_mut().set_ambient_mode(ambient));
+            // The wallpaper modes need their image (a no-op for the others).
+            crate::wallpaper_qt::refresh();
         }
         "language" => {
             let Some(lang) = LANGUAGE_VALUES.get(index) else {

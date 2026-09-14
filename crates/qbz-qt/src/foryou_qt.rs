@@ -710,7 +710,7 @@ pub(crate) fn open_mix(kind: String) {
             return;
         }
     };
-    crate::nav_qt::record("mix");
+    crate::nav_qt::record_with("mix", serde_json::json!({ "kind": &kind }));
     let (title, subtitle) = mix_meta(&kind);
     let generation = with_mix(|s| {
         s.generation = s.generation.wrapping_add(1);

@@ -95,7 +95,25 @@ Item {
         root._rebuilding = false
         root.report()
     }
-    Component.onCompleted: { root.rebuild(); root.reportSoon() }
+    // The rail's own keyed model (2026-09-14): an artist unfollowed from the
+    // pane fades out of the rail while the rows below slide up, instead of
+    // the rail being rebuilt from the top. Same page identity as the host's
+    // bodies, so a search or a sort still replaces it at once.
+    QbzKeyedModel {
+        id: railModel
+        rows: root.entries
+        keyOf: function (entry) {
+            return entry.t === 0 ? "letter:" + entry.label : "artist:" + entry.item.id
+        }
+        scope: root.view ? root.view.rowsScope : ""
+        onReconciled: root.report()
+    }
+
+    Component.onCompleted: {
+        railModel.views = [railList]
+        root.rebuild()
+        root.reportSoon()
+    }
     Connections {
         target: root.view
         function onVisibleRowsChanged() { root.rebuild() }
@@ -212,7 +230,11 @@ Item {
             cacheBuffer: 56 * 8
             reuseItems: true
             boundsBehavior: Flickable.StopAtBounds
-            model: root.entries
+            model: railModel
+            add: QbzRowAdd { enabled: railModel.animate }
+            remove: QbzRowRemove { enabled: railModel.animate }
+            move: QbzRowDisplaced { enabled: railModel.animate }
+            displaced: QbzRowDisplaced { enabled: railModel.animate }
 
             // The trigger set views/local/LocalArtistsTab.qml:161-165 already
             // uses for the same shape of rail: scroll, model swap, viewport
@@ -225,7 +247,10 @@ Item {
             onVisibleChanged: if (visible) root.reportSoon()
 
             delegate: Loader {
-                required property var modelData
+                required property string rowKey
+                required property int rowRev
+                readonly property var modelData: railModel.row(rowKey, rowRev)
+                ListView.onReused: { opacity = 1; scale = 1 }
                 width: railList.width
                 height: modelData.t === 0 ? root.headerH : root.rowH
                 sourceComponent: modelData.t === 0 ? letterComp : artistComp

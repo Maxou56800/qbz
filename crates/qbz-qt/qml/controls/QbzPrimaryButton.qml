@@ -83,7 +83,10 @@ Rectangle {
             ? Qt.darker(theme.danger, 1.15) : theme.danger)
         : ((btnArea.containsMouse && root.btnEnabled)
             ? theme.accentHover : theme.accent)
-    Behavior on color { NumberAnimation { duration: 150 } }
+    // ColorAnimation, NOT NumberAnimation: a NumberAnimation on a colour
+    // interpolates it as a number and lands on BLACK, which is how every
+    // accent button in the modals went dark under the pointer (2026-09-14).
+    Behavior on color { ColorAnimation { duration: 150 } }
 
     Text {
         id: lbl

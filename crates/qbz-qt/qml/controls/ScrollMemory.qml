@@ -44,10 +44,12 @@
 // every one of those snaps the list back to the top — over a restore that had
 // already run correctly.
 //
-// (The same reset also throws a plain forward visit to the top if a rail lands
-// while you are reading. The re-assert below only stops it from eating the
-// restore; fixing that properly means giving those rails a model of their own,
-// which is an AlbumView change and not this file's business.)
+// (The album page no longer resets: since 2026-09-13 its tape is swapped on a
+// QbzArrayModel, which reaches the ListView as remove+insert changes and keeps
+// the viewport — see that control for the Qt 6.11 focus theft that forced the
+// move. Those swaps drift `originY` instead, which is what `relativeToOrigin`
+// is for. The re-assert below stays for every page that still assigns
+// `model` directly.)
 //
 // So the offset is held in `_wanted` and re-applied on every contentHeight
 // change, every count change and every contentY move we did not make, until

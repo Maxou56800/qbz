@@ -2325,7 +2325,7 @@ pub(crate) async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>, id: String) 
 
 /// Grid card click: push the route, then load.
 pub(crate) fn open(id: String) {
-    crate::nav_qt::record("mixtapedetail");
+    crate::nav_qt::record_with("mixtapedetail", serde_json::json!({ "id": &id }));
     let runtime = crate::app();
     crate::spawn(async move {
         load(&runtime, id).await;

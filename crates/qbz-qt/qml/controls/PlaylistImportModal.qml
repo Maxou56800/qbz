@@ -462,7 +462,7 @@ Item {
                             height: 36
                             radius: theme.radiusSm
                             color: (pickArea.containsMouse && !root.loading)
-                                ? theme.surfaceHover : theme.surfaceElevated
+                                ? theme.surfaceElevatedHover : theme.surfaceElevated
                             opacity: root.loading ? 0.5 : 1.0
                             Text {
                                 id: pickLabel

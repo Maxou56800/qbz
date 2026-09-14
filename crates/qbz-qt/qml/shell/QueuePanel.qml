@@ -38,6 +38,24 @@ Rectangle {
     readonly property var currentRow: doc.current || null
     readonly property var upcoming: doc.upcoming || []
     readonly property var historyRows: doc.history || []
+    // Keyed models for both lists (2026-09-14): a track leaving Up Next (it
+    // started playing, it was removed) disappears and the rows below slide up;
+    // a track joining slides the list open; nothing is rebuilt. The rows are
+    // Repeaters in a Column, so the motion is the Column's own add / move
+    // transitions — a positioner has no remove transition. Identity is the
+    // track (source + id, repeats by occurrence); another page or search
+    // replaces the list at once.
+    QbzKeyedModel {
+        id: upcomingModel
+        rows: root.upcoming
+        keyOf: function (row) { return (row.source || "") + ":" + row.id }
+        scope: JSON.stringify([root.doc.searchQuery || "", root.doc.page || 0])
+    }
+    QbzKeyedModel {
+        id: historyModel
+        rows: root.historyRows
+        keyOf: function (row) { return (row.source || "") + ":" + row.id }
+    }
     readonly property var settingsDoc: {
         try { return JSON.parse(QbzBridge.settingsJson) }
         catch (e) { return ({}) }
@@ -138,7 +156,8 @@ Rectangle {
     // arithmetic model to keep in sync. Top half of row k -> slot k, bottom
     // half -> slot k+1, past the last row -> N (append). <=40 rows per page.
     function slotFromPointer(winY) {
-        var n = root.upcoming.length
+        // The Repeater's own count: its items are what the pointer is over.
+        var n = upcomingRepeater.count
         for (var i = 0; i < n; i++) {
             var d = upcomingRepeater.itemAt(i)
             if (d && winY < d.rowCenterY())
@@ -223,7 +242,13 @@ Rectangle {
             root.coverMap = Object.assign({}, m)
         }
     }
-    Component.onCompleted: dispatchCovers()
+    Component.onCompleted: {
+        // The lists' Columns, laid out synchronously around a reset so a new
+        // page or search appears at once (QbzKeyedModel).
+        upcomingModel.views = [upNextSection]
+        historyModel.views = [historyBody]
+        dispatchCovers()
+    }
     onDocChanged: dispatchCovers()
     onQueueTrackArtworkChanged: dispatchCovers()
     // Collect the covers of the document CURRENTLY on the property and ask the
@@ -315,6 +340,41 @@ Rectangle {
 
     // Row action icon button (the panel's small IconButton).
 
+
+    // Go to album / Go to artist, by SOURCE (2026-09-14). A catalog row routes
+    // through its catalog ids (title and artist ride along as the
+    // unavailable-page hint); a local row — file, Plex, Jellyfin, Subsonic —
+    // through the queue's NAVIGATION KEY (local_playback.rs stamps the album
+    // key the card itself opens, prefixed for media servers) and the artist
+    // NAME into the Local Library Artists tab, the local surfaces' own routes
+    // (local/LocalTrackRow.qml). A row without the key or the name shows no
+    // entry.
+    function rowCanGoAlbum(row) {
+        return (row.albumId || "") !== ""
+    }
+    function rowCanGoArtist(row) {
+        return row.isLocal === true ? (row.artist || "") !== "" : (row.artistId || "") !== ""
+    }
+    function goToAlbum(row) {
+        if (!rowCanGoAlbum(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openAlbum(row.albumId)
+            QbzShell.navigateTo("localalbum")
+        } else {
+            QbzAlbum.openAlbumFrom(row.albumId, row.album || "", row.artist || "")
+        }
+    }
+    function goToArtist(row) {
+        if (!rowCanGoArtist(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openArtistByName(row.artist)
+            QbzShell.navigateTo("local")
+        } else {
+            QbzArtist.openArtist(row.artistId)
+        }
+    }
 
     // One UP NEXT / History row (QueueRow.slint).
     component QueueRow: Rectangle {
@@ -429,7 +489,7 @@ Rectangle {
                 height: 34
                 radius: 4
                 anchors.verticalCenter: parent.verticalCenter
-                color: theme.surfaceElevated
+                color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                 // No clip: RoundedImage self-confines. One batch root per
                 // visible queue row.
                 RoundedImage {
@@ -556,19 +616,16 @@ Rectangle {
                                         : QbzSession.tr("Stop after this", QbzSession.trRev), "icon": "circle-stop", "action": "stop-after" },
                                     { "label": QbzSession.tr("Remove all after", QbzSession.trRev), "icon": "list-x", "action": "remove-after" },
                                 ]
+                                if (root.rowCanGoAlbum(row))
+                                    items.push({ "label": QbzSession.tr("Go to album", QbzSession.trRev), "icon": "disc-3", "action": "go-album" })
+                                if (root.rowCanGoArtist(row))
+                                    items.push({ "label": QbzSession.tr("Go to artist", QbzSession.trRev), "icon": "user", "action": "go-artist" })
                                 if (row.isEphemeral !== true) {
-                                    // LOCAL/Plex rows drop it too: the queue's
-                                    // `add_to_playlist` refuses them
-                                    // (queue_qt.rs — a queue row's id is a
-                                    // library.db / Plex synthetic id and this
-                                    // panel has no source-aware resolver to
-                                    // turn it into a local-mode ref), so the
-                                    // entry would render and no-op. Absent
-                                    // beats dead; the LOCAL surfaces that DO
-                                    // have the resolver offer it instead
-                                    // (local/LocalTrackRow.qml).
-                                    if (row.isLocal !== true)
-                                        items.push({ "label": QbzSession.tr("Add to playlist", QbzSession.trRev), "icon": "list-plus", "action": "add-to-playlist" })
+                                    // Local/Plex/media rows too (2026-09-14):
+                                    // the queue resolves them to picker refs
+                                    // by source (local_playlist_qt::
+                                    // local_picker_ref_for_queue_track).
+                                    items.push({ "label": QbzSession.tr("Add to playlist", QbzSession.trRev), "icon": "list-plus", "action": "add-to-playlist" })
                                     items.push({ "label": QbzSession.tr("Track info", QbzSession.trRev), "icon": "info", "action": "track-info" })
                                     items.push({ "label": root.favState(row) ? QbzSession.tr("Remove from Library", QbzSession.trRev) : QbzSession.tr("Add to Library", QbzSession.trRev), "icon": root.favState(row) ? "heart-filled" : "heart", "action": "favorite" })
                                 }
@@ -609,6 +666,8 @@ Rectangle {
                                         else if (a === "add-to-playlist") QbzQueue.queueAddToPlaylist(rowIndex)
                                         else if (a === "track-info") qrRoot.openTrackInfo()
                                         else if (a === "favorite") root.toggleFav(row)
+                                        else if (a === "go-album") root.goToAlbum(row)
+                                        else if (a === "go-artist") root.goToArtist(row)
                                     }
                                 }
                             }
@@ -893,7 +952,8 @@ Rectangle {
                             width: parent.width
                             height: 44
                             radius: theme.radiusSm
-                            color: theme.surfaceElevated
+                            // Ambient-aware: the one opaque card left in a translucent sidebar.
+                            color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                             Row {
                                 anchors.fill: parent
                                 anchors.leftMargin: 6
@@ -906,7 +966,7 @@ Rectangle {
                                     height: 34
                                     radius: 4
                                     anchors.verticalCenter: parent.verticalCenter
-                                    color: theme.surfaceCard
+                                    color: (theme.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard)
                                     // No clip: RoundedImage self-confines.
                                     RoundedImage {
                                         anchors.fill: parent
@@ -991,13 +1051,18 @@ Rectangle {
                             font.letterSpacing: 0.5
                         }
 
+                        add: QbzRowAdd { enabled: upcomingModel.animate }
+                        move: QbzRowDisplaced { enabled: upcomingModel.animate }
+
                         Repeater {
                             id: upcomingRepeater
-                            model: root.upcoming
+                            model: upcomingModel
                             delegate: Column {
                                 id: upDelegate
-                                required property var modelData
+                                required property string rowKey
+                                required property int rowRev
                                 required property int index
+                                readonly property var modelData: upcomingModel.row(rowKey, rowRev)
                                 width: parent ? parent.width : 0
                                 // Row center in window space — slotFromPointer()
                                 // reads it off the Repeater's items.
@@ -1132,9 +1197,16 @@ Rectangle {
                         font.weight: theme.weightSemibold
                         font.letterSpacing: 0.5
                     }
+                    add: QbzRowAdd { enabled: historyModel.animate }
+                    move: QbzRowDisplaced { enabled: historyModel.animate }
+
                     Repeater {
-                        model: root.historyRows
+                        model: historyModel
                         delegate: QueueRow {
+                            required property string rowKey
+                            required property int rowRev
+                            required property int index
+                            readonly property var modelData: historyModel.row(rowKey, rowRev)
                             width: parent.width
                             row: modelData
                             rowIndex: index
@@ -1271,7 +1343,7 @@ Rectangle {
                                     radius: theme.radiusSm
                                     border.width: 1
                                     border.color: theme.borderSubtle
-                                    color: cancelArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                                    color: cancelArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                                     Text {
                                         anchors.fill: parent
                                         text: QbzSession.tr("Cancel Timer", QbzSession.trRev)

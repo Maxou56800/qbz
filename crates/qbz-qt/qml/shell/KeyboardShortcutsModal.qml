@@ -272,7 +272,7 @@ Item {
                     width: customizeLabel.implicitWidth + 40
                     height: 40
                     radius: theme.radiusSm
-                    color: customizeArea.containsMouse ? theme.surfaceHover
+                    color: customizeArea.containsMouse ? theme.surfaceElevatedHover
                                                        : theme.surfaceElevated
                     border.width: 1
                     border.color: customizeArea.containsMouse ? theme.accent

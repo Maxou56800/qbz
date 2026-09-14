@@ -296,6 +296,16 @@ pub mod qbz_shell {
         /// May the app-wide dynamic background be offered?
         /// Same tier, same reason (`main.rs:8563`); gates the whole picker row.
         #[qproperty(bool, app_background_available)]
+        /// The desktop wallpaper (or the user's own image) as a file:// URL,
+        /// and its atmosphere bitmap — the "wallpaper" background modes
+        /// (wallpaper_qt.rs). Empty until a mode that paints it resolves one.
+        #[qproperty(QString, wallpaper_url)]
+        #[qproperty(QString, wallpaper_atmosphere_url)]
+        /// This process's windows with their absolute geometry, as a Plasma
+        /// Wayland compositor reports them (`[{"x","y","w","h"}, …]`);
+        /// "[]" anywhere else. WallpaperField.qml picks the ApplicationWindow
+        /// out of it by size (wallpaper_wayland_qt.rs).
+        #[qproperty(QString, wallpaper_windows_json)]
         /// Is the kiosk touch shell the one currently mounted?
         ///
         /// The Qt counterpart of `ShellState.kiosk-profile`
@@ -533,6 +543,13 @@ pub mod qbz_shell {
         /// Header history buttons.
         #[qinvokable]
         fn navigate_back(self: Pin<&mut QbzShell>);
+        /// Re-resolve the desktop wallpaper (window activation, a mode switch).
+        #[qinvokable]
+        fn refresh_wallpaper(self: Pin<&mut QbzShell>);
+        /// Start following this window's place on a Plasma Wayland desktop
+        /// (the Wallpaper mode on Wayland). Idempotent; a no-op elsewhere.
+        #[qinvokable]
+        fn track_window_position(self: Pin<&mut QbzShell>);
         #[qinvokable]
         fn navigate_forward(self: Pin<&mut QbzShell>);
 
@@ -896,6 +913,9 @@ pub struct QbzShellRust {
     gpu_tier: bool,
     shader_scenes_available: bool,
     app_background_available: bool,
+    wallpaper_url: QString,
+    wallpaper_atmosphere_url: QString,
+    wallpaper_windows_json: QString,
     kiosk_profile: bool,
     kiosk_fullscreen_boot: bool,
     ambient_mode: i32,
@@ -1011,6 +1031,9 @@ impl Default for QbzShellRust {
             gpu_tier: crate::renderer_qt::gpu_tier(),
             shader_scenes_available: crate::renderer_qt::gpu_tier(),
             app_background_available: crate::renderer_qt::gpu_tier(),
+            wallpaper_url: QString::default(),
+            wallpaper_atmosphere_url: QString::default(),
+            wallpaper_windows_json: QString::from("[]"),
             kiosk_profile: crate::kiosk_profile_qt::active(),
             kiosk_fullscreen_boot: crate::kiosk_profile_qt::active()
                 && crate::kiosk_profile_qt::fullscreen_at_boot(),
@@ -1431,6 +1454,14 @@ impl qbz_shell::QbzShell {
 
     pub fn navigate_back(self: Pin<&mut Self>) {
         crate::nav_qt::back();
+    }
+
+    pub fn refresh_wallpaper(self: Pin<&mut Self>) {
+        crate::wallpaper_qt::refresh();
+    }
+
+    pub fn track_window_position(self: Pin<&mut Self>) {
+        crate::wallpaper_qt::track_window_position();
     }
 
     pub fn navigate_forward(self: Pin<&mut Self>) {

@@ -221,7 +221,12 @@ jobs:
           # The desktop file goes in under the MPRIS DesktopEntry basename
           # (com.blitzfc.qbz.desktop), so an integrated AppImage resolves the
           # media-widget icon like the deb/rpm do. Icon=qbz -> qbz.png.
-          cp packaging/linux/qbz.desktop com.blitzfc.qbz.desktop
+          # linuxdeploy looks the Exec name up under AppDir/usr/bin, so the
+          # AppImage entry keeps the bare name; the deb/rpm install the source
+          # entry as-is, with the absolute Exec KWin matches against the
+          # running binary (packaging/linux/qbz.desktop).
+          sed 's|^Exec=/usr/bin/qbz |Exec=qbz |' packaging/linux/qbz.desktop > com.blitzfc.qbz.desktop
+          grep -q '^Exec=qbz ' com.blitzfc.qbz.desktop
           cp packaging/icons/256x256.png qbz.png
           ./linuxdeploy --appimage-extract-and-run --appdir AppDir \
             -e qbz -d com.blitzfc.qbz.desktop -i qbz.png --plugin qt

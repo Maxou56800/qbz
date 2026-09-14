@@ -7701,3 +7701,31 @@ msgstr "Buscando otras versiones…"
 #: crates/qbz-qt/qml/views/AlbumView.qml
 msgid "This release"
 msgstr "Este lanzamiento"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper"
+msgstr "Fondo de pantalla"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper, blurred"
+msgstr "Fondo de pantalla difuminado"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Background image"
+msgstr "Imagen de fondo"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "The system wallpaper. Choose an image of your own instead."
+msgstr "El fondo de pantalla del sistema. También puedes elegir una imagen propia."
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Choose image…"
+msgstr "Elegir imagen…"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "System wallpaper"
+msgstr "Fondo del sistema"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "Se quitarán {} pistas de esta playlist."

@@ -990,13 +990,28 @@ Rectangle {
                 // Main artist first, then the featured performers, one comma
                 // separated list. Local / media-server rows carry no
                 // `featured` and stay as they are. With links enabled and
-                // featured names present, every name is its own StyledText
-                // link: the main artist opens its page as before; a featured
+                // featured names present, every name is its own clickable
+                // SPAN: the main artist opens its page as before; a featured
                 // name opens its page when the album credits gave it an id
-                // and the search for that name otherwise. StyledText elides
-                // like plain text (probed: truncated stays true on one line).
+                // and the search for that name otherwise. Spans, not `<a>`
+                // anchors: StyledText underlines every anchor unconditionally
+                // (qquickstyledtext.cpp, setFontUnderline(true)) and nothing
+                // else in the app underlines a link, so the hit test is done
+                // by measuring the prefix up to each name with the same font
+                // (TextMetrics below). StyledText still elides like plain
+                // text (probed: truncated stays true on one line).
                 readonly property var featured: root.showFeaturedArtists ? (root.item.featured || []) : []
                 readonly property bool linkMode: root.artistLink && featured.length > 0
+                /// The names as displayed, in order: {name, href} — href ""
+                /// = the main artist with no page to open.
+                readonly property var spans: {
+                    var out = [{ "name": String(root.item.artist || ""), "href": root.item.artistId ? "main" : "" }]
+                    for (var i = 0; i < featured.length; i++)
+                        out.push({ "name": String(featured[i].name || ""), "href": "f:" + i })
+                    return out
+                }
+                /// The span under the pointer (-1 = none).
+                property int hotSpan: -1
                 function esc(s) {
                     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
                 }
@@ -1005,51 +1020,84 @@ Rectangle {
                         return ("0" + Math.round(v * 255).toString(16)).slice(-2)
                     }).join("")
                 }
-                function link(href, name) {
-                    var hot = artistLine.hoveredLink === href
-                    return '<a href="' + href + '"><font color="'
-                        + hex(hot ? theme.textPrimary : theme.textMuted) + '">' + esc(name) + '</font></a>'
+                function span(i) {
+                    var s = artistLine.spans[i]
+                    var hot = artistLine.hotSpan === i && s.href !== ""
+                    return '<font color="' + hex(hot ? theme.textPrimary : theme.textMuted) + '">' + esc(s.name) + '</font>'
                 }
                 textFormat: linkMode ? Text.StyledText : Text.PlainText
                 text: {
                     var names = featured.map(function (f) { return f.name })
                     if (!linkMode)
                         return (root.item.artist || "") + (names.length ? ", " + names.join(", ") : "")
-                    var parts = [root.item.artistId ? link("main", root.item.artist) : esc(root.item.artist)]
-                    for (var i = 0; i < featured.length; i++)
-                        parts.push(link("f:" + i, featured[i].name))
+                    var parts = []
+                    for (var i = 0; i < spans.length; i++)
+                        parts.push(span(i))
                     return parts.join(", ")
                 }
-                linkColor: theme.textMuted
                 color: root.artistLink && root.item.artistId && artistLinkArea.containsMouse
                     ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 12
                 elide: Text.ElideRight
-                onLinkActivated: function (href) {
-                    if (href === "main") {
+                /// Which span sits at `x` (-1 = a separator or past the text):
+                /// the prefix up to each name's end is measured with this
+                /// Text's own font, so the edges match what is drawn.
+                function spanAt(x) {
+                    if (!linkMode || x < 0)
+                        return -1
+                    var prefix = ""
+                    for (var i = 0; i < spans.length; i++) {
+                        spanMetrics.text = prefix
+                        var from = spanMetrics.advanceWidth
+                        prefix += spans[i].name
+                        spanMetrics.text = prefix
+                        if (x >= from && x < spanMetrics.advanceWidth)
+                            return i
+                        prefix += ", "
+                    }
+                    return -1
+                }
+                function activate(i) {
+                    var s = artistLine.spans[i]
+                    if (!s || s.href === "")
+                        return
+                    if (s.href === "main") {
                         if (root.routeGoToExternally) root.goToRequested("artist")
                         else QbzArtist.openArtist(root.item.artistId)
                         return
                     }
-                    var f = featured[parseInt(href.slice(2))]
+                    var f = featured[parseInt(s.href.slice(2))]
                     if (!f) return
                     if (f.id) QbzArtist.openArtist(f.id)
                     else QbzSearch.searchSubmit(f.name)
                 }
-                HoverHandler {
-                    enabled: artistLine.linkMode
-                    cursorShape: artistLine.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                TextMetrics {
+                    id: spanMetrics
+                    font: artistLine.font
                 }
                 MouseArea {
                     id: artistLinkArea
                     anchors.fill: parent
-                    enabled: root.artistLink && !!root.item.artistId && !artistLine.linkMode
+                    enabled: root.artistLink && (artistLine.linkMode || !!root.item.artistId)
                     hoverEnabled: true
-                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: (artistLine.linkMode
+                                  ? (artistLine.hotSpan >= 0 && artistLine.spans[artistLine.hotSpan].href !== "")
+                                  : enabled) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onPositionChanged: function (mouse) {
+                        if (artistLine.linkMode)
+                            artistLine.hotSpan = artistLine.spanAt(mouse.x)
+                    }
+                    onExited: artistLine.hotSpan = -1
                     // Same routing as the menu's "Go to artist" — Slint drives
                     // both through one handler, so gating only the menu would
                     // leave the LINK navigating to the track's own artist.
-                    onClicked: {
+                    onClicked: function (mouse) {
+                        if (artistLine.linkMode) {
+                            var i = artistLine.spanAt(mouse.x)
+                            if (i >= 0)
+                                artistLine.activate(i)
+                            return
+                        }
                         if (root.routeGoToExternally) root.goToRequested("artist")
                         else QbzArtist.openArtist(root.item.artistId)
                     }
@@ -1275,42 +1323,18 @@ Rectangle {
     /// Build the popup on first use, then open it. Called by `openRowMenu`
     /// below, which owns the empty-menu guard.
     function openRowMenuLazy(anchor, x, y) {
-        root._menuAnchor = anchor
-        root._menuX = x
-        root._menuY = y
         rowMenuLoader.active = true
         rowMenuLoader.item.openAtCursor(anchor, x, y)
     }
 
-    // --- Copy submenu + clipboard (2026-09-13) --------------------------------
-    // Both lazy, like the row menu: a list row must not carry a Popup tree
-    // or a TextEdit per delegate. Reopened where the row menu was.
-    property Item _menuAnchor: null
-    property real _menuX: 0
-    property real _menuY: 0
-    Loader {
-        id: copyMenuLoader
-        active: false
-        sourceComponent: CardMenu {
-            kioskHost: root.kioskHost
-            menuWidth: 224
-            entries: [
-                { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
-                { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
-            ]
-            onPicked: function (a) { root.copyRow(a) }
-        }
-    }
+    // --- Copy (2026-09-13) ----------------------------------------------------
+    // The Copy entry is a CardMenu submenu (hover-opened, declared as data
+    // in menuModel); the clipboard carrier stays lazy, like the row menu —
+    // a list row must not carry a TextEdit per delegate.
     Loader {
         id: clipboardLoader
         active: false
         sourceComponent: QbzClipboard { }
-    }
-    function openCopyMenu() {
-        if (!root._menuAnchor)
-            return
-        copyMenuLoader.active = true
-        copyMenuLoader.item.openAtCursor(root._menuAnchor, root._menuX, root._menuY)
     }
     function copyRow(which) {
         var parts = [root.item.title || ""]
@@ -1426,7 +1450,10 @@ Rectangle {
             m.push({ "label": t("Buy on Qobuz", r), "icon": "shopping-bag", "action": "buy" })
         // Copy (2026-09-13): a submenu — the track name, or "Track - Album - Artist".
         if ((root.item.title || "") !== "")
-            m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": true })
+            m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": [
+                { "label": t("Track name", r), "icon": "copy", "action": "copy-title" },
+                { "label": t("Track - Album - Artist", r), "icon": "clipboard", "action": "copy-full" }
+            ] })
         return m
     }
 
@@ -1453,7 +1480,7 @@ Rectangle {
             else QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
         }
         else if (a === "buy") QbzAlbum.buyTrack(root.item.id || "")
-        else if (a === "copy") root.openCopyMenu()
+        else if (a === "copy-title" || a === "copy-full") root.copyRow(a)
         else if (a === "favorite") root.toggleFavorite()
         else if (a === "mixtape") root.mixtapeRequested()
         // Add to playlist. The internal arm is the CATALOG one and nothing

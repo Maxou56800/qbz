@@ -2417,6 +2417,10 @@ async fn submit_page(
         *page = PageState::default();
         page.doc.query = q.clone();
         page.doc.tab = tab.unwrap_or(0);
+        crate::page_restore_qt::note_args(
+            "search",
+            serde_json::json!({ "query": &q, "tab": page.doc.tab }),
+        );
         page.doc.loading = true;
         page.doc.local_revision = version.to_string();
         publish_page(&page.doc);
@@ -2744,6 +2748,10 @@ pub fn tab_changed(tab: i32) {
     let mut guard = PAGE.lock().unwrap();
     if let Some(page) = guard.as_mut() {
         page.doc.tab = tab;
+        crate::page_restore_qt::note_args(
+            "search",
+            serde_json::json!({ "query": &page.doc.query, "tab": tab }),
+        );
         let doc = page.doc.clone();
         drop(guard);
         publish_page(&doc);

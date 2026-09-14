@@ -47,7 +47,7 @@ Rectangle {
 
     height: 44
     radius: 8
-    color: theme.surfaceElevated
+    color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
 
     Row {
         anchors.fill: parent

@@ -74,8 +74,8 @@ Rectangle {
     // shows through the control (QbzSelect.slint:110-116). Hover keeps its own
     // token, which is already translucent.
     color: selArea.containsMouse && enabled
-        ? theme.surfaceHover
-        : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+        ? theme.elevatedHoverFill
+        : theme.elevatedFill
     opacity: enabled ? 1.0 : 0.4
     activeFocusOnTab: enabled
     Accessible.role: Accessible.ComboBox

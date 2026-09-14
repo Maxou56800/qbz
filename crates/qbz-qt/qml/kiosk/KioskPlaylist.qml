@@ -84,6 +84,10 @@ Rectangle {
         var id = doc.id || ""
         if (id === loadedPlaylistId)
             return
+        // An in-place playlist switch starts at the top; the first document
+        // of a mount leaves the viewport to ScrollMemory.
+        if (loadedPlaylistId !== "")
+            rowsModel.scrollToTop()
         loadedPlaylistId = id
         setMultiSelect(false)
     }
@@ -396,7 +400,10 @@ Rectangle {
         cacheBuffer: height
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.tracks
+        // Swapped on a QbzArrayModel, never on `model:` — a fresh array there
+        // makes Qt 6.11 focus delegate 0, and the header's search box lost the
+        // keyboard whenever a filtered document landed (see the control).
+        model: QbzArrayModel { id: rowsModel; view: trackList; rows: root.tracks }
         header: Column {
             width: trackList.width
             spacing: 12
@@ -586,6 +593,6 @@ Rectangle {
         ]
         onPicked:function(a){if(root.selectedCount>0)root.bulkAction(a)}
     }
-    ScrollMemory { target:trackList; scope:"playlist" }
+    ScrollMemory { target:trackList; scope:"playlist"; relativeToOrigin:true }
     QbzScrollBar { target:trackList; anchors.right:parent.right; anchors.top:parent.top; anchors.bottom:parent.bottom }
 }

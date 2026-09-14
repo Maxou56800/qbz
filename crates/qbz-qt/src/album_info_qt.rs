@@ -121,6 +121,8 @@ fn map_track(index: usize, t: &Track, album_artist: &str) -> InfoTrack {
     let performers: Vec<PerformerRow> =
         parse_performers(t.performers.as_deref().unwrap_or_default())
             .into_iter()
+            // Catalog fillers ("Not Documented") are not people (2026-09-13).
+            .filter(|p| !qbz_text_utils::names::is_placeholder_name(&p.name))
             .map(|p| PerformerRow {
                 roles: roles_suffix(&p.roles),
                 primary_role: p

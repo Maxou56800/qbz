@@ -31,8 +31,8 @@ Rectangle {
     // Translucent at rest under the dynamic background, like every other chip
     // in this toolbar band (PlaylistTagFilter.slint:77).
     color: tagArea.containsMouse
-        ? theme.surfaceHover
-        : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+        ? theme.elevatedHoverFill
+        : theme.elevatedFill
 
     QbzFilterTip {
         id: tagTip

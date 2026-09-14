@@ -63,6 +63,9 @@ Rectangle {
     // HeaderBar.slint's with-alpha(app-background-surface-alpha)).
     color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
     readonly property bool ambientOn: theme.ambientOn
+    /// The fill of an ACTIVE nav item / open button: elevated, at half alpha
+    /// under the ambient field like every other chrome control.
+    readonly property color activeFill: root.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated
 
 
     /// Raised by the app menu's "Report an issue" row; AppShell owns the modal.
@@ -312,7 +315,7 @@ Rectangle {
         height: 30
         width: purchaseRow.implicitWidth
         radius: theme.radiusSm
-        color: purchaseTab.isActive ? theme.surfaceElevated
+        color: purchaseTab.isActive ? root.activeFill
             : purchaseArea.containsMouse ? theme.surfaceHover : "transparent"
 
         Row {
@@ -363,7 +366,7 @@ Rectangle {
         width: tabRow.implicitWidth
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (tabArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
 
         Row {
@@ -439,7 +442,7 @@ Rectangle {
         height: 30
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (cnbArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
         // Baked glyph, or the section's own raw image when it carries one
         // (My QBZ branding) — see shell/NavSectionGlyph.qml.
@@ -640,7 +643,7 @@ Rectangle {
                 height: 30
                 radius: theme.radiusSm
                 anchors.verticalCenter: parent.verticalCenter
-                color: plPopup.opened ? theme.surfaceElevated
+                color: plPopup.opened ? root.activeFill
                     : plBtnArea.containsMouse ? theme.surfaceHover : "transparent"
                 QbzIcon {
                     name: "list-music"
@@ -942,15 +945,39 @@ Rectangle {
     function focusSearch() {
         searchInput.forceActiveFocus()
     }
+    // FOCUS RETENTION (2026-09-13, every search box): after an edit, once the
+    // event loop settles, reclaim the keyboard unless another text input took
+    // it — the dropdown opening or closing must never steal it mid-word.
+    property bool _searchReclaim: false
+    function _reclaimSearchFocus() {
+        if (!root._searchReclaim)
+            return
+        root._searchReclaim = false
+        if (searchInput.activeFocus)
+            return
+        var win = root.Window.window
+        var current = win ? win.activeFocusItem : null
+        if (current instanceof TextInput || current instanceof TextEdit)
+            return
+        console.log("[HeaderBar] search lost focus after an edit; reclaimed (holder was "
+                    + (current ? current.toString() : "none") + ")")
+        searchInput.forceActiveFocus()
+    }
 
     Rectangle {
         id: searchBox
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        // 80% of the prior search width; gives up 60px to the section nav
-        // whenever that nav lives in the header (HeaderBar.slint:569). The
-        // width animates and `x` re-centers with it.
-        width: (root.width < 960 ? 179 : 256) - (QbzShell.navInSidebar ? 0 : 60)
+        // Grows with the window from 960px up (a quarter of it), between the
+        // 256px the layout was designed around and a 480px cap: wide enough
+        // to read a query on a 1720px window, never half the screen. Small
+        // windows keep the fixed 179px. The section nav still takes its 60px
+        // whenever it lives in the header (HeaderBar.slint:569); the fit rule
+        // reads this box's real edge, so the nav goes compact by itself when
+        // the wider box leaves it no room. The width animates and `x`
+        // re-centers with it.
+        width: (root.width < 960 ? 179 : Math.round(Math.max(256, Math.min(root.width * 0.24, 480))))
+            - (QbzShell.navInSidebar ? 0 : 60)
         height: 32
         Behavior on width {
             NumberAnimation { duration: 220; easing.type: Easing.InOutQuad }
@@ -976,9 +1003,13 @@ Rectangle {
             QbzTextEditMenu { }
             id: searchInput
             anchors.left: parent.left
-            anchors.right: parent.right
+            // Stop short of whatever sits at the right end (the clear cross,
+            // the Enter glyph while the cortinilla is open): TextInput scrolls
+            // its text within its own width, so nothing hides under them.
+            anchors.right: clearCross.visible ? clearCross.left
+                : (enterHint.visible ? enterHint.left : parent.right)
             anchors.leftMargin: 30
-            anchors.rightMargin: 8
+            anchors.rightMargin: (clearCross.visible || enterHint.visible) ? 2 : 8
             height: parent.height
             color: theme.textPrimary
             font.pixelSize: 13
@@ -1001,7 +1032,11 @@ Rectangle {
                     QbzSearch.searchLive(text)
                 }
             }
-            onTextEdited: applyLiveQuery()
+            onTextEdited: {
+                applyLiveQuery()
+                root._searchReclaim = true
+                Qt.callLater(root._reclaimSearchFocus)
+            }
 
             // The Enter rule (HeaderBar.slint on-enter): cortinilla open +
             // a keyboard selection -> activate the row; open + none -> full
@@ -1045,8 +1080,9 @@ Rectangle {
                     // the modals use, not merely cleared: a null
                     // activeFocusItem passes the gate but leaves AppShell's
                     // Keys handler receiving nothing at all.
-                    if (QbzSearch.cortinillaOpen)
-                        QbzSearch.cortinillaDismiss()
+                    // …and it empties the box too (2026-09-13, every search
+                    // box): clearSearch() drops the text and the dropdown.
+                    root.clearSearch()
                     event.accepted = true
                     var p = searchInput
                     while (p.parent) {
@@ -1078,6 +1114,7 @@ Rectangle {
         // open (Slint: it lives in the box, opposite the magnifier), else
         // the × clear.
         Text {
+            id: enterHint
             visible: QbzSearch.cortinillaOpen
             anchors.right: parent.right
             anchors.rightMargin: 10
@@ -1087,10 +1124,14 @@ Rectangle {
             font.pixelSize: 12
             verticalAlignment: Text.AlignVCenter
         }
+        // The clear cross: always there while there is text (2026-09-13); it
+        // sits to the LEFT of the ↵ hint while the dropdown is open, at the
+        // right edge otherwise.
         Rectangle {
-            visible: !QbzSearch.cortinillaOpen && searchInput.text !== ""
-            anchors.right: parent.right
-            anchors.rightMargin: 5
+            id: clearCross
+            visible: searchInput.text !== ""
+            anchors.right: QbzSearch.cortinillaOpen ? enterHint.left : parent.right
+            anchors.rightMargin: QbzSearch.cortinillaOpen ? 4 : 5
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -1230,7 +1271,7 @@ Rectangle {
                             border.width: 1
                             border.color: theme.borderSubtle
                             opacity: QbzSession.connectivity === 2 ? 0.4 : 1.0
-                            color: signInArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: signInArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                             Text {
                                 id: signInText
                                 anchors.centerIn: parent

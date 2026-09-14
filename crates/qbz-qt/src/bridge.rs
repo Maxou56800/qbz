@@ -84,6 +84,10 @@ pub mod qbz_bridge {
         /// Select rows: the picked OPTION INDEX within the row's list.
         #[qinvokable]
         fn settings_select(self: Pin<&mut QbzBridge>, key: QString, index: i32);
+        #[qinvokable]
+        fn settings_pick_background_image(self: Pin<&mut QbzBridge>);
+        #[qinvokable]
+        fn settings_clear_background_image(self: Pin<&mut QbzBridge>);
         /// Slider rows (initial buffer size).
         #[qinvokable]
         fn settings_slider(self: Pin<&mut QbzBridge>, key: QString, value: i32);
@@ -169,6 +173,8 @@ pub mod qbz_bridge {
         /// invokable this replaced could not express them.
         #[qinvokable]
         fn playlist_remove_track(self: Pin<&mut QbzBridge>, row_id: QString);
+        #[qinvokable]
+        fn playlist_remove_tracks(self: Pin<&mut QbzBridge>, ids_json: QString);
         /// Drag-reorder drop: visible row `from` -> insertion slot `slot`.
         #[qinvokable]
         fn playlist_reorder(self: Pin<&mut QbzBridge>, from: i32, slot: i32);
@@ -281,6 +287,14 @@ impl qbz_bridge::QbzBridge {
         crate::settings_bool(key.to_string(), value);
     }
 
+    pub fn settings_pick_background_image(self: Pin<&mut Self>) {
+        crate::settings_qt::pick_background_image();
+    }
+
+    pub fn settings_clear_background_image(self: Pin<&mut Self>) {
+        crate::settings_qt::clear_background_image();
+    }
+
     pub fn settings_select(self: Pin<&mut Self>, key: QString, index: i32) {
         crate::settings_select(key.to_string(), index);
     }
@@ -293,11 +307,13 @@ impl qbz_bridge::QbzBridge {
         crate::settings_string(key.to_string(), value.to_string());
     }
 
-    /// Purely bridge-local state — no crate handler, nothing to persist. The
-    /// Slint global is not persisted either: Settings always opens on Audio,
-    /// the section only has to survive a Loader unmount WITHIN a session.
+    /// Bridge-local state with one reader outside: the section only has to
+    /// survive a Loader unmount WITHIN a session (Settings opens on Audio),
+    /// and it rides to page_restore_qt so "Where you left off" reopens
+    /// Settings on the same section.
     pub fn settings_set_section(mut self: Pin<&mut Self>, index: i32) {
         if index == 11 && !crate::orbit_qt::enabled() { return; }
+        crate::page_restore_qt::note_args("settings", serde_json::json!({ "section": index }));
         self.as_mut().set_settings_section(index);
     }
 
@@ -378,6 +394,10 @@ impl qbz_bridge::QbzBridge {
 
     pub fn playlist_remove_track(self: Pin<&mut Self>, row_id: QString) {
         crate::playlist_remove_track(row_id.to_string());
+    }
+
+    pub fn playlist_remove_tracks(self: Pin<&mut Self>, ids_json: QString) {
+        crate::playlist_remove_tracks(ids_json.to_string());
     }
 
     pub fn playlist_reorder(self: Pin<&mut Self>, from: i32, slot: i32) {

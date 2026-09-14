@@ -524,7 +524,7 @@ Rectangle {
         width: 28
         height: 28
         radius: 14
-        color: newArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: newArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
         QbzIcon {
             anchors.centerIn: parent
             name: "plus"

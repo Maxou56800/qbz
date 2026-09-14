@@ -221,7 +221,7 @@ Item {
                         width: body.width
                         height: 92
                         radius: theme.radiusMd
-                        color: selected ? theme.surfaceHover : theme.surfaceElevated
+                        color: selected ? theme.surfaceElevatedHover : theme.surfaceElevated
                         border.width: selected ? 2 : 1
                         border.color: selected ? theme.accent : theme.borderSubtle
 

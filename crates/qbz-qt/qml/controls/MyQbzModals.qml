@@ -76,10 +76,19 @@ Item {
         property string name: ""
         readonly property bool canCreate: createPanel.name !== "" && !createPanel.creating
 
-        // A fresh open starts with an empty field.
+        // A fresh open starts with an empty field — reset on the OPEN edge,
+        // never the close edge: at close the box still holds focus for a
+        // frame, its focus-gated re-seed skips, and the next open found the
+        // draft already "" with the old text still in the box (the
+        // dirty-form report of 2026-09-14). `reset()` syncs the box itself.
         Connections {
             target: root
-            function onCreateOpenChanged() { createPanel.name = "" }
+            function onCreateOpenChanged() {
+                if (!root.createOpen)
+                    return
+                createPanel.name = ""
+                createNameField.reset("")
+            }
         }
 
         Rectangle {
@@ -166,6 +175,7 @@ Item {
                         font.letterSpacing: 1.5
                     }
                     QbzLineEdit {
+                        id: createNameField
                         width: parent.width
                         height: 34
                         text: createPanel.name
@@ -255,10 +265,17 @@ Item {
         // frame, and then `open` never changes and the prefill would be stale.
         // Keying it on the whole document instead would clobber what the user
         // is typing every time an unrelated field (`busy`) flips.
-        readonly property string editKey: editPanel.mode + "|" + (root.editDoc.name || "")
+        // The open flag rides along so a reopen on the SAME collection
+        // re-seeds too (a cancelled rename left its draft behind).
+        readonly property string editKey: (root.editOpen ? "1" : "0") + "|"
+            + editPanel.mode + "|" + (root.editDoc.name || "")
         onEditKeyChanged: {
             editPanel.draftName = root.editDoc.name || ""
             editPanel.draftDescription = root.editDoc.description || ""
+            if (root.editOpen) {
+                renameField.reset()
+                descriptionField.reset()
+            }
         }
 
         Rectangle {
@@ -338,6 +355,7 @@ Item {
 
                 // --- Body: rename
                 QbzLineEdit {
+                    id: renameField
                     visible: editPanel.isRename
                     width: parent.width
                     height: visible ? 34 : 0
@@ -350,6 +368,7 @@ Item {
 
                 // --- Body: description
                 QbzTextArea {
+                    id: descriptionField
                     visible: editPanel.isDescription
                     width: parent.width
                     // A FLAT 96, never `visible ? 96 : 0`: a Column does not

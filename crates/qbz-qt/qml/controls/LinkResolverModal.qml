@@ -25,6 +25,9 @@ Item {
 
     onVisibleChanged: {
         if (visible) {
+            // Rust cleared `url` before opening; sync the box regardless of
+            // where focus sat at the last close (QbzLineEdit.reset()).
+            urlInput.reset(QbzLink.url)
             urlInput.focusField()
         } else {
             // Return focus only if it still belongs to this modal. A search

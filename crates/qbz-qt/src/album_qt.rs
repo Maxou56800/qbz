@@ -485,10 +485,14 @@ fn credit_role(roles: Option<&Vec<String>>) -> String {
 /// album.rs `build_credits` (releaseArtistsMapper parity, minus the
 /// "VARIOUS"-composer drop it also applies).
 fn build_credits(album: &Album) -> Vec<(String, String, String)> {
+    use qbz_text_utils::names::is_placeholder_name;
+    // Catalog fillers ("Not Documented") are not credits — dropped here so
+    // the header never prints them beside the real artist (2026-09-13).
     let mut credits: Vec<(String, String, String)> =
         match album.artists.as_ref().filter(|v| !v.is_empty()) {
             Some(list) => list
                 .iter()
+                .filter(|a| !is_placeholder_name(&a.name))
                 .map(|a| {
                     (
                         a.name.clone(),
@@ -497,15 +501,22 @@ fn build_credits(album: &Album) -> Vec<(String, String, String)> {
                     )
                 })
                 .collect(),
-            None => vec![(
-                album.artist.name.clone(),
-                album.artist.id.to_string(),
-                String::new(),
-            )],
+            None => Vec::new(),
         };
+    if credits.is_empty() && !is_placeholder_name(&album.artist.name) {
+        credits.push((
+            album.artist.name.clone(),
+            album.artist.id.to_string(),
+            String::new(),
+        ));
+    }
     // Album-level composer appended last, unless it's the localized
     // "Various Composers" placeholder (releaseArtistsMapper's VARIOUS drop).
-    if let Some(composer) = album.composer.as_ref().filter(|c| !c.name.is_empty()) {
+    if let Some(composer) = album
+        .composer
+        .as_ref()
+        .filter(|c| !c.name.is_empty() && !is_placeholder_name(&c.name))
+    {
         if !composer.name.to_uppercase().contains("VARIOUS") {
             credits.push((
                 composer.name.clone(),
@@ -542,6 +553,7 @@ pub(crate) fn featured_list(
     };
     qbz_qobuz::performers::featured_artists(performers, artist, title)
         .into_iter()
+        .filter(|name| !qbz_text_utils::names::is_placeholder_name(name))
         .map(|name| {
             let id = credits
                 .iter()
@@ -636,8 +648,22 @@ pub async fn load_album(
             other => other.to_string(),
         })?;
 
-    let artist = album.artist.name.clone();
-    let artist_id = album.artist.id.to_string();
+    // The header's artist: never a catalog filler — fall back to the first
+    // real name in `artists`, else nothing (the credits line still shows
+    // whatever real names exist).
+    let (artist, artist_id) = if qbz_text_utils::names::is_placeholder_name(&album.artist.name) {
+        album
+            .artists
+            .as_ref()
+            .and_then(|list| {
+                list.iter()
+                    .find(|a| !qbz_text_utils::names::is_placeholder_name(&a.name))
+            })
+            .map(|a| (a.name.clone(), a.id.to_string()))
+            .unwrap_or_default()
+    } else {
+        (album.artist.name.clone(), album.artist.id.to_string())
+    };
     let credits = build_credits(&album);
     let date_display = format_release_date(
         album
@@ -1168,7 +1194,9 @@ fn album_to_card(album: &Album) -> AlbumCardData {
 }
 
 fn card_artist(album: &Album) -> (String, String) {
-    if !album.artist.name.is_empty() {
+    if !album.artist.name.is_empty()
+        && !qbz_text_utils::names::is_placeholder_name(&album.artist.name)
+    {
         return (album.artist.name.clone(), album.artist.id.to_string());
     }
     if let Some(list) = album.artists.as_ref() {

@@ -290,6 +290,10 @@ mod disc_meta_qt;
 mod label_qt;
 mod local_media_info_qt;
 mod nav_qt;
+mod page_restore_qt;
+mod wallpaper_qt;
+#[cfg(target_os = "linux")]
+mod wallpaper_wayland_qt;
 mod now_playing;
 mod offline_fwd;
 mod output_labels;
@@ -822,6 +826,11 @@ fn on_session_entered() {
     let ordinary_entry = nav_qt::shell_entry_view();
     let logged_off = offline_fwd::engine().status().offline_session;
     let local_album = local_restore_qt::take_startup_album();
+    // The exact page (page_restore_qt: a detail, a root's tab, a Settings
+    // section, a search). Consumed here even when another door wins, so a
+    // re-entry in the same process never replays it. `ordinary_entry` already
+    // names its entry view — the shell mounted that view at construction.
+    let page = page_restore_qt::take_startup_page();
     let entry_view = if local_album.is_some() {
         "localalbum".to_string()
     } else if logged_off {
@@ -831,6 +840,8 @@ fn on_session_entered() {
     };
     nav_qt::record(&entry_view);
     hydrate_view(&entry_view);
+    // The desktop wallpaper, when a background mode paints it (a no-op otherwise).
+    wallpaper_qt::refresh();
     // Logged-off startup is the ONLY automatic redirect. An authenticated
     // account keeps the established startup/restore flow even when physical
     // connectivity is down. The selected tab is the first user-ordered Local
@@ -841,6 +852,15 @@ fn on_session_entered() {
     } else if logged_off {
         let landing = settings_qt::local_landing_tab(kiosk_profile_qt::active());
         navigate_to_tab("local", &landing);
+    } else if let Some(page) = page {
+        // Re-run the page's opener on the view the shell already mounted. A
+        // page that cannot come back (a catalog page while offline, a hidden
+        // Purchases surface, stale arguments) steps back onto the root that
+        // was seeded beneath it.
+        if !page_restore_qt::restore(&page) {
+            nav_qt::back();
+            hydrate_view(&nav_qt::current_view());
+        }
     }
     now_playing::publish_current();
     // Phase 3: fetch Discover > Home (online sessions only — the offline
@@ -1431,7 +1451,7 @@ pub(crate) fn open_album(album_id: String) {
     if offline_fwd::engine().status().is_offline() {
         return;
     }
-    nav_qt::record("album");
+    nav_qt::record_with("album", serde_json::json!({ "id": &album_id }));
     *LAST_DETAIL.lock().unwrap() = ("album".to_string(), album_id.clone());
     let runtime = app();
     album_bridge::ui(move |mut b| {
@@ -1465,7 +1485,7 @@ pub(crate) fn open_artist(artist_id: String) {
     if offline_fwd::engine().status().is_offline() {
         return;
     }
-    nav_qt::record("artist");
+    nav_qt::record_with("artist", serde_json::json!({ "id": &artist_id }));
     *LAST_DETAIL.lock().unwrap() = ("artist".to_string(), artist_id.clone());
     // Warm the Library feed in the background: the page's "In library" tab is
     // built off it, and on a cold session (or right after an account switch —
@@ -1903,7 +1923,7 @@ pub(crate) fn open_playlist(playlist_id: String) {
     // QBZ as a player without Qobuz — refusing them while offline would gate
     // local files behind a network the user does not have.
     if local_playlist_qt::is_local_id(&playlist_id) {
-        nav_qt::record("playlist");
+        nav_qt::record_with("playlist", serde_json::json!({ "id": &playlist_id }));
         ui(|mut b| b.as_mut().set_playlist_json(QString::from("{}")));
         let runtime = app();
         spawn(async move {
@@ -1917,7 +1937,7 @@ pub(crate) fn open_playlist(playlist_id: String) {
         log::warn!("[qbz-qt] open_playlist: invalid id {playlist_id}");
         return;
     };
-    nav_qt::record("playlist");
+    nav_qt::record_with("playlist", serde_json::json!({ "id": &playlist_id }));
     // Clear the previous playlist before the fetch — same stale-render as the
     // album and artist views had.
     ui(|mut b| b.as_mut().set_playlist_json(QString::from("{}")));
@@ -2153,6 +2173,37 @@ pub(crate) fn playlist_remove_track(row_id: String) {
             return;
         };
         playlist_qt::remove_track(&runtime, playlist_track_id).await
+    });
+}
+
+/// Multi-select "Remove from playlist": the three arms of
+/// `playlist_remove_track` over every selected row — the local repo rows in
+/// one pass, the sidecar rows one by one (each is its own table write), the
+/// Qobuz memberships in ONE API call.
+pub(crate) fn playlist_remove_tracks(ids_json: String) {
+    let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+    if ids.is_empty() {
+        return;
+    }
+    let runtime = app();
+    spawn(async move {
+        if local_playlist_qt::local_detail_open() {
+            local_playlist_qt::remove_rows(&runtime, &ids).await;
+            return;
+        }
+        let mut catalog: Vec<u64> = Vec::new();
+        for row_id in &ids {
+            if playlist_qt::is_mixed() && playlist_qt::remove_sidecar_row(&runtime, row_id).await {
+                continue;
+            }
+            match row_id.parse::<u64>() {
+                Ok(id) => catalog.push(id),
+                Err(_) => log::warn!("[qbz-qt] playlist bulk remove: non-numeric row id {row_id}"),
+            }
+        }
+        if !catalog.is_empty() {
+            playlist_qt::remove_tracks(&runtime, &catalog).await;
+        }
     });
 }
 

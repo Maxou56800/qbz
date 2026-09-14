@@ -135,6 +135,11 @@ Item {
             root.draftDescription = root.doc.description || ""
             root.draftOfflineOnly = root.doc.offlineOnly === true
             root.draftFolderId = root.doc.folderId || ""
+            // The boxes, not just the drafts: a seed equal to the previous
+            // one changes nothing above, and a box that was still focused
+            // at close never re-seeded (QbzLineEdit.reset()).
+            nameField.reset()
+            descriptionField.reset()
             scope.forceActiveFocus()
             nameField.focusField()
         }
@@ -332,6 +337,7 @@ Item {
                         font.pixelSize: theme.fontLegal
                     }
                     QbzTextArea {
+                        id: descriptionField
                         width: parent.width
                         height: 90
                         text: root.draftDescription
@@ -360,6 +366,10 @@ Item {
                     }
                     QbzSelect {
                         menuWidth: 260
+                        // A folder tree grows past what a plain list can
+                        // scan: the filter box, like the ui-control standard's
+                        // searchable dropdown.
+                        searchable: true
                         options: root.folderOptions
                         currentIndex: root.folderIndex
                         enabled: !root.busy

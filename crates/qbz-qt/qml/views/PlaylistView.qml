@@ -75,6 +75,8 @@ Rectangle {
     // never reach Rust, everything else goes down as a JSON id array through
     // QbzPlayer.bulkTracksAction (bulk_tracks_qt.rs).
     property bool multiSelect: false
+    /// The rows a bulk "Remove from playlist" is waiting to confirm.
+    property var pendingRemoveIds: []
     property var selected: ({})
     readonly property int selectedCount: Object.keys(root.selected).length
     readonly property bool multiSelectOn: root.multiSelect
@@ -108,6 +110,13 @@ Rectangle {
             return
         }
         if (action === "clear") { root.selected = ({}); sel.anchorId = ""; return }
+        if (action === "remove") {
+            var picked = root.selectedIdsInOrder()
+            if (picked.length === 0) return
+            root.pendingRemoveIds = picked
+            removeConfirm.open()
+            return
+        }
         var ids = root.selectedIdsInOrder()
         if (ids.length === 0) return
         QbzPlayer.bulkTracksAction(JSON.stringify(ids), action, "playlist", String(doc.id || ""))
@@ -722,39 +731,14 @@ Rectangle {
                     }
 
                     // In-playlist search.
-                    Rectangle {
+                    QbzSearchField {
                         width: 220
                         height: 30
-                        radius: 6
+                        sidePadding: 9
+                        glyphSize: 13
                         anchors.verticalCenter: parent.verticalCenter
-                        color: theme.surfaceElevated
-                        border.width: 1
-                        border.color: theme.borderSubtle
-                        Row {
-                            anchors.fill: parent
-                            anchors.leftMargin: 9
-                            anchors.rightMargin: 9
-                            spacing: 6
-                            QbzIcon { name: "search"; width: 13; height: 13; anchors.verticalCenter: parent.verticalCenter; tintName: "muted" }
-                            TextInput {
-                                QbzTextEditMenu { }
-                                width: parent.width - 19
-                                height: parent.height
-                                color: theme.textPrimary
-                                font.pixelSize: 13
-                                verticalAlignment: Text.AlignVCenter
-                                clip: true
-                                onTextEdited: QbzBridge.playlistSetSearch(text)
-                                Text {
-                                    visible: parent.text === ""
-                                    anchors.fill: parent
-                                    text: QbzSession.tr("Search tracks", QbzSession.trRev)
-                                    color: theme.textMuted
-                                    font.pixelSize: 13
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-                        }
+                        placeholder: QbzSession.tr("Search tracks", QbzSession.trRev)
+                        onEdited: function (text) { QbzBridge.playlistSetSearch(text) }
                     }
                     // Sort dropdown.
                     Rectangle {
@@ -765,8 +749,8 @@ Rectangle {
                         // PlaylistView.slint:855-859 — resting fill
                         // translucent under the dynamic background.
                         color: sortArea.containsMouse
-                            ? theme.surfaceHover
-                            : (root.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+                            ? theme.elevatedHoverFill
+                            : theme.elevatedFill
                         border.width: 1
                         border.color: theme.borderSubtle
                         Row {
@@ -898,8 +882,11 @@ Rectangle {
                 { "id": "add-to-mixtape", "label": QbzSession.tr("Add to Mixtape/Collection", QbzSession.trRev), "icon": "cassette-tape", "danger": false, "needsSelection": true },
                 { "id": "add-to-favorites", "label": QbzSession.tr("Add to Library", QbzSession.trRev), "icon": "heart", "danger": false, "needsSelection": true },
                 { "id": "make-offline", "label": QbzSession.tr("Make available offline", QbzSession.trRev), "icon": "cloud-download", "danger": false, "needsSelection": true },
+                // Owner only, like the row menu's entry (2026-09-14): one
+                // confirm, then one bulk remove routed per row.
+                { "id": "remove", "label": QbzSession.tr("Remove from playlist", QbzSession.trRev), "icon": "trash-2", "danger": true, "needsSelection": true, "hidden": !root.isOwner },
                 { "id": "clear", "label": QbzSession.tr("Clear", QbzSession.trRev), "icon": "x", "danger": false, "needsSelection": true }
-            ]
+            ].filter(function (a) { return a.hidden !== true })
             onAction: function (id) { root.bulkAction(id) }
         }
 
@@ -1098,6 +1085,24 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
             }
+        }
+    }
+
+    // Multi-select "Remove from playlist" (2026-09-14): one confirm for the
+    // whole selection, then one bulk remove — playlist_remove_tracks routes
+    // each row the way the single remove does (local repo, sidecar, Qobuz).
+    QbzConfirmModal {
+        id: removeConfirm
+        anchors.fill: parent
+        title: QbzSession.tr("Remove from playlist", QbzSession.trRev)
+        body: QbzSession.tr("{} tracks will be removed from this playlist.", QbzSession.trRev)
+            .replace("{}", root.pendingRemoveIds.length)
+        confirmLabel: QbzSession.tr("Remove", QbzSession.trRev)
+        danger: true
+        onConfirmed: {
+            QbzBridge.playlistRemoveTracks(JSON.stringify(root.pendingRemoveIds))
+            root.pendingRemoveIds = []
+            root.selected = ({})
         }
     }
 }

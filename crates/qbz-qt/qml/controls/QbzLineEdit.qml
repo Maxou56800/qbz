@@ -19,6 +19,7 @@
 // detail, queue) is this control.
 
 import QtQuick
+import QtQuick.Window
 import com.blitzfc.qbz
 import "../theme"
 
@@ -100,6 +101,20 @@ Rectangle {
     property bool _cleared: false
     onTextChanged: root._cleared = false
 
+    /// Re-seed the box from `value` (default: `text`) NOW, focus or not.
+    ///
+    /// The re-seed below reacts only to a CHANGE of `text`, and only while
+    /// the box is not being edited. A modal that resets its draft on the
+    /// CLOSE edge (the input still holds focus for that frame), or that
+    /// reopens with the same seed it closed on, produces neither — and the
+    /// box kept the last thing typed while the draft said otherwise (the
+    /// dirty-form report of 2026-09-14). Every modal form calls this from
+    /// its open handler, after seeding its drafts.
+    function reset(value) {
+        root._cleared = false
+        input.text = (value === undefined) ? root.text : String(value)
+    }
+
     function clearSearch() {
         input.text = ""
         root._cleared = true
@@ -109,6 +124,39 @@ Rectangle {
         clearSearch()
         root.open = false
         input.focus = false
+    }
+    /// Hand the keyboard back to the shell root (the walk the header search
+    /// does); plain unfocus when no shell root is above (previews, tests).
+    function blurToShell() {
+        var p = root
+        while (p.parent) {
+            if (p.parent.isQbzShellRoot === true) {
+                p.parent.forceActiveFocus()
+                return
+            }
+            p = p.parent
+        }
+        input.focus = false
+    }
+    // FOCUS RETENTION (2026-09-13, every search box): a field that filters a
+    // list on each keystroke sits above a surface that rebuilds on each
+    // keystroke, and must not lose the keyboard to that rebuild. After an
+    // edit, once the event loop settles, reclaim focus unless another text
+    // input took it (a click elsewhere is a decision, a rebuilt list is not).
+    property bool _reclaim: false
+    function _reclaimFocus() {
+        if (!root._reclaim)
+            return
+        root._reclaim = false
+        if (input.activeFocus)
+            return
+        var win = root.Window.window
+        var current = win ? win.activeFocusItem : null
+        if (current instanceof TextInput || current instanceof TextEdit)
+            return
+        console.log("[QbzLineEdit] focus left the field after an edit; reclaimed (holder was "
+                    + (current ? current.toString() : "none") + ")")
+        input.forceActiveFocus()
     }
 
     // Immersive-port contract D16 (2026-08-02, additive one-liner): the ONE
@@ -237,10 +285,22 @@ Rectangle {
                     text: root.text
                     onAccepted: { root.accepted(text); root.committed(text) }
                     onActiveFocusChanged: if (!activeFocus) root.committed(text)
-                    onTextEdited: root.edited(text)
+                    onTextEdited: {
+                        root.edited(text)
+                        if (root.searchMode) {
+                            root._reclaim = true
+                            Qt.callLater(root._reclaimFocus)
+                        }
+                    }
+                    // Escape on a search box: empty it AND hand the keyboard
+                    // back (2026-09-13). Form fields keep propagating it.
                     Keys.onEscapePressed: function (event) {
                         if (root.expandable) {
                             root.closeSearch()
+                            event.accepted = true
+                        } else if (root.searchMode) {
+                            root.clearSearch()
+                            root.blurToShell()
                             event.accepted = true
                         } else {
                             event.accepted = false

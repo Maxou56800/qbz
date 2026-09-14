@@ -689,7 +689,7 @@ Rectangle {
                     height: 24
                     radius: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    color: clrArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: clrArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     QbzIcon { name: "x"; width: 13; height: 13; anchors.centerIn: parent; tintName: clrArea.containsMouse ? "textPrimary" : "muted" }
                     MouseArea {
                         id: clrArea

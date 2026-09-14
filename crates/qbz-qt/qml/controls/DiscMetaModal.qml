@@ -162,7 +162,7 @@ Item {
                         height: 30
                         radius: 6
                         color: active ? theme.accent
-                             : (pArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated)
+                             : (pArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated)
                         Text {
                             id: pLabel
                             anchors.centerIn: parent

@@ -77,8 +77,8 @@ Rectangle {
     // .slint:77 — the same chip in three mounts). Accent and hover keep theirs.
     color: root.active ? theme.accent
          : genreArea.containsMouse
-             ? theme.surfaceHover
-             : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+             ? theme.elevatedHoverFill
+             : theme.elevatedFill
 
     Row {
         id: genreRow

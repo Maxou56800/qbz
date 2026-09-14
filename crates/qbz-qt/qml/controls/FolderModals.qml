@@ -103,6 +103,7 @@ Item {
         if (root.createOpen) {
             // Its OWN draft, reset on its OWN open transition.
             root.draftCreateName = ""
+            createField.reset("")
             createScope.forceActiveFocus()
             createField.focusField()
         } else {
