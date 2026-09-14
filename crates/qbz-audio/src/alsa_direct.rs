@@ -623,10 +623,7 @@ impl AlsaDirectStream {
                 // Clamp to 24-bit range: [-8388608, 8388607]
                 let samples_i32: Vec<i32> = samples_f32
                     .iter()
-                    .map(|&s| {
-                        let scaled = s * 8_388_607.0;
-                        scaled.clamp(-8_388_608.0, 8_388_607.0) as i32
-                    })
+                    .map(|&s| crate::pcm_sample::s24(s))
                     .collect();
 
                 let io = pcm
@@ -643,12 +640,7 @@ impl AlsaDirectStream {
                 let mut bytes: Vec<u8> = Vec::with_capacity(samples_f32.len() * 3);
 
                 for &sample in samples_f32 {
-                    let scaled = sample * 8_388_607.0;
-                    let s24 = scaled.clamp(-8_388_608.0, 8_388_607.0) as i32;
-                    // Pack as 3 bytes in little-endian order
-                    bytes.push((s24 & 0xFF) as u8); // LSB
-                    bytes.push(((s24 >> 8) & 0xFF) as u8); // Middle
-                    bytes.push(((s24 >> 16) & 0xFF) as u8); // MSB (sign-extended)
+                    bytes.extend_from_slice(&crate::pcm_sample::s24_packed(sample));
                 }
 
                 let io = pcm.io_bytes();
@@ -660,7 +652,7 @@ impl AlsaDirectStream {
             Format::S16LE => {
                 // f32 -> i16
                 let samples_i16: Vec<i16> =
-                    samples_f32.iter().map(|&s| (s * 32_767.0) as i16).collect();
+                    samples_f32.iter().map(|&s| crate::pcm_sample::s16(s)).collect();
 
                 let io = pcm
                     .io_i16()

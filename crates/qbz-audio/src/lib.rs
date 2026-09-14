@@ -127,3 +127,6 @@ pub fn device_supports_sample_rate(_device_id: &str, _sample_rate: u32) -> Optio
 pub fn get_device_supported_rates(_device_id: &str) -> Option<Vec<u32>> {
     None
 }
+
+#[cfg(target_os = "linux")]
+mod pcm_sample;
