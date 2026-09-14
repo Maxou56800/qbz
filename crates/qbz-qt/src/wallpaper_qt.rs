@@ -1,14 +1,16 @@
 //! The desktop wallpaper as the app-wide background (2026-09-14).
 //!
-//! Two `app_background` modes ride on it: "wallpaper" (3) shows the part of
-//! the wallpaper that lies BEHIND the window, lightly blurred under the
-//! translucent chrome (shell/WallpaperField.qml — the window's place on the
-//! screen comes from Qt where the platform tells it: X11, macOS, Windows;
-//! Wayland hides window positions, so a centred crop stands in until the
-//! Plasma window-management protocol is wired); "wallpaper-blurred" (4)
-//! passes the wallpaper through the same atmosphere pass Blurred art gives
-//! the cover (atmosphere_qt::for_cover_blocking), so it reads like the album
-//! blur with the desktop's colours.
+//! Two `app_background` modes ride on it: "wallpaper" (3) makes the window
+//! read as translucent to the desktop — ALWAYS the part of the wallpaper
+//! that lies under the window, wherever it is moved, lightly blurred under
+//! the half-alpha chrome (shell/WallpaperField.qml). The window's place on
+//! the screen comes from Qt where the platform tells it (X11, macOS,
+//! Windows) and from the compositor on KDE Plasma Wayland
+//! (wallpaper_wayland_qt.rs, `org_kde_plasma_window_management`); where
+//! neither can say, a centred crop stands in. "wallpaper-blurred" (4) is
+//! Blurred art with the wallpaper in the cover's place: the same
+//! ImmersiveAtmosphere, the same drift while the transport plays
+//! (atmosphere_qt::for_cover_blocking builds its bitmap).
 //!
 //! The image is the system wallpaper, resolved per desktop — KDE Plasma's
 //! `plasma-org.kde.plasma.desktop-appletsrc` (the containment on screen 0
@@ -35,6 +37,13 @@ const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "avif",
 /// Does this `app_background` mode paint the wallpaper?
 pub fn mode_uses_wallpaper(mode: i32) -> bool {
     mode >= MODE_WALLPAPER
+}
+
+/// Start following the window's place on a Plasma Wayland desktop
+/// (wallpaper_wayland_qt.rs). Idempotent; nothing to start elsewhere.
+pub fn track_window_position() {
+    #[cfg(target_os = "linux")]
+    crate::wallpaper_wayland_qt::start();
 }
 
 /// Resolve the wallpaper (the user's own image first) and publish its URL and

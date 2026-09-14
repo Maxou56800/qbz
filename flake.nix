@@ -87,6 +87,10 @@
             install -Dm755 qbz "$out/bin/qbz"
             install -Dm644 qbz.desktop \
               "$out/share/applications/com.blitzfc.qbz.desktop"
+            # KWin matches the Exec path against /proc/<pid>/exe before it
+            # offers org_kde_plasma_window_management (Wallpaper background).
+            substituteInPlace "$out/share/applications/com.blitzfc.qbz.desktop" \
+              --replace-warn "Exec=/usr/bin/qbz" "Exec=$out/bin/qbz"
             if [ -d icons ]; then cp -r icons "$out/share/icons"; fi
             install -Dm644 LICENSE "$out/share/licenses/qbz/LICENSE"
             if [ -d licenses ]; then

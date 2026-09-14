@@ -121,13 +121,17 @@ Rectangle {
         opacity: root.veilStrength
     }
 
-    // Mode 3 — Wallpaper: the desktop wallpaper, the part of it that lies
-    // BEHIND this window (where the platform tells the window its place:
-    // X11, macOS, Windows — Wayland hides it, so a centred crop stands in),
-    // lightly blurred under the half-alpha chrome. Static: it costs a frame
-    // only when the window moves or resizes (shell/WallpaperField.qml).
-    // Mode 4 — Wallpaper, blurred: the wallpaper through the SAME atmosphere
-    // pass Blurred art gives the cover, held still (no transport to follow).
+    // Mode 3 — Wallpaper: the window reads as translucent to the desktop:
+    // ALWAYS the part of the wallpaper that lies under it, wherever it is
+    // moved (X11, macOS and Windows say where the window is; KDE Plasma
+    // Wayland says so through its window-management protocol; anywhere
+    // else a centred crop stands in), lightly blurred so nothing in the
+    // picture competes with the text, yet still recognisable. Static: it
+    // costs a frame only when the window moves or resizes
+    // (shell/WallpaperField.qml).
+    // Mode 4 — Wallpaper, blurred: Blurred art with the wallpaper in the
+    // cover's place — the SAME atmosphere pass, the SAME drift while the
+    // transport plays, the same still pose when it does not.
     // Neither waits for a playing track (QbzTheme.ambientOn).
     readonly property bool wallpaperModeOn: root.ambientOn && QbzShell.ambientMode === 3
     readonly property bool wallpaperBlurOn: root.ambientOn && QbzShell.ambientMode === 4
@@ -136,7 +140,7 @@ Rectangle {
         visible: root.wallpaperModeOn
         source: root.wallpaperModeOn ? QbzShell.wallpaperUrl : ""
         hostWindow: root.hostWindow
-        blur: 0.35
+        blur: 0.6
         dim: theme.isDark ? QbzShell.ambientDim : 0.0
     }
     Rectangle {
@@ -149,7 +153,7 @@ Rectangle {
         anchors.fill: parent
         visible: root.wallpaperBlurOn
         source: root.wallpaperBlurOn ? QbzShell.wallpaperAtmosphereUrl : ""
-        animated: false
+        animated: root.wallpaperBlurOn && QbzPlayer.npPlaying
         dim: theme.isDark ? QbzShell.ambientDim : 0.0
     }
     Rectangle {

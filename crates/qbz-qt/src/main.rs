@@ -292,6 +292,8 @@ mod local_media_info_qt;
 mod nav_qt;
 mod page_restore_qt;
 mod wallpaper_qt;
+#[cfg(target_os = "linux")]
+mod wallpaper_wayland_qt;
 mod now_playing;
 mod offline_fwd;
 mod output_labels;
