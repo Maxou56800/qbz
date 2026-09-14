@@ -151,7 +151,10 @@ pub fn open_discover_browse(endpoint: String, title: String) {
         log::warn!("[qbz-qt] open_discover_browse with an empty endpoint; ignoring");
         return;
     }
-    crate::nav_qt::record("discoverbrowse");
+    crate::nav_qt::record_with(
+        "discoverbrowse",
+        serde_json::json!({ "endpoint": &endpoint, "title": &title }),
+    );
     let generation = {
         let Ok(mut s) = DISCOVER.lock() else {
             return;

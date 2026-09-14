@@ -293,11 +293,13 @@ impl qbz_bridge::QbzBridge {
         crate::settings_string(key.to_string(), value.to_string());
     }
 
-    /// Purely bridge-local state — no crate handler, nothing to persist. The
-    /// Slint global is not persisted either: Settings always opens on Audio,
-    /// the section only has to survive a Loader unmount WITHIN a session.
+    /// Bridge-local state with one reader outside: the section only has to
+    /// survive a Loader unmount WITHIN a session (Settings opens on Audio),
+    /// and it rides to page_restore_qt so "Where you left off" reopens
+    /// Settings on the same section.
     pub fn settings_set_section(mut self: Pin<&mut Self>, index: i32) {
         if index == 11 && !crate::orbit_qt::enabled() { return; }
+        crate::page_restore_qt::note_args("settings", serde_json::json!({ "section": index }));
         self.as_mut().set_settings_section(index);
     }
 

@@ -44,6 +44,46 @@ Item {
         }
     }
 
+    // THE PAGE'S TAB, LIVE (2026-09-13). Any mounted view with an `activeTab`
+    // string that does not report a richer state of its own (Local Library
+    // does, and restores it itself) reports its tab on every change: nav_qt
+    // stamps it on the history entry, so Back/Forward land on the tab the
+    // user left, and page_restore_qt keeps it in the per-profile page
+    // document, so "Where you left off" reopens on it. Never during the
+    // two-phase route commit, when the item on screen is still the outgoing
+    // view while `currentView` already names the next one.
+    Connections {
+        target: viewLoader.item
+        ignoreUnknownSignals: true
+        function onActiveTabChanged() { root._reportTab() }
+    }
+    function _reportTab() {
+        var item = viewLoader.item
+        if (!item || root._armed || root.kiosk)
+            return
+        if (typeof item.activeTab !== "string" || typeof item.navigationStateJson === "string")
+            return
+        QbzShell.reportNavState(QbzShell.currentView, JSON.stringify({ "activeTab": item.activeTab }))
+    }
+    // The other direction: a Back/Forward destination whose entry carries a
+    // tab (armed by nav_qt::step before `currentView` is published) mounts
+    // on it. Views that restore their own state consume the arming
+    // themselves and are left alone.
+    function _restoreTab() {
+        var item = viewLoader.item
+        if (!item || root.kiosk || QbzShell.restoreStateScope === "")
+            return
+        if (QbzShell.restoreStateScope !== QbzShell.currentView)
+            return
+        if (typeof item.activeTab !== "string" || typeof item.restoreNavigationState === "function")
+            return
+        var saved = null
+        try { saved = JSON.parse(QbzShell.stateRestore) } catch (e) { saved = null }
+        QbzShell.restoreStateScope = ""
+        if (saved && typeof saved.activeTab === "string" && saved.activeTab !== "")
+            item.activeTab = saved.activeTab
+    }
+
     // The mounted view. The replacement for AppShell's four `viewLoader.item`
     // references (multi-select: the two Ctrl+A / Escape routers and the two
     // duck-typed reporters) — a QML `id` is scoped to its own document, so
@@ -595,6 +635,7 @@ Item {
                 && typeof viewLoader.item.activeTab === "string"
             root._itemTabRequest = viewLoader.item !== null
                 && typeof viewLoader.item.tabNavigationRequest !== "undefined"
+            root._restoreTab()
         }
     }
 
