@@ -260,6 +260,33 @@ fn sel<R>(f: impl FnOnce(&mut HashMap<String, LocalTrack>) -> R) -> R {
     f(guard.get_or_insert_with(HashMap::new))
 }
 
+/// How many selected keys lie under the folder node `folder`. `paths` is the
+/// SORTED selection.
+///
+/// Ordinary tracks are keyed by their file path, `<folder>/…`. SACD tracks are
+/// keyed by their virtual path `sacd:<image>#N`: under an ancestor folder that
+/// reads `sacd:<folder>/…`, and under the image's own synthetic folder node
+/// (whose path IS the image) `sacd:<image>#…`. Counting only `<folder>/…` left
+/// every folder holding ISOs hollow or partial while its tracks were selected.
+///
+/// Each form is a byte-order range: every key starting with a prefix sorts
+/// between the prefix and the prefix with its last byte bumped by one ('/'
+/// 0x2F -> '0', '#' 0x23 -> '$'); the three ranges are disjoint.
+fn selected_under(paths: &[String], folder: &str) -> u32 {
+    let range = |prefix: String| {
+        let mut upper = prefix.clone().into_bytes();
+        if let Some(last) = upper.last_mut() {
+            *last += 1;
+        }
+        let upper = String::from_utf8(upper).unwrap_or_default();
+        let start = paths.partition_point(|p| p.as_str() < prefix.as_str());
+        let end = paths.partition_point(|p| p.as_str() < upper.as_str());
+        end.saturating_sub(start)
+    };
+    (range(format!("{folder}/")) + range(format!("sacd:{folder}/")) + range(format!("sacd:{folder}#")))
+        as u32
+}
+
 /// Annotate the visible rows. ONE sorted view of the selected paths is built
 /// per publish; each folder's "how many of my tracks are selected" is then a
 /// binary-searched range and each track row a binary search — instead of the
@@ -282,14 +309,7 @@ fn annotate(nodes: Vec<TreeNode>) -> Vec<TreeNodeOut> {
         .into_iter()
         .map(|node| {
             let (selected, select_state) = if node.is_folder {
-                // Byte-order range over "<path>/…": the upper bound is the
-                // same prefix with its trailing '/' (0x2F) bumped to '0'
-                // (0x30), which is the next byte value.
-                let lo = format!("{}/", node.path);
-                let hi = format!("{}0", node.path);
-                let start = paths.partition_point(|p| p.as_str() < lo.as_str());
-                let end = paths.partition_point(|p| p.as_str() < hi.as_str());
-                let under = (end - start) as u32;
+                let under = selected_under(&paths, &node.path);
                 let st = if under == 0 {
                     0
                 } else if node.track_count > 0 && under >= node.track_count {
@@ -487,5 +507,45 @@ pub fn load_folder_detail_blocking(path: &str) -> FolderDetail {
         track_count: count,
         subfolders,
         tracks: rows,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::selected_under;
+
+    fn sorted(keys: &[&str]) -> Vec<String> {
+        let mut out: Vec<String> = keys.iter().map(|k| k.to_string()).collect();
+        out.sort_unstable();
+        out
+    }
+
+    #[test]
+    fn sacd_tracks_count_under_their_folders_and_their_image() {
+        let paths = sorted(&[
+            "/m/DSD/A/a-ha/01.dsf",
+            "sacd:/m/DSD/A/a-ha/Hunting.iso#1",
+            "sacd:/m/DSD/A/a-ha/Hunting.iso#2",
+            "sacd:/m/DSD/B/Bowie.iso#1",
+        ]);
+        assert_eq!(selected_under(&paths, "/m/DSD/A"), 3);
+        assert_eq!(selected_under(&paths, "/m/DSD/A/a-ha"), 3);
+        assert_eq!(selected_under(&paths, "/m/DSD/A/a-ha/Hunting.iso"), 2);
+        assert_eq!(selected_under(&paths, "/m/DSD"), 4);
+        assert_eq!(selected_under(&paths, "/m/DSD/B"), 1);
+    }
+
+    #[test]
+    fn sibling_prefixes_and_other_images_are_not_counted() {
+        let paths = sorted(&[
+            "/m/ab/01.flac",
+            "sacd:/m/ab/x.iso#1",
+            "sacd:/m/a.iso2#1",
+            "sacd:/m/a.iso#3",
+        ]);
+        assert_eq!(selected_under(&paths, "/m/a"), 0);
+        assert_eq!(selected_under(&paths, "/m/a.iso"), 1);
+        assert_eq!(selected_under(&paths, "/m/ab"), 2);
+        assert_eq!(selected_under(&[], "/m"), 0);
     }
 }
