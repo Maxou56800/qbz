@@ -258,6 +258,41 @@ Rectangle {
         return ""
     }
 
+    // Go to album / Go to artist, by SOURCE (2026-09-14). A catalog row routes
+    // through its catalog ids (title and artist ride along as the
+    // unavailable-page hint); a local row — file, Plex, Jellyfin, Subsonic —
+    // through the queue's NAVIGATION KEY (local_playback.rs stamps the album
+    // key the card itself opens, prefixed for media servers) and the artist
+    // NAME into the Local Library Artists tab, the local surfaces' own routes
+    // (local/LocalTrackRow.qml). A row without the key or the name shows no
+    // entry.
+    function rowCanGoAlbum(row) {
+        return (row.albumId || "") !== ""
+    }
+    function rowCanGoArtist(row) {
+        return row.isLocal === true ? (row.artist || "") !== "" : (row.artistId || "") !== ""
+    }
+    function goToAlbum(row) {
+        if (!rowCanGoAlbum(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openAlbum(row.albumId)
+            QbzShell.navigateTo("localalbum")
+        } else {
+            QbzAlbum.openAlbumFrom(row.albumId, row.album || "", row.artist || "")
+        }
+    }
+    function goToArtist(row) {
+        if (!rowCanGoArtist(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openArtistByName(row.artist)
+            QbzShell.navigateTo("local")
+        } else {
+            QbzArtist.openArtist(row.artistId)
+        }
+    }
+
     function queueMenu(row) {
         var t = QbzSession.tr
         var r = QbzSession.trRev
@@ -277,6 +312,12 @@ Rectangle {
                              ? t("Cancel stop after this", r) : t("Stop after this", r),
                          "icon": "circle-stop", "action": "stop-after", "external": true })
         }
+        if (root.rowCanGoAlbum(row))
+            items.push({ "label": t("Go to album", r), "icon": "disc-3",
+                         "action": "go-album", "external": true })
+        if (root.rowCanGoArtist(row))
+            items.push({ "label": t("Go to artist", r), "icon": "user",
+                         "action": "go-artist", "external": true })
         if (row.isEphemeral !== true) {
             if (row.isLocal !== true)
                 items.push({ "label": t("Add to playlist", r), "icon": "list-plus",
@@ -315,6 +356,10 @@ Rectangle {
             QbzQueue.queueToggleStopAfter(row.id)
         else if (action === "add-to-playlist")
             QbzPlaylistPicker.openForTrack(row.id)
+        else if (action === "go-album")
+            root.goToAlbum(row)
+        else if (action === "go-artist")
+            root.goToArtist(row)
     }
 
     function historyVisualIndex(row) {

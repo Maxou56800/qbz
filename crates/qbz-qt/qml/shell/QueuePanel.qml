@@ -316,6 +316,41 @@ Rectangle {
     // Row action icon button (the panel's small IconButton).
 
 
+    // Go to album / Go to artist, by SOURCE (2026-09-14). A catalog row routes
+    // through its catalog ids (title and artist ride along as the
+    // unavailable-page hint); a local row — file, Plex, Jellyfin, Subsonic —
+    // through the queue's NAVIGATION KEY (local_playback.rs stamps the album
+    // key the card itself opens, prefixed for media servers) and the artist
+    // NAME into the Local Library Artists tab, the local surfaces' own routes
+    // (local/LocalTrackRow.qml). A row without the key or the name shows no
+    // entry.
+    function rowCanGoAlbum(row) {
+        return (row.albumId || "") !== ""
+    }
+    function rowCanGoArtist(row) {
+        return row.isLocal === true ? (row.artist || "") !== "" : (row.artistId || "") !== ""
+    }
+    function goToAlbum(row) {
+        if (!rowCanGoAlbum(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openAlbum(row.albumId)
+            QbzShell.navigateTo("localalbum")
+        } else {
+            QbzAlbum.openAlbumFrom(row.albumId, row.album || "", row.artist || "")
+        }
+    }
+    function goToArtist(row) {
+        if (!rowCanGoArtist(row))
+            return
+        if (row.isLocal === true) {
+            QbzLocal.openArtistByName(row.artist)
+            QbzShell.navigateTo("local")
+        } else {
+            QbzArtist.openArtist(row.artistId)
+        }
+    }
+
     // One UP NEXT / History row (QueueRow.slint).
     component QueueRow: Rectangle {
         id: qrRoot
@@ -556,6 +591,10 @@ Rectangle {
                                         : QbzSession.tr("Stop after this", QbzSession.trRev), "icon": "circle-stop", "action": "stop-after" },
                                     { "label": QbzSession.tr("Remove all after", QbzSession.trRev), "icon": "list-x", "action": "remove-after" },
                                 ]
+                                if (root.rowCanGoAlbum(row))
+                                    items.push({ "label": QbzSession.tr("Go to album", QbzSession.trRev), "icon": "disc-3", "action": "go-album" })
+                                if (root.rowCanGoArtist(row))
+                                    items.push({ "label": QbzSession.tr("Go to artist", QbzSession.trRev), "icon": "user", "action": "go-artist" })
                                 if (row.isEphemeral !== true) {
                                     // LOCAL/Plex rows drop it too: the queue's
                                     // `add_to_playlist` refuses them
@@ -609,6 +648,8 @@ Rectangle {
                                         else if (a === "add-to-playlist") QbzQueue.queueAddToPlaylist(rowIndex)
                                         else if (a === "track-info") qrRoot.openTrackInfo()
                                         else if (a === "favorite") root.toggleFav(row)
+                                        else if (a === "go-album") root.goToAlbum(row)
+                                        else if (a === "go-artist") root.goToArtist(row)
                                     }
                                 }
                             }
