@@ -323,7 +323,10 @@ Rectangle {
         root.artistsGroup = p.artistsGroup
         root.artistsView = p.artistsView
     }
-    Component.onCompleted: root.applyPrefs()
+    Component.onCompleted: {
+        root.applyPrefs()
+        feedRows.views = [grid, list, playlistsList, albumsList.listView]
+    }
     Connections {
         target: QbzLibrary
         function onLibraryPrefsJsonChanged() { root.applyPrefs() }
@@ -561,6 +564,59 @@ Rectangle {
     }
     onVisibleRowsChanged: Qt.callLater(root.reportSurfaceState)
     onVisibleChanged: Qt.callLater(root.reportSurfaceState)
+
+    // THE MODEL every body binds to (2026-09-14). `visibleRows` stays the
+    // logical truth for everything that reasons about rows (selection, play
+    // context, the A-Z strip); the views see it through QbzKeyedModel, which
+    // turns a new derive into removes / inserts / moves instead of a model
+    // swap. That is the whole fix for "an album leaving the Library rebuilds
+    // the grid at the top": the heart settles, Rust republishes the feed
+    // (`publish_library_document`), the derive runs, and only the leaving
+    // card fades out while its neighbours slide into the gap — scroll offset,
+    // delegates and covers untouched.
+    //
+    // A new tab, sort, search or filter set is a different page, not a change
+    // to this one: `scope` replaces the rows at once and starts at the top,
+    // exactly as the swap did. `favoriteFilterRev` is deliberately NOT in the
+    // scope — a heart removed under "Favorites only" is precisely the row
+    // that should animate out.
+    //
+    // Index-coupled readers (the artwork window reports) read
+    // `feedRows.published`, the array the model reflects index for index; the
+    // reconcile is deferred one turn, and `onReconciled` re-reports because a
+    // removal above the window shifts every index.
+    /// The page identity `feedRows` resets on — for bodies that derive their
+    /// own keyed rows from the feed (the Artists sidepanel rail).
+    readonly property string rowsScope: feedRows.scope
+    QbzKeyedModel {
+        id: feedRows
+        rows: root.visibleRows
+        // The All feed shows a purchased favourite twice (a favourites row and
+        // a purchases row), so there the group is part of the identity; the
+        // tabs keep one representative per entity, whose group may change.
+        keyOf: function (row) {
+            if (row.kind === "group-header")
+                return row.id
+            return (row._membershipKey || (row.kind + ":" + row.id))
+                + (root.activeTab === "all" ? "|" + (row.group || "") : "")
+        }
+        scope: JSON.stringify([root.activeTab, root.activeSort, root.search,
+            root.tabSearch, root.showPurchases, root.showFavorites,
+            root.showFollowing, root.showLocal, root.hiresOnly, root.genreNames,
+            root.tracksGroup, root.albumsGroup, root.artistsGroup,
+            root.artistsView, root.playlistsSubTab])
+        // Positional cache from parseFeed: one row leaving renumbers it for
+        // every row after it, which is not a change to those rows.
+        ignoredKeys: ["_feedOrder"]
+        // `views` is handed over in Component.onCompleted below: all four
+        // bodies are declared after this model.
+        onReconciled: {
+            root.gridWindowReport()
+            root.listWindowReport()
+            albumsList.report()
+            playlistsList.report()
+        }
+    }
 
     /// A-Z bucket for a title: its first letter uppercased, "#" for anything
     /// that is not a letter (a leading digit, "*", punctuation). Matches the
@@ -1093,13 +1149,14 @@ Rectangle {
         id: windowDebounce
         interval: 180
         onTriggered: root.reportWindow(
-            pendingRows ? pendingRows : root.visibleRows, pendingFirst, pendingLast, pendingVisibleFirst)
+            pendingRows ? pendingRows : feedRows.published, pendingFirst, pendingLast, pendingVisibleFirst)
         property int pendingFirst: 0
         property int pendingLast: 0
         property int pendingVisibleFirst: 0
         property var pendingRows: null
     }
-    /// `rows` is optional — omit it and the band is read off `visibleRows`.
+    /// `rows` is optional — omit it and the band is read off the array the
+    /// views show (`feedRows.published`).
     function queueWindowReport(first, last, rows, visibleFirst) {
         windowDebounce.pendingFirst = first
         windowDebounce.pendingLast = last
@@ -1250,6 +1307,11 @@ Rectangle {
             readonly property int barInset:
                 (root.activeTab === "tracks" && root.tracksMultiSelect) ? 52 : 0
 
+            // A reload with a page already on screen (a bulk removal, a language
+            // switch) keeps that page until the new document lands, so the rows
+            // reconcile instead of the page blinking through the skeleton.
+            readonly property bool hasPage: root.feed.length > 0
+
             // Loading skeleton — a deliberate ADDITION: the Slint mounts a
             // bare centred 36px LoadingSpinner here (FavoritesView.slint:
             // 956/1012), which says "busy" but not "this is the shape of
@@ -1269,6 +1331,7 @@ Rectangle {
                 anchors.rightMargin: 32
                 anchors.topMargin: 16
                 visible: QbzLibrary.libraryLoading && QbzLibrary.libraryError === ""
+                    && !content.hasPage
                 // Which shape the tab is about to render.
                 readonly property bool listShape:
                     (root.activeTab === "all" && root.viewMode === "list")
@@ -1360,7 +1423,8 @@ Rectangle {
             }
 
             readonly property bool ready:
-                !QbzLibrary.libraryLoading && QbzLibrary.libraryError === ""
+                (!QbzLibrary.libraryLoading || content.hasPage)
+                && QbzLibrary.libraryError === ""
             onReadyChanged: Qt.callLater(root.reportSurfaceState)
             // Which surface owns the tab right now — one predicate per body,
             // so no two can mount at once.
@@ -1391,12 +1455,10 @@ Rectangle {
             // being spent on the body that was not showing.
             //
             // Collapsing the height to 0 is what actually stops the refill.
-            // The obvious alternative — `model: visible ? root.visibleRows :
-            // []` — is the one thing this file spends a paragraph warning
-            // against (see onLibraryFavoriteChanged): handing `model` a new
-            // value goes through QQuickItemView::setModel(), which resets the
-            // scroll offset to 0 and rebuilds every delegate. The height gate
-            // leaves `model` untouched.
+            // The obvious alternative — `model: visible ? feedRows : null` —
+            // is a model swap: QQuickItemView::setModel() resets the scroll
+            // offset to 0 and rebuilds every delegate. The height gate leaves
+            // `model` untouched.
             GridView {
                 id: grid
                 anchors.left: parent.left
@@ -1416,7 +1478,12 @@ Rectangle {
                 reuseItems: true
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
-                model: root.visibleRows
+                model: feedRows
+                // A card leaving shrinks and fades while the rest slide over.
+                add: QbzRowAdd { enabled: feedRows.animate; grow: 0.94 }
+                remove: QbzRowRemove { enabled: feedRows.animate; shrink: 0.92 }
+                move: QbzRowDisplaced { enabled: feedRows.animate }
+                displaced: QbzRowDisplaced { enabled: feedRows.animate }
 
                 onContentYChanged: root.gridWindowReport(true)
                 onModelChanged: root.gridWindowReport()
@@ -1447,8 +1514,10 @@ Rectangle {
                 Component.onCompleted: root.gridWindowReport()
 
                 delegate: FeedGridCell {
-                    required property var modelData
+                    required property string rowKey
+                    required property int rowRev
                     required property int index
+                    readonly property var modelData: feedRows.row(rowKey, rowRev)
                     view: root
                     item: modelData
                     // Viewport-relative so the skeleton's 48-instance cap
@@ -1474,7 +1543,11 @@ Rectangle {
                 reuseItems: true
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
-                model: root.visibleRows
+                model: feedRows
+                add: QbzRowAdd { enabled: feedRows.animate }
+                remove: QbzRowRemove { enabled: feedRows.animate }
+                move: QbzRowDisplaced { enabled: feedRows.animate }
+                displaced: QbzRowDisplaced { enabled: feedRows.animate }
                 onContentYChanged: root.listWindowReport()
                 onModelChanged: root.listWindowReport()
                 onVisibleChanged: root.listWindowReport()
@@ -1484,8 +1557,10 @@ Rectangle {
                 Component.onCompleted: root.listWindowReport()
 
                 delegate: Loader {
-                    required property var modelData
+                    required property string rowKey
+                    required property int rowRev
                     required property int index
+                    readonly property var modelData: feedRows.row(rowKey, rowRev)
                     width: list.width
                     height: modelData && modelData.kind === "group-header"
                         ? 34
@@ -1583,7 +1658,12 @@ Rectangle {
                     }
                     onLoaded: activateLoadedRow()
                     ListView.onPooled: releaseLoadedRow()
-                    ListView.onReused: activateLoadedRow()
+                    ListView.onReused: {
+                        // A transition cut short can pool the row half faded.
+                        opacity = 1
+                        scale = 1
+                        activateLoadedRow()
+                    }
                 }
             }
 
@@ -1596,7 +1676,7 @@ Rectangle {
                 anchors.rightMargin: root.alphaVisible ? (root.dateGrouping ? 98 : 52) : 32
                 anchors.topMargin: 16
                 view: root
-                rows: content.showAlbumsList ? root.visibleRows : []
+                rowsModel: feedRows
             }
 
             // ============ Playlists LIST mode ============================
@@ -1605,7 +1685,11 @@ Rectangle {
             ListView {
                 id: playlistsList
                 visible: content.showPlaylistsList
-                anchors.fill: parent
+                // Height-gated like the grid: hidden, it builds nothing.
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: playlistsList.visible ? parent.height - 16 : 0
                 anchors.leftMargin: 32
                 anchors.rightMargin: 32
                 anchors.topMargin: 16
@@ -1614,21 +1698,26 @@ Rectangle {
                 cacheBuffer: 60 * 8
                 reuseItems: true
                 boundsBehavior: Flickable.StopAtBounds
-                model: content.showPlaylistsList ? root.visibleRows : []
+                model: feedRows
+                add: QbzRowAdd { enabled: feedRows.animate }
+                remove: QbzRowRemove { enabled: feedRows.animate }
+                move: QbzRowDisplaced { enabled: feedRows.animate }
+                displaced: QbzRowDisplaced { enabled: feedRows.animate }
 
                 // Gated on visibility for the same reason gridWindowReport and
                 // listWindowReport are: `artMap` is ONE map, a report PRUNES
-                // outside its band, and this body still fires while hidden —
-                // `model` flips to [] on every tab switch (onModelChanged) and
-                // `anchors.fill` makes every window resize an onHeightChanged.
+                // outside its band, and this body still fires while hidden.
                 // Ungated, a resize on the Artists sidepanel evicted the rail's
-                // avatars and requested a `visibleRows` band the rail is not
-                // even showing (its order is A-Z, not feed order).
+                // avatars and requested a feed band the rail is not even
+                // showing (its order is A-Z, not feed order). Offsets count
+                // from `originY`: a removal above the window moves the origin,
+                // not the rows on screen.
                 function report() {
                     if (!playlistsList.visible) return
-                    var first = Math.max(0, Math.floor(playlistsList.contentY / 62) - 4)
-                    var last = Math.ceil((playlistsList.contentY + playlistsList.height) / 62) + 4
-                    root.queueWindowReport(first, Math.min(root.visibleRows.length - 1, last))
+                    var scrollY = playlistsList.contentY - playlistsList.originY
+                    var first = Math.max(0, Math.floor(scrollY / 62) - 4)
+                    var last = Math.ceil((scrollY + playlistsList.height) / 62) + 4
+                    root.queueWindowReport(first, Math.min(feedRows.published.length - 1, last))
                 }
                 onContentYChanged: playlistsList.report()
                 onModelChanged: playlistsList.report()
@@ -1637,8 +1726,11 @@ Rectangle {
                 Component.onCompleted: playlistsList.report()
 
                 delegate: PlaylistListRow {
-                    required property var modelData
+                    required property string rowKey
+                    required property int rowRev
                     required property int index
+                    readonly property var modelData: feedRows.row(rowKey, rowRev)
+                    ListView.onReused: { opacity = 1; scale = 1 }
                     width: playlistsList.width
                     item: modelData
                     rowIndex: index
@@ -1710,7 +1802,7 @@ Rectangle {
             // Back/forward scroll memory (controls/ScrollMemory.qml): reports
             // this container's offset while it is the live page, and restores it
             // when a back/forward step arms this route.
-            ScrollMemory { target: grid; scope: "library:" + root.activeTab }
+            ScrollMemory { target: grid; scope: "library:" + root.activeTab; relativeToOrigin: true }
             QbzScrollBar {
                 anchors.right: parent.right
                 anchors.rightMargin: root.alphaVisible ? (root.dateGrouping ? 80 : 34) : 4
@@ -1722,7 +1814,7 @@ Rectangle {
             // Back/forward scroll memory (controls/ScrollMemory.qml): reports
             // this container's offset while it is the live page, and restores it
             // when a back/forward step arms this route.
-            ScrollMemory { target: list; scope: "library:" + root.activeTab }
+            ScrollMemory { target: list; scope: "library:" + root.activeTab; relativeToOrigin: true }
             QbzScrollBar {
                 anchors.right: parent.right
                 anchors.rightMargin: root.alphaVisible ? (root.dateGrouping ? 80 : 34) : 4
@@ -1734,7 +1826,7 @@ Rectangle {
             // Back/forward scroll memory (controls/ScrollMemory.qml): reports
             // this container's offset while it is the live page, and restores it
             // when a back/forward step arms this route.
-            ScrollMemory { target: playlistsList; scope: "library:" + root.activeTab }
+            ScrollMemory { target: playlistsList; scope: "library:" + root.activeTab; relativeToOrigin: true }
             QbzScrollBar {
                 anchors.right: parent.right
                 anchors.rightMargin: 4
@@ -1747,10 +1839,12 @@ Rectangle {
         }
     }
 
-    // Both run from onContentYChanged, i.e. from INSIDE QQuickItemView::
-    // setModel() — see the visibleRows comment. Everything they touch on the
-    // view (width/height/contentY/cellWidth/cellHeight) is a plain qreal on
-    // the private; the array comes from root, never from the view.
+    // Both run from onContentYChanged. Everything they touch on the view
+    // (width/height/contentY/originY/cellWidth/cellHeight) is a plain qreal on
+    // the private; the array comes from the keyed model's `published` — the
+    // rows index for index as the view holds them — never from `.model` (see
+    // the visibleRows comment). Offsets count from `originY`: rows leaving
+    // above the window move the content origin, not the rows on screen.
     //
     // Both early-return while their body is hidden. `artMap` is ONE map and a
     // report PRUNES everything outside the reported band, so a hidden body
@@ -1766,11 +1860,12 @@ Rectangle {
     function gridWindowReport(motionOnly) {
         if (!grid.visible) return
         var cols = Math.max(1, Math.floor(grid.width / grid.cellWidth))
-        var visibleFirst = Math.max(0, Math.floor(grid.contentY / grid.cellHeight))
+        var scrollY = grid.contentY - grid.originY
+        var visibleFirst = Math.max(0, Math.floor(scrollY / grid.cellHeight))
         // Match the two rows of delegates already held by cacheBuffer.
         var firstRow = Math.max(0, visibleFirst - 2)
-        var lastRow = Math.ceil((grid.contentY + grid.height) / grid.cellHeight) + 2
-        var m = root.visibleRows
+        var lastRow = Math.ceil((scrollY + grid.height) / grid.cellHeight) + 2
+        var m = feedRows.published
         var band = firstRow + ":" + lastRow + ":" + visibleFirst + ":" + cols
         var now = Date.now()
         // Do not restart the bridge timer for every pixel in the same band.
@@ -1796,12 +1891,12 @@ Rectangle {
         var first = list.indexAt(4, list.contentY + 1)
         var last = list.indexAt(4, list.contentY + Math.max(1, list.height) - 1)
         if (first < 0)
-            first = Math.max(0, Math.floor(list.contentY / 50))
+            first = Math.max(0, Math.floor((list.contentY - list.originY) / 50))
         if (last < 0)
-            last = Math.ceil((list.contentY + list.height) / 50)
+            last = Math.ceil((list.contentY - list.originY + list.height) / 50)
         first = Math.max(0, first - 4)
         last += 4
-        queueWindowReport(first, Math.min(root.visibleRows.length - 1, last))
+        queueWindowReport(first, Math.min(feedRows.published.length - 1, last))
     }
 
     // ============================ overlay =================================

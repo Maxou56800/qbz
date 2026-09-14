@@ -63,7 +63,13 @@ Item {
         cell.scheduleMutableRestore()
     }
     GridView.onPooled: cell.releaseLoadedCard()
-    GridView.onReused: cell.scheduleMutableRestore()
+    GridView.onReused: {
+        // A row transition cut short (QbzKeyedModel in LibraryView) can pool
+        // the cell half faded or shrunk; the pool hands it back as it was.
+        cell.opacity = 1
+        cell.scale = 1
+        cell.scheduleMutableRestore()
+    }
 
     width: 200
     height: 246

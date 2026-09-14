@@ -26,9 +26,11 @@ Item {
 
     /// The LibraryView root (artMap, the selection map, the window reporter).
     property var view: null
-    /// The derived album rows for this tab — `view.visibleRows`, passed in so
-    /// this file never re-derives and both surfaces see the same array.
-    property var rows: []
+    /// The Library's keyed model (views/LibraryView.qml `feedRows`), shared by
+    /// every body so a row leaving animates instead of rebuilding the list.
+    property var rowsModel: null
+    /// For the model's synchronous reset layout.
+    readonly property alias listView: list
 
     QbzTheme { id: theme }
 
@@ -39,6 +41,8 @@ Item {
     function positionAt(index) {
         list.positionViewAtIndex(index, ListView.Beginning)
     }
+    /// Re-report the artwork window (the host calls it after a reconcile).
+    function report() { list.report() }
 
     Column {
         anchors.fill: parent
@@ -83,7 +87,10 @@ Item {
                 anchors.topMargin: 4
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.bottom: parent.bottom
+                // Height-gated like the host's grid: a hidden ListView with a
+                // model keeps refilling its viewport, and this one shares the
+                // Library's model with every other body.
+                height: root.visible ? parent.height - header.height - 4 : 0
                 // No strip inset here: the A-Z strip lives in LibraryView and
                 // the HOST already widened this component's right margin for
                 // it. Insetting again would double-count it.
@@ -92,7 +99,11 @@ Item {
                 cacheBuffer: 64 * 8
                 reuseItems: true
                 boundsBehavior: Flickable.StopAtBounds
-                model: root.rows
+                model: root.rowsModel
+                add: QbzRowAdd { enabled: root.rowsModel !== null && root.rowsModel.animate }
+                remove: QbzRowRemove { enabled: root.rowsModel !== null && root.rowsModel.animate }
+                move: QbzRowDisplaced { enabled: root.rowsModel !== null && root.rowsModel.animate }
+                displaced: QbzRowDisplaced { enabled: root.rowsModel !== null && root.rowsModel.animate }
 
                 // Windowed artwork, same contract as the grid: never read
                 // `list.model` back off the view (views/LibraryView.qml
@@ -101,18 +112,19 @@ Item {
                 // Gated on visibility like the host's own bodies
                 // (LibraryView.gridWindowReport / listWindowReport): `artMap`
                 // is ONE map and a report PRUNES outside its band, while this
-                // body keeps firing hidden — `rows` flips to [] on every tab
-                // switch (onModelChanged) and `anchors.fill` turns any window
-                // resize into onHeightChanged. Ungated it evicted whichever
+                // body keeps firing hidden (`anchors.fill` turns any window
+                // resize into onHeightChanged). Ungated it evicted whichever
                 // body is actually on screen, the Artists sidepanel rail above
-                // all, whose band is NOT a `visibleRows` band.
+                // all, whose band is NOT a feed band. Offsets count from
+                // `originY`, which rows leaving above the window move.
                 function report() {
-                    if (!list.visible) return
+                    if (!list.visible || root.rowsModel === null) return
                     var stride = root.rowH + root.rowGap
-                    var first = Math.max(0, Math.floor(list.contentY / stride) - 4)
-                    var last = Math.ceil((list.contentY + list.height) / stride) + 4
+                    var scrollY = list.contentY - list.originY
+                    var first = Math.max(0, Math.floor(scrollY / stride) - 4)
+                    var last = Math.ceil((scrollY + list.height) / stride) + 4
                     root.view.queueWindowReport(first,
-                        Math.min(root.rows.length - 1, last))
+                        Math.min(root.rowsModel.published.length - 1, last))
                 }
                 onContentYChanged: list.report()
                 onModelChanged: list.report()
@@ -121,8 +133,11 @@ Item {
                 Component.onCompleted: list.report()
 
                 delegate: AlbumListRow {
-                    required property var modelData
+                    required property string rowKey
+                    required property int rowRev
                     required property int index
+                    readonly property var modelData: root.rowsModel.row(rowKey, rowRev)
+                    ListView.onReused: { opacity = 1; scale = 1 }
                     width: list.width
                     item: modelData
                     rowIndex: index
