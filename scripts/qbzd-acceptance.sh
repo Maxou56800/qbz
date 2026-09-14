@@ -31,7 +31,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 command -v curl    >/dev/null 2>&1 || fail "curl is required"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required (status/ping/info shape checks)"
 command -v timeout  >/dev/null 2>&1 || fail "timeout (coreutils) is required"
-[ -x "$QBZD_BIN" ] || fail "qbzd binary not found/executable at $QBZD_BIN -- build it first (release, on its own: cargo build --release -p qbzd)"
+[ -x "$QBZD_BIN" ] || fail "qbzd binary not found/executable at $QBZD_BIN -- build it first (release, on its own, into this worktree's target: python3 scripts/qt-cargo.py build --release --manifest-path crates/Cargo.toml -p qbzd)"
 
 # ---------------------------------------------------------------------------
 # Isolated scratch profile root. NEVER the real daemon/desktop roots: dirs::

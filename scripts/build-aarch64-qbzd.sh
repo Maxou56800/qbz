@@ -48,8 +48,12 @@ case "$arch" in
     else
       echo "[qbzd-aarch64] non-apt distro: install the equivalents of: ${DEPS[*]}" >&2
     fi
+    # This worktree's own target (scripts/qt-target.py): Cargo's default in a
+    # plain checkout, a per-worktree sibling when the host shares one target.
+    CARGO_TARGET_DIR="$(python3 scripts/qt-target.py resolve)"
+    export CARGO_TARGET_DIR
     ( cd crates && cargo build --release -p qbzd )
-    install -Dm755 "crates/target/release/qbzd" "$OUT"
+    install -Dm755 "$CARGO_TARGET_DIR/release/qbzd" "$OUT"
     ;;
   x86_64 | amd64)
     echo "[qbzd-aarch64] CROSS-compile from $arch via cross (Docker)"
@@ -65,8 +69,12 @@ case "$arch" in
     export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:---memory=8g --memory-swap=12g}"
     # crates/Cross.toml injects the arm64 dev libs into the image (the daemon's
     # set; the Qt desktop is not cross-built, see build-aarch64-linux.sh).
+    # cross mounts CARGO_TARGET_DIR into the container: the worktree's own
+    # target here too, never one another worktree also builds into.
+    CARGO_TARGET_DIR="$(python3 scripts/qt-target.py resolve)"
+    export CARGO_TARGET_DIR
     ( cd crates && cross build --release --target "$TARGET" -p qbzd )
-    install -Dm755 "crates/target/$TARGET/release/qbzd" "$OUT"
+    install -Dm755 "$CARGO_TARGET_DIR/$TARGET/release/qbzd" "$OUT"
     ;;
   *)
     echo "[qbzd-aarch64] ERROR: unsupported build host arch: $arch" >&2

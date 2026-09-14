@@ -3,6 +3,10 @@
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 export QBZ_PREBUILT_SHADERS=1
+# The same target qt-run.sh builds in: this worktree's own when the host shares
+# one target across worktrees, Cargo's default otherwise (scripts/qt-target.py).
+CARGO_TARGET_DIR="$(python3 scripts/qt-target.py resolve)"
+export CARGO_TARGET_DIR
 bash scripts/test-search-local-qml.sh
 bash scripts/test-updates-qml.sh
 bash scripts/test-playback-cache-qml.sh
@@ -23,7 +27,7 @@ node scripts/test_qt_kiosk_navigation.mjs
 node scripts/test_qt_kiosk_feedback.mjs
 node scripts/test_qt_exclusive_gate.mjs
 python3 scripts/qt-cargo.py test --manifest-path crates/Cargo.toml -p qbz-qt --no-fail-fast
-target_dir="${CARGO_TARGET_DIR:-$PWD/crates/target}"
+target_dir="$CARGO_TARGET_DIR"
 logs="$(mktemp -d "${TMPDIR:-/tmp}/qbz-qt-gate-XXXXXX")"
 printf '[qt-gate] startup logs: %s\n' "$logs"
 for profile in debug release; do
@@ -32,5 +36,7 @@ for profile in debug release; do
   python3 scripts/qt-cargo.py build "${args[@]}" --manifest-path crates/Cargo.toml -p qbz-qt
   python3 scripts/qt-smoke.py "$target_dir/$profile/qbz" --log "$logs/$profile.log"
 done
+python3 scripts/qt-target.py link --target-dir "$target_dir" \
+  || printf '[qt-gate] crates/target not re-pointed; binaries are in %s\n' "$target_dir" >&2
 # A healthy offscreen bus cannot expose Qt's synchronous xcb D-Bus startup.
 python3 scripts/qt-smoke.py "$target_dir/release/qbz" --silent-bus --log "$logs/release-silent-bus.log"
