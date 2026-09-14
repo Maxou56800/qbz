@@ -360,6 +360,10 @@ Item {
                     }
                     QbzSelect {
                         menuWidth: 260
+                        // A folder tree grows past what a plain list can
+                        // scan: the filter box, like the ui-control standard's
+                        // searchable dropdown.
+                        searchable: true
                         options: root.folderOptions
                         currentIndex: root.folderIndex
                         enabled: !root.busy
