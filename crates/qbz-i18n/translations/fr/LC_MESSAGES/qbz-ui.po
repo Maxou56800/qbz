@@ -7721,3 +7721,11 @@ msgstr "Fond d'écran du système"
 #: crates/qbz-qt/qml/views/PlaylistView.qml
 msgid "{} tracks will be removed from this playlist."
 msgstr "{} titres seront retirés de cette playlist."
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper blur"
+msgstr "Flou du fond d'écran"
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur."
+msgstr "Intensité du flou du fond d'écran derrière la fenêtre : 0 % le laisse net, 100 % est le flou maximal."

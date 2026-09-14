@@ -140,7 +140,9 @@ Rectangle {
         visible: root.wallpaperModeOn
         source: root.wallpaperModeOn ? QbzShell.wallpaperUrl : ""
         hostWindow: root.hostWindow
-        blur: 0.75
+        // The user's choice (Settings > Appearance, 0-100 % of Qt's 0.0-1.0),
+        // live while that slider drags; 0.75 by default.
+        blur: QbzShell.wallpaperBlur
         dim: theme.isDark ? QbzShell.ambientDim : 0.0
     }
     Rectangle {

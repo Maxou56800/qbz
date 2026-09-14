@@ -293,6 +293,35 @@ Column {
                 }
             }
         }
+        // Wallpaper mode only: how blurred the X-ray view of the desktop is.
+        // Qt's own range for MultiEffect.blur, 0.0-1.0, shown as 0-100 %; the
+        // default is the 0.75 the mode shipped with (settings_qt.rs). The drag
+        // moves the live background; the value is stored on release.
+        SettingRow { kioskHost: root.kioskHost;
+            visible: root.backgroundIndex === 3
+            label: QbzSession.tr("Wallpaper blur", QbzSession.trRev)
+            description: QbzSession.tr("How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur.", QbzSession.trRev)
+            Row {
+                spacing: 12
+                QbzSlider { kioskHost: root.kioskHost;
+                    id: wallpaperBlurSlider
+                    anchors.verticalCenter: parent.verticalCenter
+                    minimum: 0
+                    maximum: 100
+                    value: Math.round(QbzShell.wallpaperBlur * 100)
+                    onChanged: function (v) { QbzShell.wallpaperBlur = v / 100 }
+                    onReleased: function (v) { QbzBridge.settingsSlider("wallpaper-blur", v) }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 40
+                    horizontalAlignment: Text.AlignRight
+                    text: wallpaperBlurSlider.value + "%"
+                    color: theme.textSecondary
+                    font.pixelSize: root.kioskHost ? theme.fontBody * 1.2 : theme.fontBody
+                }
+            }
+        }
     }
 
     SettingsSpacer { }

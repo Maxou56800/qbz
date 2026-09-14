@@ -7729,3 +7729,11 @@ msgstr "Fondo del sistema"
 #: crates/qbz-qt/qml/views/PlaylistView.qml
 msgid "{} tracks will be removed from this playlist."
 msgstr "Se quitarán {} pistas de esta playlist."
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper blur"
+msgstr "Desenfoque del fondo de pantalla"
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur."
+msgstr "Qué tan desenfocado se ve el fondo de pantalla detrás de la ventana: 0 % lo deja nítido y 100 % es el desenfoque máximo."
