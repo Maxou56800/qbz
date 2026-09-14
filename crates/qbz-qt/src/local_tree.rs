@@ -364,25 +364,54 @@ pub fn toggle_track_select_blocking(path: &str) {
     if sel(|s| s.remove(path)).is_some() {
         return;
     }
-    // SACD leaves deliberately carry their authoritative virtual
-    // `sacd:<image>#N` path, whose filesystem parent is not the synthetic ISO
-    // folder shown in the tree. Resolve the exact key first; ordinary files
-    // take this same cheap indexed path and no longer need a parent listing.
-    if let Some(track) = with_db(|db| db.get_track_by_path(path)).flatten() {
+    if let Some(track) = resolve_track_record(path) {
         sel(|s| {
             s.insert(path.to_string(), track);
         });
-        return;
+    }
+}
+
+/// The library record behind a track leaf's path.
+///
+/// SACD leaves deliberately carry their authoritative virtual
+/// `sacd:<image>#N` path, whose filesystem parent is not the synthetic ISO
+/// folder shown in the tree. Resolve the exact key first; ordinary files take
+/// this same cheap indexed path and no longer need a parent listing.
+fn resolve_track_record(path: &str) -> Option<LocalTrack> {
+    if let Some(track) = with_db(|db| db.get_track_by_path(path)).flatten() {
+        return Some(track);
     }
     let parent = std::path::Path::new(path)
         .parent()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
     let tracks = with_db(|db| db.list_folder_tracks(&parent, false)).unwrap_or_default();
-    if let Some(t) = tracks.into_iter().find(|t| t.file_path == path) {
-        sel(|s| {
-            s.insert(path.to_string(), t);
-        });
+    tracks.into_iter().find(|t| t.file_path == path)
+}
+
+/// Shift-click in the rail: SELECT — never toggle — every node the range
+/// covers (`nodes` = `(path, is_folder)` of the visible rows from the anchor
+/// to the clicked row). A folder brings its whole subtree and a track its own
+/// record. Inserting is idempotent, so a folder and its expanded children
+/// sharing the range, or rows that were already ticked, simply stay ticked:
+/// a range only ever adds, like every other select-mode surface.
+pub fn select_nodes_blocking(nodes: &[(String, bool)]) {
+    for (path, is_folder) in nodes {
+        if *is_folder {
+            let tracks =
+                with_db(|db| db.list_folder_tracks_recursive(path, false)).unwrap_or_default();
+            sel(|s| {
+                for t in tracks {
+                    s.insert(t.file_path.clone(), t);
+                }
+            });
+        } else if !sel(|s| s.contains_key(path.as_str())) {
+            if let Some(track) = resolve_track_record(path) {
+                sel(|s| {
+                    s.insert(path.clone(), track);
+                });
+            }
+        }
     }
 }
 

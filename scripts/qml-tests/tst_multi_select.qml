@@ -131,6 +131,31 @@ Item {
                  "subtitleIsLink": true, "artistId": "cb" })
     }
 
+    // ---- the Local Library folder rail (selection lives in Rust) ----------------
+    QtObject {
+        id: railView
+        property bool treeSelectMode: true
+        property string selectedFolder: ""
+        property string treeSearch: ""
+        property bool skelPhase: false
+        property var opened: []
+        property var tree: [
+            { "path": "/m/a", "segment": "a", "depth": 0, "isFolder": true, "canExpand": true },
+            { "path": "/m/a/1.flac", "segment": "1.flac", "depth": 1, "isFolder": false },
+            { "path": "/m/b", "segment": "b", "depth": 0, "isFolder": true, "canExpand": true },
+            { "path": "/m/c", "segment": "c", "depth": 0, "isFolder": true, "canExpand": true },
+            { "path": "/m/d", "segment": "d", "depth": 0, "isFolder": true, "canExpand": true }
+        ]
+        function toggleTreeSelectMode() { treeSelectMode = !treeSelectMode }
+        function selectFolder(path) { opened = opened.concat([path]) }
+    }
+    Local.LocalTreeRail {
+        id: rail
+        x: 1000; y: 400
+        width: 200; height: 400
+        view: railView
+    }
+
     TestCase {
         name: "MultiSelect"
         when: windowShown
@@ -197,6 +222,9 @@ Item {
             QbzMyQbz.selectCalls = []
             QbzMyQbz.opened = []
             QbzMyQbz.played = []
+            QbzLocal.treeCalls = []
+            railView.opened = []
+            railView.treeSelectMode = true
         }
 
         // A point of the row with nothing drawn over it but the body: the
@@ -304,6 +332,49 @@ Item {
             compare(QbzMyQbz.selectCalls[0].position, 3)
             compare(QbzMyQbz.selectCalls[0].shift, false)
             compare(QbzMyQbz.selectCalls[1].shift, true, "Shift reaches the Rust range")
+        }
+
+        function railRow(path) {
+            var list = find(rail, function (it) { return it.model !== undefined && it.itemAtIndex !== undefined })
+            verify(list !== null, "the rail list exists")
+            for (var i = 0; i < railView.tree.length; i++)
+                if (railView.tree[i].path === path)
+                    return list.itemAtIndex(i)
+            return null
+        }
+        function railCheck(path) {
+            var row = railRow(path)
+            verify(row !== null, "rail row " + path + " is drawn")
+            var check = find(row, function (it) {
+                return it.partial !== undefined && it.on !== undefined && shown(it)
+            })
+            verify(check !== null, "rail checkbox " + path + " is drawn")
+            return check
+        }
+
+        function test_folder_rail_shift_range_and_modifier_body_click() {
+            tryVerify(function () { return railRow("/m/d") !== null }, 2000)
+            clickOn(railCheck("/m/a"), 6, 6)
+            clickOn(railCheck("/m/c"), 6, 6, Qt.ShiftModifier)
+            compare(QbzLocal.treeCalls.length, 2)
+            compare(QbzLocal.treeCalls[0], "folder:/m/a")
+            var range = JSON.parse(QbzLocal.treeCalls[1].slice("range:".length))
+            compare(range.map(function (n) { return n.path }).join(","), "/m/a,/m/a/1.flac,/m/b,/m/c")
+            compare(range[1].isFolder, false)
+            // A Ctrl click on a row body selects instead of opening the folder.
+            var d = railRow("/m/d")
+            clickOn(d, d.width - 20, d.height / 2, Qt.ControlModifier)
+            compare(QbzLocal.treeCalls[2], "folder:/m/d")
+            compare(railView.opened.length, 0)
+            // A plain click on the body still opens it.
+            clickOn(d, d.width - 20, d.height / 2)
+            compare(railView.opened.length, 1)
+            // Leaving select mode forgets the anchor: Shift is a plain toggle.
+            railView.treeSelectMode = false
+            railView.treeSelectMode = true
+            wait(0)
+            clickOn(railCheck("/m/b"), 6, 6, Qt.ShiftModifier)
+            compare(QbzLocal.treeCalls[3], "folder:/m/b")
         }
     }
 
