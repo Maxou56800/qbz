@@ -118,4 +118,39 @@ QtObject {
         root.anchorId = key
         return out
     }
+
+    /// The spreadsheet / file-manager rule, for lists where a plain click
+    /// REPLACES the selection (the Library Explorer facets):
+    ///
+    ///   plain click    only this row; it becomes the anchor
+    ///   Ctrl / Cmd     toggle this row, keep the rest; it becomes the anchor
+    ///   Shift          only the range anchor..row; the anchor stays
+    ///   Ctrl+Shift     add the range anchor..row to the selection
+    ///
+    /// Without a visible anchor Shift behaves like the same click without it.
+    function nextExclusive(current, id, rows, modifiers) {
+        var mods = modifiers || 0
+        var shift = (mods & Qt.ShiftModifier) !== 0
+        var additive = (mods & (Qt.ControlModifier | Qt.MetaModifier)) !== 0
+        var key = String(id)
+        var anchorAt = root.anchorId !== "" ? root._indexOf(rows, root.anchorId) : -1
+
+        if (shift && anchorAt >= 0) {
+            var here = root._indexOf(rows, id)
+            if (here >= 0)
+                return root._fillRange(additive ? Object.assign({}, current) : {},
+                                       rows, anchorAt, here)
+        }
+
+        root.anchorId = key
+        if (!additive) {
+            var only = {}
+            only[key] = true
+            return only
+        }
+        var out = Object.assign({}, current)
+        if (out[key] === true) delete out[key]
+        else out[key] = true
+        return out
+    }
 }

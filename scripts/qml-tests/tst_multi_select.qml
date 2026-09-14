@@ -432,5 +432,24 @@ Item {
             m = keyedRule.next(m, 7, rows, Qt.ShiftModifier)
             compare(Object.keys(m).sort().join(","), "7,8,9")
         }
+
+        function test_exclusive_rule() {
+            var rows = [{ "id": "g1" }, { "id": "g2" }, { "id": "g3" }, { "id": "g4" }, { "id": "g5" }]
+            var m = rule.nextExclusive({}, "g2", rows, Qt.NoModifier)
+            compare(Object.keys(m).sort().join(","), "g2", "a plain click selects only that row")
+            m = rule.nextExclusive(m, "g4", rows, Qt.ShiftModifier)
+            compare(Object.keys(m).sort().join(","), "g2,g3,g4", "Shift selects the range")
+            m = rule.nextExclusive(m, "g1", rows, Qt.ShiftModifier)
+            compare(Object.keys(m).sort().join(","), "g1,g2", "the anchor stays, Shift replaces the range")
+            m = rule.nextExclusive(m, "g5", rows, Qt.ControlModifier)
+            compare(Object.keys(m).sort().join(","), "g1,g2,g5", "Ctrl adds one")
+            m = rule.nextExclusive(m, "g5", rows, Qt.ControlModifier)
+            compare(Object.keys(m).sort().join(","), "g1,g2", "Ctrl on a selected row removes it")
+            m = rule.nextExclusive(m, "g3", rows, Qt.ControlModifier)
+            m = rule.nextExclusive(m, "g5", rows, Qt.ControlModifier | Qt.ShiftModifier)
+            compare(Object.keys(m).sort().join(","), "g1,g2,g3,g4,g5", "Ctrl+Shift adds a range")
+            m = rule.nextExclusive(m, "g4", rows, Qt.NoModifier)
+            compare(Object.keys(m).sort().join(","), "g4", "a plain click starts over")
+        }
     }
 }
