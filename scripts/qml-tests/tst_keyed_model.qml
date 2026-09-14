@@ -1,8 +1,9 @@
 // QbzKeyedModel: rows reconcile into removes / inserts / moves / updates
 // instead of a model swap. Guards the order and identity contract under
 // random edits, the minimal-move reorder, the silent reset, a removal that
-// keeps the viewport and the delegates, the fade that keeps its content, and
-// the pooled delegate that must come back opaque (76 blank rows, 2026-09-14).
+// keeps the viewport and the delegates, the fade that keeps its content, the
+// pooled delegate that must come back opaque (76 blank rows, 2026-09-14), and
+// the Repeater-in-a-Column shape the sidebar queue uses.
 import QtQuick
 import QtTest
 import "../../crates/qbz-qt/qml/controls"
@@ -82,6 +83,39 @@ Item {
 
     // --- no view: reconcile arithmetic -------------------------------------
     QbzKeyedModel { id: plain; rows: root.plainRows }
+
+    // --- a Repeater in a Column (the sidebar queue shape) -------------------
+    property var columnRows: []
+    property int columnAdds: 0
+    property int columnMoves: 0
+    QbzKeyedModel { id: columnModel; rows: root.columnRows; views: [column] }
+    Column {
+        id: column
+        x: 0; y: 0
+        width: 200
+        add: Transition {
+            enabled: columnModel.animate
+            ScriptAction { script: root.columnAdds++ }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 60 }
+        }
+        move: Transition {
+            enabled: columnModel.animate
+            ScriptAction { script: root.columnMoves++ }
+            NumberAnimation { properties: "y"; duration: 120 }
+        }
+        Repeater {
+            id: columnRepeater
+            model: columnModel
+            delegate: Rectangle {
+                required property string rowKey
+                required property int rowRev
+                required property int index
+                readonly property var modelData: columnModel.row(rowKey, rowRev)
+                width: 200; height: 10
+                color: "transparent"
+            }
+        }
+    }
 
     TestCase {
         name: "KeyedModel"
@@ -324,6 +358,38 @@ Item {
             plain.sync()
             verify(plain.get(0).rowRev !== revA)
             plain.ignoredKeys = []
+        }
+
+        function test_j_column_repeater_resets_silently_and_slides_on_removal() {
+            columnModel.scope = "page-1"
+            root.columnRows = root.make(12, "c")
+            wait(0)
+            wait(150)
+            compare(columnRepeater.count, 12)
+            compare(root.columnAdds, 0, "the first page is not animated in")
+            var survivor = columnRepeater.itemAt(4)
+            // One row leaves: the rows below slide up, nothing is re-created.
+            root.columnRows = root.make(12, "c").filter(function (r) { return r.id !== "c2" })
+            columnModel.sync()
+            wait(30)
+            verify(root.columnMoves > 0, "the rows below slide")
+            wait(200)
+            compare(columnRepeater.itemAt(3), survivor, "the same row item, one slot up")
+            compare(survivor.y, 30)
+            // A row joins at the top: it fades in.
+            var adds = root.columnAdds
+            root.columnRows = [{ "id": "new", "title": "N" }].concat(root.columnRows)
+            columnModel.sync()
+            wait(150)
+            verify(root.columnAdds > adds, "the new row fades in")
+            // Another page replaces the list without animation.
+            adds = root.columnAdds
+            columnModel.scope = "page-2"
+            root.columnRows = root.make(8, "d")
+            wait(0)
+            wait(150)
+            compare(columnRepeater.count, 8)
+            compare(root.columnAdds, adds, "a page change is not animated")
         }
 
         function test_i_repeated_entities_are_distinct_rows() {

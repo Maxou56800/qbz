@@ -40,6 +40,39 @@ Rectangle {
         && root.doc.currentIndex < root.rows.length
     readonly property int actionRailWidth: kioskHost ? 72 : 52
 
+    // The list's model (2026-09-14): queue changes reach the ListView as
+    // removes / inserts / moves instead of a new array, so removing a track
+    // fades that row out while the rest slide up, "play next" slides the
+    // queue open, a history row trimmed above the window leaves the rows on
+    // screen where they are, and nothing is rebuilt from the top.
+    //
+    // Identity is the track (source + id); a repeat of the same track is its
+    // next occurrence. Phase, section and phaseIndex are data, not identity:
+    // when a track ends, the chronological order does not change, only which
+    // row is current, so those rows update in place and nothing moves. A
+    // search is a different list (the scope), replaced at once.
+    QbzKeyedModel {
+        id: rowsModel
+        rows: root.rows
+        keyOf: function (row) { return (row.source || "") + ":" + row.id }
+        scope: root.doc.searchQuery || ""
+        onReconciled: {
+            // The follow and the covers read view indices: run them once the
+            // view holds the new rows.
+            root.scheduleVisibleCovers()
+            if (root.hasPlayingRow && root.followPlaying)
+                root.followPlayingRow()
+        }
+    }
+    // A committed drop lands the dragged row where the pointer left it; only
+    // its neighbours slide. The chevrons keep the move animation (a swap).
+    property bool dropSettling: false
+    Timer {
+        id: dropSettle
+        interval: 600
+        onTriggered: root.dropSettling = false
+    }
+
     // Timing for the chronological projection currently on screen. History is
     // fully elapsed, the current row contributes the player's live position,
     // and upcoming rows are fully remaining. A filtered listen list therefore
@@ -128,6 +161,7 @@ Rectangle {
     }
 
     Component.onCompleted: {
+        rowsModel.views = [queueList]
         QbzQueue.queueExtendedOpened()
         root.scheduleVisibleCovers()
     }
@@ -139,8 +173,6 @@ Rectangle {
         root.scheduleVisibleCovers()
         if (!root.hasPlayingRow)
             root.cancelPlayingFollow()
-        else if (root.followPlaying)
-            Qt.callLater(function () { root.followPlayingRow() })
     }
     onSearchActiveChanged: if (root.searchActive) root.cancelPlayingFollow()
 
@@ -170,20 +202,22 @@ Rectangle {
     }
 
     function requestVisibleCovers() {
-        if (root.rows.length === 0 || queueList.height <= 0)
+        // View indices index the rows the model holds, not a newer `rows`.
+        var shown = rowsModel.published
+        if (shown.length === 0 || queueList.height <= 0)
             return
         var first = queueList.indexAt(4, queueList.contentY + 2)
         if (first < 0)
             first = 0
         var last = queueList.indexAt(4, queueList.contentY + queueList.height - 2)
         if (last < first)
-            last = Math.min(root.rows.length - 1, first + 16)
+            last = Math.min(shown.length - 1, first + 16)
         first = Math.max(0, first - 3)
-        last = Math.min(root.rows.length - 1, last + 3)
+        last = Math.min(shown.length - 1, last + 3)
         var urls = []
         var wanted = ({})
         for (var i = first; i <= last; i++) {
-            var url = root.artUrl(root.rows[i])
+            var url = root.artUrl(shown[i])
             if (url !== "" && !root.coverMap[url] && wanted[url] !== true) {
                 wanted[url] = true
                 urls.push(url)
@@ -493,9 +527,12 @@ Rectangle {
         root.dropSlot = -1
         root.dropHot = false
         QbzShell.dragInlineVisual = false
-        if (shouldCommit)
+        if (shouldCommit) {
+            root.dropSettling = true
+            dropSettle.restart()
             QbzQueue.queueExtendedDrop(phase, phaseIndex, trackId,
                                        targetPhase, slot)
+        }
     }
 
     function dragProxyY() {
@@ -806,7 +843,11 @@ Rectangle {
                 spacing: 3
                 boundsBehavior: Flickable.StopAtBounds
                 reuseItems: true
-                model: root.rows
+                model: rowsModel
+                add: QbzRowAdd { enabled: rowsModel.animate }
+                remove: QbzRowRemove { enabled: rowsModel.animate }
+                move: QbzRowDisplaced { enabled: rowsModel.animate && !root.dropSettling }
+                displaced: QbzRowDisplaced { enabled: rowsModel.animate }
                 onContentYChanged: root.scheduleVisibleCovers()
                 onMovementStarted: {
                     if (!root.programmaticListPosition)
@@ -815,8 +856,10 @@ Rectangle {
 
                 delegate: Item {
                     id: rowHost
-                    required property var modelData
+                    required property string rowKey
+                    required property int rowRev
                     required property int index
+                    readonly property var modelData: rowsModel.row(rowKey, rowRev)
 
                     readonly property string heading: root.sectionText(index, modelData)
                     readonly property var displayItem: Object.assign({}, modelData, {
@@ -832,7 +875,12 @@ Rectangle {
                         trackRow.recycleActive = false
                         trackRow.releaseForReuse()
                     }
-                    ListView.onReused: trackRow.recycleActive = true
+                    ListView.onReused: {
+                        // A transition cut short can pool the row half faded.
+                        rowHost.opacity = 1
+                        rowHost.scale = 1
+                        trackRow.recycleActive = true
+                    }
 
                     Text {
                         visible: rowHost.heading !== ""
