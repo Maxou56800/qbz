@@ -1796,7 +1796,7 @@ Rectangle {
                                     height: 32
                                     radius: 6
                                     color: retryArea.containsMouse
-                                        ? theme.surfaceHover : theme.surfaceElevated
+                                        ? theme.surfaceElevatedHover : theme.surfaceElevated
                                     border.width: 1
                                     border.color: theme.borderSubtle
                                     Text {

@@ -890,7 +890,7 @@ Rectangle {
         border.width: 1
         border.color: chip.active ? theme.accent : theme.borderSubtle
         color: chip.active ? theme.accent
-             : chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+             : chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
         Text {
             id: chipLabel
             anchors.centerIn: parent

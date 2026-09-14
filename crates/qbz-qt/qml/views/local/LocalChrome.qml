@@ -120,8 +120,8 @@ Item {
                 readonly property bool busy: QbzLocal.localDiscOpening
 
                 color: (!openBtn.busy && (openArea.containsMouse || openMenu.opened))
-                    ? theme.surfaceHover
-                    : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+                    ? theme.elevatedHoverFill
+                    : theme.elevatedFill
 
                 Row {
                     id: openRow

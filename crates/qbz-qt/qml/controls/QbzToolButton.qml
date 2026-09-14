@@ -69,7 +69,7 @@ Rectangle {
         : 2 * root.padH + row.implicitWidth
     radius: 6
     color: root.filled ? theme.accent
-        : (toolArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated)
+        : (toolArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated)
     border.width: (root.large && !(root.active && !root.fillActive)) ? 0 : 1
     border.color: (root.active && !root.fillActive) ? theme.accent : theme.borderSubtle
 

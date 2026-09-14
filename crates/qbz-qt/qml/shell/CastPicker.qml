@@ -528,7 +528,7 @@ Popup {
         height: 34
         radius: theme.radiusSm
         color: selected ? theme.accent
-            : (tabArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated)
+            : (tabArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated)
 
         Row {
             anchors.centerIn: parent

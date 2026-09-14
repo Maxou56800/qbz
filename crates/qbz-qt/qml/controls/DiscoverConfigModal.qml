@@ -408,7 +408,7 @@ Item {
                     width: refreshRow.width + 24
                     height: 34
                     radius: theme.radiusSm
-                    color: refreshArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: refreshArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     border.width: 1
                     border.color: theme.borderSubtle
                     Row {
@@ -481,7 +481,7 @@ Item {
         width: footerRow.width + 24
         height: 34
         radius: theme.radiusSm
-        color: footerArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: footerArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
         border.width: 1
         border.color: theme.borderSubtle
 

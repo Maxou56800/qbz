@@ -650,7 +650,7 @@ Item {
 
         height: 38
         radius: theme.radiusSm
-        color: chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
         border.width: 1
         border.color: theme.borderSubtle
 

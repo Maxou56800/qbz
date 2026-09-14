@@ -22,7 +22,7 @@ Rectangle {
     border.width: 1
     border.color: active ? theme.accent : theme.borderSubtle
     color: active ? theme.accent
-         : chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+         : chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
     Text {
         id: lbl

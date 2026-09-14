@@ -1260,7 +1260,7 @@ Rectangle {
                             border.width: 1
                             border.color: theme.borderSubtle
                             opacity: QbzSession.connectivity === 2 ? 0.4 : 1.0
-                            color: signInArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: signInArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                             Text {
                                 id: signInText
                                 anchors.centerIn: parent

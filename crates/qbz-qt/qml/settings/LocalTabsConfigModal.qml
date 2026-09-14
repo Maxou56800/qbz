@@ -269,7 +269,7 @@ Item {
                 width: resetRow.width + 24
                 height: root.kioskHost ? 44 : 34
                 radius: theme.radiusSm
-                color: resetArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                color: resetArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                 border.width: 1
                 border.color: activeFocus ? theme.accent : theme.borderSubtle
                 activeFocusOnTab: root.opened

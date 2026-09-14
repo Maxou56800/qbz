@@ -180,7 +180,7 @@ Item {
                         radius: 8
                         color: presetTile.active
                             ? theme.accent
-                            : (presetArea.containsMouse ? theme.surfaceHover
+                            : (presetArea.containsMouse ? theme.surfaceElevatedHover
                                                         : theme.surfaceElevated)
                         QbzIcon {
                             anchors.centerIn: parent
@@ -217,7 +217,7 @@ Item {
                     radius: 8
                     color: imageTile.active
                         ? theme.accent
-                        : (imageArea.containsMouse ? theme.surfaceHover
+                        : (imageArea.containsMouse ? theme.surfaceElevatedHover
                                                    : theme.surfaceElevated)
                     // No `clip: true` — it is a rectangular scissor and does
                     // not follow `radius`. RoundedImage masks its own corners.

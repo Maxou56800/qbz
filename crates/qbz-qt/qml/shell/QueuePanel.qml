@@ -1313,7 +1313,7 @@ Rectangle {
                                     radius: theme.radiusSm
                                     border.width: 1
                                     border.color: theme.borderSubtle
-                                    color: cancelArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                                    color: cancelArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                                     Text {
                                         anchors.fill: parent
                                         text: QbzSession.tr("Cancel Timer", QbzSession.trRev)

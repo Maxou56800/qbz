@@ -452,7 +452,7 @@ Item {
                                     radius: theme.radiusSm
                                     color: entryRow.recording
                                         ? theme.bgHover
-                                        : (capArea.containsMouse ? theme.surfaceHover
+                                        : (capArea.containsMouse ? theme.surfaceElevatedHover
                                                                  : theme.surfaceElevated)
                                     border.width: (entryRow.recording || entryRow.entry.modified) ? 2 : 1
                                     // Colour priority (trap 6): danger on
@@ -499,7 +499,7 @@ Item {
                                     height: 30
                                     anchors.verticalCenter: parent.verticalCenter
                                     radius: theme.radiusSm
-                                    color: resetArea.containsMouse ? theme.surfaceHover
+                                    color: resetArea.containsMouse ? theme.surfaceElevatedHover
                                                                    : theme.surfaceElevated
                                     border.width: 1
                                     border.color: theme.borderSubtle

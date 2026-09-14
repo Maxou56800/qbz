@@ -36,7 +36,7 @@ Rectangle {
     border.width: root.activeFocus ? 2 : 1
     border.color: root.activeFocus ? theme.accent
         : (danger ? theme.danger : theme.borderSubtle)
-    color: enabled && btnArea.containsMouse ? theme.surfaceHover : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+    color: enabled && btnArea.containsMouse ? theme.elevatedHoverFill : theme.elevatedFill
     opacity: enabled ? 1.0 : 0.4
     activeFocusOnTab: enabled
     Accessible.role: Accessible.Button

@@ -317,7 +317,7 @@ Item {
                                 width: 20
                                 height: 20
                                 radius: 10
-                                color: chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                                color: chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                                 QbzIcon {
                                     anchors.centerIn: parent
                                     name: "x"

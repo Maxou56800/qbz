@@ -446,7 +446,7 @@ Rectangle {
                     height: 32
                     radius: 6
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: retryArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: retryArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     border.width: 1
                     border.color: theme.borderSubtle
                     Text {

@@ -314,8 +314,8 @@ Item {
                             radius: 6
                             anchors.verticalCenter: parent.verticalCenter
                             color: ripArea.containsMouse
-                                ? theme.surfaceHover
-                                : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+                                ? theme.elevatedHoverFill
+                                : theme.elevatedFill
                             Row {
                                 id: ripRow
                                 anchors.centerIn: parent

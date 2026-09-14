@@ -126,7 +126,7 @@ Popup {
                         width: parent.width
                         height: 92
                         radius: theme.radiusSm
-                        color: optionArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                        color: optionArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                         border.width: 1
                         border.color: optionArea.containsMouse ? theme.accent : theme.borderSubtle
 

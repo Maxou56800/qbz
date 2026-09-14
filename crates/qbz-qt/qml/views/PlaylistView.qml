@@ -740,8 +740,8 @@ Rectangle {
                         // PlaylistView.slint:855-859 — resting fill
                         // translucent under the dynamic background.
                         color: sortArea.containsMouse
-                            ? theme.surfaceHover
-                            : (root.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+                            ? theme.elevatedHoverFill
+                            : theme.elevatedFill
                         border.width: 1
                         border.color: theme.borderSubtle
                         Row {

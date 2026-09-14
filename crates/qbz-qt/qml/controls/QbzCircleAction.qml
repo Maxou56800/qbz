@@ -111,8 +111,8 @@ Rectangle {
             // (CircleAction.slint:53-55). The overlay variant above sits on
             // artwork and keeps its white scale.
             : ((cbArea.containsMouse || active)
-                ? theme.surfaceHover
-                : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)))
+                ? theme.elevatedHoverFill
+                : theme.elevatedFill))
     border.width: primary ? 0 : 1.5
     border.color: overlay ? "#ccffffff" : theme.borderStrong
     // A loading button keeps FULL opacity — it is working, not unavailable,

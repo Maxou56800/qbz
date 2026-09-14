@@ -40,7 +40,7 @@ Rectangle {
 
     height: 52
     radius: 8
-    color: chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+    color: chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
     opacity: (root.folder.isHidden === true) ? 0.6 : 1.0
 
     Row {

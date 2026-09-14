@@ -113,8 +113,8 @@ Item {
         // rest fill and, when a genre is applied, the SAME accent OUTLINE —
         // not an accent fill — so the three toolbar controls read identically
         // in their modified state.
-        color: gtbArea.containsMouse ? theme.surfaceHover
-             : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+        color: gtbArea.containsMouse ? theme.elevatedHoverFill
+             : theme.elevatedFill
         border.width: gtb.active ? 1 : 0
         border.color: gtb.active ? theme.accent : "transparent"
         Row {

@@ -104,7 +104,7 @@ Item {
         radius: theme.radiusSm
         border.width: 1
         border.color: theme.borderSubtle
-        color: lbArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: lbArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
         Row {
             id: lbRow
@@ -162,7 +162,7 @@ Item {
         radius: theme.radiusSm
         border.width: 1
         border.color: theme.borderSubtle
-        color: hcArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: hcArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
         Row {
             id: hcRow
@@ -224,7 +224,7 @@ Item {
         radius: theme.radiusSm
         border.width: 1
         border.color: theme.borderSubtle
-        color: (sc.clickable && scArea.containsMouse) ? theme.surfaceHover : theme.surfaceElevated
+        color: (sc.clickable && scArea.containsMouse) ? theme.surfaceElevatedHover : theme.surfaceElevated
 
         Text {
             id: scText

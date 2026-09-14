@@ -220,7 +220,7 @@ Item {
                         width: cancelLbl.implicitWidth + 32
                         height: root.kioskHost ? 44 : 36
                         radius: theme.radiusSm
-                        color: cancelArea.containsMouse ? theme.surfaceHover
+                        color: cancelArea.containsMouse ? theme.surfaceElevatedHover
                                                         : theme.surfaceElevated
                         activeFocusOnTab: root.opened
                         border.width: activeFocus ? 2 : 0

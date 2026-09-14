@@ -410,7 +410,7 @@ Item {
                             height: 36
                             radius: theme.radiusSm
                             color: (cancelArea.containsMouse && !root.busy)
-                                ? theme.surfaceHover : theme.surfaceElevated
+                                ? theme.surfaceElevatedHover : theme.surfaceElevated
                             opacity: root.busy ? 0.5 : 1.0
                             Text {
                                 id: cancelLabel
