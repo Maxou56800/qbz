@@ -346,6 +346,10 @@ pub mod qbz_shell {
         #[qproperty(QString, ambient_accent)]
         // Look knobs (Slint AppearanceState defaults; QBZ_BG_* env seed).
         #[qproperty(f32, ambient_dim)]
+        /// The Wallpaper mode's blur, MultiEffect units 0.0-1.0
+        /// (settings_qt::wallpaper_blur). Settings writes it while the slider
+        /// drags, for a live preview, and persists it on release.
+        #[qproperty(f32, wallpaper_blur)]
         /// Debug knob QBZ_BG_SCALE — RETIRED 2026-08-13: the ambient field
         /// renders inline now (no offscreen target to scale), and the knob
         /// measured as a non-lever anyway. Kept to avoid bridge churn.
@@ -923,6 +927,7 @@ pub struct QbzShellRust {
     ambient_secondary: QString,
     ambient_accent: QString,
     ambient_dim: f32,
+    wallpaper_blur: f32,
     ambient_scale: f32,
     viz_tick_ms: i32,
     pane_layer: bool,
@@ -1043,6 +1048,7 @@ impl Default for QbzShellRust {
             ambient_secondary: QString::from("#9632ff"),
             ambient_accent: QString::from("#3fd9c8"),
             ambient_dim: crate::settings_qt::ambient_dim(),
+            wallpaper_blur: crate::settings_qt::wallpaper_blur(),
             ambient_scale: crate::settings_qt::ambient_scale(),
             viz_tick_ms: crate::settings_qt::viz_tick_ms(),
             pane_layer: crate::settings_qt::pane_layer(),

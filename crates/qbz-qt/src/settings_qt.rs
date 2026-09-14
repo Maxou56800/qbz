@@ -665,6 +665,30 @@ pub fn app_background_mode() -> i32 {
         .unwrap_or(0) as i32
 }
 
+/// The Wallpaper mode's blur, in MultiEffect's own units: Qt documents
+/// `blur` from 0.0 (no blur) to 1.0 (full blur), reached at the field's
+/// `blurMax` of 64 (shell/WallpaperField.qml). 0.75 is the look the mode
+/// shipped with and stays the default; Settings > Appearance edits it as
+/// 0-100 %.
+pub const WALLPAPER_BLUR_DEFAULT: f32 = 0.75;
+
+pub fn wallpaper_blur() -> f32 {
+    clamp_wallpaper_blur(pref_f32("wallpaper_blur", WALLPAPER_BLUR_DEFAULT))
+}
+
+/// Qt's range, whatever a hand-edited ui_prefs.json holds; NaN is the default.
+fn clamp_wallpaper_blur(value: f32) -> f32 {
+    if value.is_nan() {
+        return WALLPAPER_BLUR_DEFAULT;
+    }
+    value.clamp(0.0, 1.0)
+}
+
+/// The Settings slider's 0-100 % step as the stored Qt value.
+fn wallpaper_blur_from_percent(percent: i32) -> f32 {
+    percent.clamp(0, 100) as f32 / 100.0
+}
+
 /// Live-tuning knobs (Slint AppearanceState defaults; the QBZ_BG_* envs are
 /// the same dev knobs the Slint seeds at startup).
 pub fn ambient_dim() -> f32 {
@@ -2188,6 +2212,15 @@ pub struct SettingsDoc {
     /// The user's own background image ("" = the desktop wallpaper).
     #[serde(rename = "appBackgroundImage")]
     pub app_background_image: String,
+    /// Persisted fieldset state of the Appearance > Theme groups (default
+    /// expanded): the Custom theme editor, the Auto theme rows, and the
+    /// options of the selected dynamic background.
+    #[serde(rename = "themeCustomCollapsed")]
+    pub theme_custom_collapsed: bool,
+    #[serde(rename = "themeAutoCollapsed")]
+    pub theme_auto_collapsed: bool,
+    #[serde(rename = "ambientOptionsCollapsed")]
+    pub ambient_options_collapsed: bool,
     #[serde(rename = "autoThemeSources")]
     pub auto_theme_sources: Vec<String>,
     #[serde(rename = "autoThemeSourceIndex")]
@@ -2748,6 +2781,9 @@ pub async fn publish_snapshot() {
                 .position(|v| *v == pref_str("app_background", "off"))
                 .unwrap_or(0) as i32,
             app_background_image: pref_str("app_background_image", ""),
+            theme_custom_collapsed: pref_bool("theme_custom_collapsed", false),
+            theme_auto_collapsed: pref_bool("theme_auto_collapsed", false),
+            ambient_options_collapsed: pref_bool("ambient_options_collapsed", false),
             auto_theme_sources: AUTO_THEME_SOURCE_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -3689,6 +3725,19 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             save_pref("myqbz_collections_collapsed", serde_json::json!(value));
             Ok(Apply::None)
         }
+        // Appearance > Theme fieldsets, read back from settingsJson.
+        "theme-custom-collapsed" => {
+            save_pref("theme_custom_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "theme-auto-collapsed" => {
+            save_pref("theme_auto_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "ambient-options-collapsed" => {
+            save_pref("ambient_options_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
         "sidebar-playlist-collage" => {
             save_pref("sidebar_playlist_collage", serde_json::json!(value));
             // LIVE: the sidebar rows swap collage <-> list-music glyph off the
@@ -4409,6 +4458,15 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
 }
 
 pub async fn settings_slider(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str, value: i32) {
+    if key == "wallpaper-blur" {
+        // Persisted on the slider's release; the drag itself already moved
+        // QbzShell.wallpaperBlur for the live preview.
+        let blur = wallpaper_blur_from_percent(value);
+        // Written from the whole percent as f64: an f32 widened on the way to
+        // JSON would store 0.62 as 0.6200000047683716.
+        save_pref("wallpaper_blur", serde_json::json!(f64::from(value.clamp(0, 100)) / 100.0));
+        crate::shell_bridge::ui(move |mut b| b.as_mut().set_wallpaper_blur(blur));
+    }
     if key == "buffer-seconds" {
         let seconds = value.clamp(1, 10) as u8;
         match with_audio(|s| s.set_stream_buffer_seconds(seconds)) {
@@ -4879,6 +4937,46 @@ mod local_tab_order_tests {
         audio.backend_type = Some(AudioBackendType::PipeWire);
         audio.output_device = Some("front:CARD=USB,DEV=0".to_string());
         assert!(!requires_alsa_direct_unity(&audio));
+    }
+}
+
+#[cfg(test)]
+mod wallpaper_blur_tests {
+    use super::*;
+
+    #[test]
+    fn the_slider_percent_maps_onto_qts_blur_range() {
+        assert_eq!(wallpaper_blur_from_percent(0), 0.0);
+        assert_eq!(wallpaper_blur_from_percent(75), 0.75);
+        assert_eq!(wallpaper_blur_from_percent(100), 1.0);
+        assert_eq!(wallpaper_blur_from_percent(-20), 0.0);
+        assert_eq!(wallpaper_blur_from_percent(250), 1.0);
+    }
+
+    #[test]
+    fn a_hand_edited_value_is_held_to_qts_range() {
+        assert_eq!(clamp_wallpaper_blur(1.7), 1.0);
+        assert_eq!(clamp_wallpaper_blur(-0.2), 0.0);
+        assert_eq!(clamp_wallpaper_blur(0.4), 0.4);
+        assert_eq!(clamp_wallpaper_blur(f32::NAN), WALLPAPER_BLUR_DEFAULT);
+    }
+}
+
+#[cfg(test)]
+mod theme_fieldset_doc_tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_document_names_the_fieldset_states_for_qml() {
+        let doc = SettingsDoc {
+            theme_custom_collapsed: true,
+            ambient_options_collapsed: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&doc).expect("settings document serializes");
+        assert_eq!(json["themeCustomCollapsed"], true);
+        assert_eq!(json["themeAutoCollapsed"], false);
+        assert_eq!(json["ambientOptionsCollapsed"], true);
     }
 }
 

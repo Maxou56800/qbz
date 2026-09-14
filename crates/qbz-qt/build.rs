@@ -628,6 +628,7 @@ fn main() {
                 "qml/controls/IconTextButton.qml",
                 "qml/controls/SettingsButton.qml",
                 "qml/controls/SettingsDivider.qml",
+                "qml/controls/SettingsFieldset.qml",
                 "qml/controls/SettingsSpacer.qml",
                 // Moved out of views/local/ on 2026-07-31: the album/track
                 // CARD badges mount it too, and Slint keeps its counterpart in

@@ -98,6 +98,15 @@ Column {
     readonly property bool tbLocked: doc.hideTitleBar === true || doc.useSystemTitleBar === true
 
     // ============================ THEME ==================================
+    // ── EACH CHOICE'S OPTIONS SIT UNDER ITS OWN PICKER (2026-09-14) ────────
+    // The rows that exist only for one choice used to trail the whole group:
+    // Custom's editor and Auto's source rows came after Album header
+    // gradient, Compact header and Dynamic background, and Background image
+    // (an option of the Wallpaper background) ran straight into the Custom
+    // editor, so it read as part of the theme. Now each picker is followed by
+    // ITS options, boxed in a SettingsFieldset whose chevron state persists:
+    // the theme's right under Theme, the background's right under Dynamic
+    // background. The rows themselves are unchanged.
     GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("THEME", QbzSession.trRev) }
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Theme", QbzSession.trRev)
@@ -122,6 +131,113 @@ Column {
             }
         }
     }
+    /// The applied theme's display name, the legend of its options box.
+    readonly property string currentThemeLabel: {
+        for (let i = 0; i < themeEntries.length; i++) {
+            if (themeEntries[i].slug === QbzShell.themeSlug) return themeEntries[i].label
+        }
+        return ""
+    }
+
+    // Auto-theme rows (the "auto" theme only).
+    SettingsFieldset { kioskHost: root.kioskHost;
+        visible: QbzShell.themeSlug === "auto"
+        title: root.currentThemeLabel
+        collapsed: root.doc.themeAutoCollapsed === true
+        onToggleRequested: QbzBridge.settingsBool("theme-auto-collapsed", root.doc.themeAutoCollapsed !== true)
+
+        SettingRow { kioskHost: root.kioskHost;
+            label: QbzSession.tr("Source", QbzSession.trRev)
+            description: QbzSession.tr("Generate a color theme from your system wallpaper or a custom image", QbzSession.trRev)
+            QbzSelect { kioskHost: root.kioskHost;
+                menuWidth: 200
+                options: root.doc.autoThemeSources || []
+                currentIndex: root.doc.autoThemeSourceIndex || 0
+                onSelected: function (i) { QbzBridge.settingsSelect("auto-theme-source", i) }
+            }
+        }
+        // "Custom Image" only (source index 2) — AppearanceSettings.slint:283-292.
+        // The row's LABEL is the picked path, which is how the reference shows
+        // what is currently in use; with nothing picked it repeats the button's
+        // text. Both strings already exist in the catalogs.
+        SettingRow { kioskHost: root.kioskHost;
+            visible: (root.doc.autoThemeSourceIndex || 0) === 2
+            label: (root.doc.autoThemeImagePath || "") !== ""
+                ? root.doc.autoThemeImagePath
+                : QbzSession.tr("Select Image...", QbzSession.trRev)
+            SettingsButton { kioskHost: root.kioskHost;
+                text: QbzSession.tr("Select Image...", QbzSession.trRev)
+                // The action seam for button rows is settingsString with an empty
+                // payload — the `library-pick-folder` precedent
+                // (LibraryFolderTable.qml:111).
+                onClicked: QbzBridge.settingsString("auto-theme-select-image", "")
+            }
+        }
+        // The detected desktop, with the experimental caveat under it
+        // (`:294-297`). Hint only — no control, and it hides when the shared
+        // detector cannot name a desktop.
+        SettingRow { kioskHost: root.kioskHost;
+            visible: (root.doc.autoThemeDetectedDe || "") !== ""
+            label: QbzSession.tr("Detected: ", QbzSession.trRev)
+                + (root.doc.autoThemeDetectedDe || "")
+            description: QbzSession.tr("Experimental: theme may not match your system exactly.", QbzSession.trRev)
+        }
+        SettingRow { kioskHost: root.kioskHost;
+            label: QbzSession.tr("Regenerate", QbzSession.trRev)
+            SettingsButton { kioskHost: root.kioskHost;
+                text: QbzSession.tr("Regenerate", QbzSession.trRev)
+                onClicked: QbzShell.themeSet(QbzShell.themeSlug)
+            }
+        }
+    }
+
+    // Custom-theme editor rows (the appended "Custom" theme only), 1:1 with
+    // AppearanceSettings.slint:313-425. "Start from current theme" re-seeds
+    // the base from the applied palette; the "Dark theme" toggle flips
+    // polarity; the grid below edits each base token and the rest of the
+    // palette is derived live in Rust on every change.
+    //
+    // There is deliberately NO save / save-as, NO delete, NO named-theme list
+    // and NO import/export: the model is ONE implicit custom theme that
+    // autosaves, and the reference has none of those affordances either.
+    SettingsFieldset { kioskHost: root.kioskHost;
+        visible: QbzShell.themeSlug === "custom"
+        title: root.currentThemeLabel
+        collapsed: root.doc.themeCustomCollapsed === true
+        onToggleRequested: {
+            // A picker left open inside a folded box would come back open.
+            customThemeEditor.closePicker()
+            QbzBridge.settingsBool("theme-custom-collapsed", root.doc.themeCustomCollapsed !== true)
+        }
+
+        SettingRow { kioskHost: root.kioskHost;
+            label: QbzSession.tr("Start from current theme", QbzSession.trRev)
+            description: QbzSession.tr("Copy the colors of the currently applied theme into the editor as a starting point.", QbzSession.trRev)
+            SettingsButton { kioskHost: root.kioskHost;
+                text: QbzSession.tr("Use current colors", QbzSession.trRev)
+                onClicked: {
+                    QbzShell.customSeedFromCurrent()
+                    customThemeEditor.closePicker()
+                }
+            }
+        }
+        SettingRow { kioskHost: root.kioskHost;
+            label: QbzSession.tr("Dark theme", QbzSession.trRev)
+            description: QbzSession.tr("Set the overall light or dark polarity. Affects derived shades, borders and overlays.", QbzSession.trRev)
+            QbzToggle { kioskHost: root.kioskHost;
+                checked: customThemeEditor.isDark
+                onToggled: function (v) { QbzShell.customToggleDark(v) }
+            }
+        }
+        // NOT inside a SettingRow: that control hardcodes 52/64px and centres one
+        // child, which would clip the ~250px picker. The reference keeps the grid
+        // outside its own rows for the same reason.
+        CustomThemeEditor { kioskHost: root.kioskHost;
+            id: customThemeEditor
+            visible: QbzShell.themeSlug === "custom"
+        }
+    }
+
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Album header gradient", QbzSession.trRev)
         description: QbzSession.tr("Use artwork-derived blur as a backdrop in album and artist detail views.", QbzSession.trRev)
@@ -148,112 +264,64 @@ Column {
             onSelected: function (i) { QbzBridge.settingsSelect("app-background", i) }
         }
     }
-    // The picture behind the two Wallpaper modes: the desktop's, or one of
-    // the user's own (wallpaper_qt.rs).
-    SettingRow { kioskHost: root.kioskHost;
-        visible: (root.doc.appBackgroundIndex || 0) >= 3
-        label: QbzSession.tr("Background image", QbzSession.trRev)
-        description: (root.doc.appBackgroundImage || "") !== ""
-            ? root.doc.appBackgroundImage
-            : QbzSession.tr("The system wallpaper. Choose an image of your own instead.", QbzSession.trRev)
-        Row {
-            spacing: 8
-            SettingsButton { kioskHost: root.kioskHost;
-                text: QbzSession.tr("Choose image…", QbzSession.trRev)
-                onClicked: QbzBridge.settingsPickBackgroundImage()
-            }
-            SettingsButton { kioskHost: root.kioskHost;
-                visible: (root.doc.appBackgroundImage || "") !== ""
-                text: QbzSession.tr("System wallpaper", QbzSession.trRev)
-                onClicked: QbzBridge.settingsClearBackgroundImage()
-            }
-        }
-    }
-    // Auto-theme rows (the "auto" theme only).
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "auto"
-        label: QbzSession.tr("Source", QbzSession.trRev)
-        description: QbzSession.tr("Generate a color theme from your system wallpaper or a custom image", QbzSession.trRev)
-        QbzSelect { kioskHost: root.kioskHost;
-            menuWidth: 200
-            options: root.doc.autoThemeSources || []
-            currentIndex: root.doc.autoThemeSourceIndex || 0
-            onSelected: function (i) { QbzBridge.settingsSelect("auto-theme-source", i) }
-        }
-    }
-    // "Custom Image" only (source index 2) — AppearanceSettings.slint:283-292.
-    // The row's LABEL is the picked path, which is how the reference shows
-    // what is currently in use; with nothing picked it repeats the button's
-    // text. Both strings already exist in the catalogs.
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "auto"
-            && (root.doc.autoThemeSourceIndex || 0) === 2
-        label: (root.doc.autoThemeImagePath || "") !== ""
-            ? root.doc.autoThemeImagePath
-            : QbzSession.tr("Select Image...", QbzSession.trRev)
-        SettingsButton { kioskHost: root.kioskHost;
-            text: QbzSession.tr("Select Image...", QbzSession.trRev)
-            // The action seam for button rows is settingsString with an empty
-            // payload — the `library-pick-folder` precedent
-            // (LibraryFolderTable.qml:111).
-            onClicked: QbzBridge.settingsString("auto-theme-select-image", "")
-        }
-    }
-    // The detected desktop, with the experimental caveat under it
-    // (`:294-297`). Hint only — no control, and it hides when the shared
-    // detector cannot name a desktop.
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "auto"
-            && (root.doc.autoThemeDetectedDe || "") !== ""
-        label: QbzSession.tr("Detected: ", QbzSession.trRev)
-            + (root.doc.autoThemeDetectedDe || "")
-        description: QbzSession.tr("Experimental: theme may not match your system exactly.", QbzSession.trRev)
-    }
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "auto"
-        label: QbzSession.tr("Regenerate", QbzSession.trRev)
-        SettingsButton { kioskHost: root.kioskHost;
-            text: QbzSession.tr("Regenerate", QbzSession.trRev)
-            onClicked: QbzShell.themeSet(QbzShell.themeSlug)
-        }
-    }
+    // The options of the chosen background: only the two Wallpaper modes
+    // (3 Wallpaper, 4 Wallpaper, blurred) have any.
+    readonly property int backgroundIndex: root.doc.appBackgroundIndex || 0
+    SettingsFieldset { kioskHost: root.kioskHost;
+        visible: root.backgroundIndex >= 3
+        title: (root.doc.appBackgroundModes || [])[root.backgroundIndex] || ""
+        collapsed: root.doc.ambientOptionsCollapsed === true
+        onToggleRequested: QbzBridge.settingsBool("ambient-options-collapsed", root.doc.ambientOptionsCollapsed !== true)
 
-    // Custom-theme editor rows (the appended "Custom" theme only), 1:1 with
-    // AppearanceSettings.slint:313-425. "Start from current theme" re-seeds
-    // the base from the applied palette; the "Dark theme" toggle flips
-    // polarity; the grid below edits each base token and the rest of the
-    // palette is derived live in Rust on every change.
-    //
-    // There is deliberately NO save / save-as, NO delete, NO named-theme list
-    // and NO import/export: the model is ONE implicit custom theme that
-    // autosaves, and the reference has none of those affordances either.
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "custom"
-        label: QbzSession.tr("Start from current theme", QbzSession.trRev)
-        description: QbzSession.tr("Copy the colors of the currently applied theme into the editor as a starting point.", QbzSession.trRev)
-        SettingsButton { kioskHost: root.kioskHost;
-            text: QbzSession.tr("Use current colors", QbzSession.trRev)
-            onClicked: {
-                QbzShell.customSeedFromCurrent()
-                customThemeEditor.closePicker()
+        // The picture behind the two Wallpaper modes: the desktop's, or one of
+        // the user's own (wallpaper_qt.rs).
+        SettingRow { kioskHost: root.kioskHost;
+            label: QbzSession.tr("Background image", QbzSession.trRev)
+            description: (root.doc.appBackgroundImage || "") !== ""
+                ? root.doc.appBackgroundImage
+                : QbzSession.tr("The system wallpaper. Choose an image of your own instead.", QbzSession.trRev)
+            Row {
+                spacing: 8
+                SettingsButton { kioskHost: root.kioskHost;
+                    text: QbzSession.tr("Choose image…", QbzSession.trRev)
+                    onClicked: QbzBridge.settingsPickBackgroundImage()
+                }
+                SettingsButton { kioskHost: root.kioskHost;
+                    visible: (root.doc.appBackgroundImage || "") !== ""
+                    text: QbzSession.tr("System wallpaper", QbzSession.trRev)
+                    onClicked: QbzBridge.settingsClearBackgroundImage()
+                }
             }
         }
-    }
-    SettingRow { kioskHost: root.kioskHost;
-        visible: QbzShell.themeSlug === "custom"
-        label: QbzSession.tr("Dark theme", QbzSession.trRev)
-        description: QbzSession.tr("Set the overall light or dark polarity. Affects derived shades, borders and overlays.", QbzSession.trRev)
-        QbzToggle { kioskHost: root.kioskHost;
-            checked: customThemeEditor.isDark
-            onToggled: function (v) { QbzShell.customToggleDark(v) }
+        // Wallpaper mode only: how blurred the X-ray view of the desktop is.
+        // Qt's own range for MultiEffect.blur, 0.0-1.0, shown as 0-100 %; the
+        // default is the 0.75 the mode shipped with (settings_qt.rs). The drag
+        // moves the live background; the value is stored on release.
+        SettingRow { kioskHost: root.kioskHost;
+            visible: root.backgroundIndex === 3
+            label: QbzSession.tr("Wallpaper blur", QbzSession.trRev)
+            description: QbzSession.tr("How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur.", QbzSession.trRev)
+            Row {
+                spacing: 12
+                QbzSlider { kioskHost: root.kioskHost;
+                    id: wallpaperBlurSlider
+                    anchors.verticalCenter: parent.verticalCenter
+                    minimum: 0
+                    maximum: 100
+                    value: Math.round(QbzShell.wallpaperBlur * 100)
+                    onChanged: function (v) { QbzShell.wallpaperBlur = v / 100 }
+                    onReleased: function (v) { QbzBridge.settingsSlider("wallpaper-blur", v) }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 40
+                    horizontalAlignment: Text.AlignRight
+                    text: wallpaperBlurSlider.value + "%"
+                    color: theme.textSecondary
+                    font.pixelSize: root.kioskHost ? theme.fontBody * 1.2 : theme.fontBody
+                }
+            }
         }
-    }
-    // NOT inside a SettingRow: that control hardcodes 52/64px and centres one
-    // child, which would clip the ~250px picker. The reference keeps the grid
-    // outside its own rows for the same reason.
-    CustomThemeEditor { kioskHost: root.kioskHost;
-        id: customThemeEditor
-        visible: QbzShell.themeSlug === "custom"
     }
 
     SettingsSpacer { }
