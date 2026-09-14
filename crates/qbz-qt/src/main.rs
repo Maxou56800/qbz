@@ -2174,6 +2174,37 @@ pub(crate) fn playlist_remove_track(row_id: String) {
     });
 }
 
+/// Multi-select "Remove from playlist": the three arms of
+/// `playlist_remove_track` over every selected row — the local repo rows in
+/// one pass, the sidecar rows one by one (each is its own table write), the
+/// Qobuz memberships in ONE API call.
+pub(crate) fn playlist_remove_tracks(ids_json: String) {
+    let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+    if ids.is_empty() {
+        return;
+    }
+    let runtime = app();
+    spawn(async move {
+        if local_playlist_qt::local_detail_open() {
+            local_playlist_qt::remove_rows(&runtime, &ids).await;
+            return;
+        }
+        let mut catalog: Vec<u64> = Vec::new();
+        for row_id in &ids {
+            if playlist_qt::is_mixed() && playlist_qt::remove_sidecar_row(&runtime, row_id).await {
+                continue;
+            }
+            match row_id.parse::<u64>() {
+                Ok(id) => catalog.push(id),
+                Err(_) => log::warn!("[qbz-qt] playlist bulk remove: non-numeric row id {row_id}"),
+            }
+        }
+        if !catalog.is_empty() {
+            playlist_qt::remove_tracks(&runtime, &catalog).await;
+        }
+    });
+}
+
 /// Drag-reorder drop: move the visible row `from` to insertion slot `slot`.
 ///
 /// Routes like the chevrons below: a LOCAL playlist writes the repo `position`

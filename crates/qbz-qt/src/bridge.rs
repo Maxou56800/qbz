@@ -173,6 +173,8 @@ pub mod qbz_bridge {
         /// invokable this replaced could not express them.
         #[qinvokable]
         fn playlist_remove_track(self: Pin<&mut QbzBridge>, row_id: QString);
+        #[qinvokable]
+        fn playlist_remove_tracks(self: Pin<&mut QbzBridge>, ids_json: QString);
         /// Drag-reorder drop: visible row `from` -> insertion slot `slot`.
         #[qinvokable]
         fn playlist_reorder(self: Pin<&mut QbzBridge>, from: i32, slot: i32);
@@ -392,6 +394,10 @@ impl qbz_bridge::QbzBridge {
 
     pub fn playlist_remove_track(self: Pin<&mut Self>, row_id: QString) {
         crate::playlist_remove_track(row_id.to_string());
+    }
+
+    pub fn playlist_remove_tracks(self: Pin<&mut Self>, ids_json: QString) {
+        crate::playlist_remove_tracks(ids_json.to_string());
     }
 
     pub fn playlist_reorder(self: Pin<&mut Self>, from: i32, slot: i32) {

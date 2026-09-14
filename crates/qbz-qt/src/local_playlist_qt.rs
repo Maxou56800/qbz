@@ -1580,6 +1580,48 @@ pub async fn remove_row(runtime: &Runtime, row_id: &str) {
     crate::reload_sidebar_including_local();
 }
 
+/// `remove_row` for a SELECTION: the repo positions are taken up front and
+/// removed HIGHEST FIRST — `repo::remove_track` compacts the positions above
+/// the one it deletes, so any other order would shift the rows still to
+/// come — then one reload and one sidebar refresh.
+pub async fn remove_rows(runtime: &Runtime, row_ids: &[String]) {
+    let Some((playlist_id, _)) = CURRENT_META.lock().ok().and_then(|m| m.clone()) else {
+        return;
+    };
+    let mut positions: Vec<i32> = {
+        let Ok(map) = ROW_POSITIONS.lock() else {
+            return;
+        };
+        row_ids
+            .iter()
+            .filter_map(|id| map.get(id).copied())
+            .collect()
+    };
+    positions.sort_unstable_by(|a, b| b.cmp(a));
+    positions.dedup();
+    if positions.is_empty() {
+        log::warn!(
+            "[qbz-qt] local playlist bulk remove: no known rows among {} id(s)",
+            row_ids.len()
+        );
+        return;
+    }
+    let pid = playlist_id.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        with_db(true, |db| {
+            Ok(db.with_connection(|conn| -> rusqlite::Result<()> {
+                for position in positions {
+                    repo::remove_track(conn, &pid, position)?;
+                }
+                Ok(())
+            }))
+        })
+    })
+    .await;
+    load(runtime, &playlist_id).await;
+    crate::reload_sidebar_including_local();
+}
+
 /// Reorder the open detail: move the row at `from` to `to` (repo positions),
 /// then reload.
 ///

@@ -7707,3 +7707,7 @@ msgstr "Afbeelding kiezen…"
 #: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "System wallpaper"
 msgstr "Systeemachtergrond"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "{} nummers worden uit deze afspeellijst verwijderd."

@@ -458,7 +458,10 @@ mod sidecar_removal_tests {
 
     #[test]
     fn local_sidecar_is_the_numeric_row_id() {
-        assert!(matches!(sidecar_removal("local", "4321", None), Some(SidecarRemoval::Local(4321))));
+        assert!(matches!(
+            sidecar_removal("local", "4321", None),
+            Some(SidecarRemoval::Local(4321))
+        ));
         assert!(sidecar_removal("local", "local:nope", None).is_none());
     }
 
@@ -878,7 +881,12 @@ pub(crate) fn map_track(track: &Track) -> PlaylistTrackRow {
         .unwrap_or_default();
     PlaylistTrackRow {
         position: 0,
-        featured: crate::album_qt::featured_list(track.performers.as_deref(), &artist, &track.title, &[]),
+        featured: crate::album_qt::featured_list(
+            track.performers.as_deref(),
+            &artist,
+            &track.title,
+            &[],
+        ),
         // Heart state at build time, from the favourite-id cache — the same
         // O(1) read `album_qt` / `artist_qt` / `label_qt` rows use. It was
         // never stamped here, so `TrackRow.qml` saw `undefined` on every
@@ -2062,6 +2070,69 @@ pub async fn remove_track(runtime: &Arc<AppRuntime<LoggingAdapter>>, catalog_id:
             );
             // Reload to reconcile (bounded-retry equivalent — the Slint
             // reconciles the same way after failed playlist ops).
+            let _ = load(runtime, pid).await;
+        }
+    }
+}
+
+/// `remove_track` for a SELECTION: every matching membership leaves the
+/// document at once and the API is asked ONCE (`playlist/deleteTracks` takes
+/// the list). Same optimistic removal, same reconcile-by-reload on failure.
+pub async fn remove_tracks(runtime: &Arc<AppRuntime<LoggingAdapter>>, catalog_ids: &[u64]) {
+    let Some((pid, memberships)) = with_doc(|d| {
+        if !d.is_owner {
+            return None;
+        }
+        let pid = d.id.parse::<u64>().ok()?;
+        let memberships: Vec<u64> = d
+            .tracks
+            .iter()
+            .filter(|t| {
+                t.id.parse::<u64>()
+                    .ok()
+                    .is_some_and(|id| catalog_ids.contains(&id))
+            })
+            .map(|t| t.playlist_track_id)
+            .collect();
+        Some((pid, memberships))
+    })
+    .flatten() else {
+        return;
+    };
+    if memberships.is_empty() {
+        return;
+    }
+    with_doc(|d| {
+        d.tracks
+            .retain(|t| !memberships.contains(&t.playlist_track_id));
+        d.track_count = d.tracks.len() as i32;
+        d.total_duration = total_duration_label(&d.tracks);
+        let doc = d.clone();
+        publish(&doc);
+    });
+    match runtime
+        .core()
+        .remove_tracks_from_playlist(pid, &memberships)
+        .await
+    {
+        Ok(()) => {
+            let removed: Vec<u64> = catalog_ids.to_vec();
+            let _ = tokio::task::spawn_blocking(move || {
+                crate::library_db_qt::with_db(true, |db| {
+                    Ok(db.with_connection(|conn| {
+                        qbz_library::qobuz_playlist_snapshot::apply_removed_tracks(
+                            conn, pid, &removed,
+                        )
+                    }))
+                })
+            })
+            .await;
+        }
+        Err(e) => {
+            log::error!(
+                "[qbz-qt] remove {} membership(s) from playlist {pid} failed: {e}",
+                memberships.len()
+            );
             let _ = load(runtime, pid).await;
         }
     }

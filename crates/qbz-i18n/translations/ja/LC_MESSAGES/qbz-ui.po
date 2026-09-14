@@ -7700,3 +7700,7 @@ msgstr "画像を選択…"
 #: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "System wallpaper"
 msgstr "システムの壁紙"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "{} 曲をこのプレイリストから削除します。"

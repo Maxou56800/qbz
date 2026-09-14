@@ -7738,3 +7738,7 @@ msgstr "Выбрать изображение…"
 #: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "System wallpaper"
 msgstr "Обои системы"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "Из этого плейлиста будет удалено {} треков."

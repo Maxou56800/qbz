@@ -75,6 +75,8 @@ Rectangle {
     // never reach Rust, everything else goes down as a JSON id array through
     // QbzPlayer.bulkTracksAction (bulk_tracks_qt.rs).
     property bool multiSelect: false
+    /// The rows a bulk "Remove from playlist" is waiting to confirm.
+    property var pendingRemoveIds: []
     property var selected: ({})
     readonly property int selectedCount: Object.keys(root.selected).length
     readonly property bool multiSelectOn: root.multiSelect
@@ -108,6 +110,13 @@ Rectangle {
             return
         }
         if (action === "clear") { root.selected = ({}); sel.anchorId = ""; return }
+        if (action === "remove") {
+            var picked = root.selectedIdsInOrder()
+            if (picked.length === 0) return
+            root.pendingRemoveIds = picked
+            removeConfirm.open()
+            return
+        }
         var ids = root.selectedIdsInOrder()
         if (ids.length === 0) return
         QbzPlayer.bulkTracksAction(JSON.stringify(ids), action, "playlist", String(doc.id || ""))
@@ -873,8 +882,11 @@ Rectangle {
                 { "id": "add-to-mixtape", "label": QbzSession.tr("Add to Mixtape/Collection", QbzSession.trRev), "icon": "cassette-tape", "danger": false, "needsSelection": true },
                 { "id": "add-to-favorites", "label": QbzSession.tr("Add to Library", QbzSession.trRev), "icon": "heart", "danger": false, "needsSelection": true },
                 { "id": "make-offline", "label": QbzSession.tr("Make available offline", QbzSession.trRev), "icon": "cloud-download", "danger": false, "needsSelection": true },
+                // Owner only, like the row menu's entry (2026-09-14): one
+                // confirm, then one bulk remove routed per row.
+                { "id": "remove", "label": QbzSession.tr("Remove from playlist", QbzSession.trRev), "icon": "trash-2", "danger": true, "needsSelection": true, "hidden": !root.isOwner },
                 { "id": "clear", "label": QbzSession.tr("Clear", QbzSession.trRev), "icon": "x", "danger": false, "needsSelection": true }
-            ]
+            ].filter(function (a) { return a.hidden !== true })
             onAction: function (id) { root.bulkAction(id) }
         }
 
@@ -1073,6 +1085,24 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
             }
+        }
+    }
+
+    // Multi-select "Remove from playlist" (2026-09-14): one confirm for the
+    // whole selection, then one bulk remove — playlist_remove_tracks routes
+    // each row the way the single remove does (local repo, sidecar, Qobuz).
+    QbzConfirmModal {
+        id: removeConfirm
+        anchors.fill: parent
+        title: QbzSession.tr("Remove from playlist", QbzSession.trRev)
+        body: QbzSession.tr("{} tracks will be removed from this playlist.", QbzSession.trRev)
+            .replace("{}", root.pendingRemoveIds.length)
+        confirmLabel: QbzSession.tr("Remove", QbzSession.trRev)
+        danger: true
+        onConfirmed: {
+            QbzBridge.playlistRemoveTracks(JSON.stringify(root.pendingRemoveIds))
+            root.pendingRemoveIds = []
+            root.selected = ({})
         }
     }
 }
