@@ -106,6 +106,8 @@ Rectangle {
     }
 
     readonly property var albumHeader: album.header || ({})
+    /// The "cannot show this release" arm of the document (album_qt::publish_unavailable).
+    readonly property var unavailable: album.unavailable || null
     readonly property var tracks: album.tracks || []
     readonly property var purchase: album.purchase || ({})
     readonly property var localPurchaseVariants: purchase.localVariants || []
@@ -889,12 +891,79 @@ Rectangle {
             // NavButtons is a 0px placeholder in the Slint source.
             Item { width: 1; height: 22 }
 
+            // The release cannot be shown (album_qt::publish_unavailable,
+            // 2026-09-13): gone from the catalog, or a load failure. The
+            // heading comes from the row that opened it, then the reason, and
+            // for a gone release the best-ranked alternatives Qobuz still
+            // sells — the same ranking the playlist replacement flow uses.
+            Column {
+                visible: root.unavailable !== null
+                width: parent.width - 64
+                spacing: 12
+                Item { width: 1; height: 8 }
+                Text {
+                    width: parent.width
+                    text: root.unavailable && (root.unavailable.title || "") !== ""
+                        ? root.unavailable.title
+                        : QbzSession.tr("This release", QbzSession.trRev)
+                    color: theme.textPrimary
+                    font.pixelSize: theme.fontTitle
+                    font.weight: theme.weightBold
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    visible: root.unavailable && (root.unavailable.artist || "") !== ""
+                    width: parent.width
+                    text: root.unavailable ? (root.unavailable.artist || "") : ""
+                    color: theme.textSecondary
+                    font.pixelSize: theme.fontSection
+                    elide: Text.ElideRight
+                }
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    QbzIcon {
+                        name: "circle-alert"
+                        width: 18
+                        height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        tintName: "muted"
+                    }
+                    Text {
+                        width: parent.width - 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.unavailable && root.unavailable.gone === true
+                            ? QbzSession.tr("This release is no longer available on Qobuz.", QbzSession.trRev)
+                            : QbzSession.tr("Couldn't load this release.", QbzSession.trRev)
+                              + ((root.unavailable && (root.unavailable.error || "") !== "")
+                                 ? " " + root.unavailable.error : "")
+                        color: theme.textMuted
+                        font.pixelSize: theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Item { width: 1; height: 8 }
+                Text {
+                    visible: root.unavailable && root.unavailable.loading === true
+                    text: QbzSession.tr("Looking for other versions…", QbzSession.trRev)
+                    color: theme.textMuted
+                    font.pixelSize: theme.fontBody
+                }
+                SectionRail {
+                    visible: root.unavailable && (root.unavailable.alternatives || []).length > 0
+                    width: parent.width
+                    title: QbzSession.tr("You might be interested in these instead", QbzSession.trRev)
+                    items: root.unavailable ? (root.unavailable.alternatives || []) : []
+                    coverMap: root.coverMap
+                }
+            }
+
             // --- Album header skeleton ----------------------------------
             // Mounted on the primary flag, and the real header is hidden by
             // the same flag: opening album B never renders a half-empty
             // header frame while B's document is in flight.
             Row {
-                visible: root.primaryLoading
+                visible: root.primaryLoading && root.unavailable === null
                 width: parent.width - 64
                 spacing: root.headerGapPx
 
@@ -932,7 +1001,7 @@ Rectangle {
 
             // --- Album header -------------------------------------------
             Row {
-                visible: !root.primaryLoading
+                visible: !root.primaryLoading && root.unavailable === null
                 width: parent.width - 64
                 spacing: root.headerGapPx
 
@@ -1322,6 +1391,23 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             onClicked: albumInfo.openFor(albumHeader.id)
                         }
+                        // "Buy on Qobuz" (2026-09-13): only when the catalog
+                        // says the release is sold and it is not already
+                        // owned; a link to the store page, not a purchase here.
+                        QbzCircleAction {
+                            id: buyButton
+                            visible: albumHeader.purchasable === true
+                                && (root.purchase.entitlementState || "") !== "purchased"
+                            name: "shopping-bag"
+                            diameterOverride: root.compactHeaderPref ? 28 : 0
+                            overlay: root.hdrOverlay
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: QbzAlbum.buyAlbum(albumHeader.id)
+                            HoverHandler { id: buyHover }
+                            ToolTip.visible: buyHover.hovered
+                            ToolTip.text: QbzSession.tr("Buy on Qobuz", QbzSession.trRev)
+                            ToolTip.delay: 350
+                        }
                         QbzCircleAction {
                             id: albumMenuBtn
                             name: "ellipsis"
@@ -1429,7 +1515,7 @@ Rectangle {
                     // instead of a floating overlay.
                     QbzMultiSelectBar {
                         id: bulkBar
-                        visible: root.multiSelect && !root.primaryLoading
+                        visible: root.multiSelect && !root.primaryLoading && root.unavailable === null
                         width: parent.width
                         selectedCount: root.selectedCount
                         // The reference's full AlbumView inventory
@@ -1449,7 +1535,7 @@ Rectangle {
 
                     // Toolbar — quality badge + track search (+ inert select).
                     Row {
-                        visible: !QbzAlbum.albumLoading
+                        visible: !QbzAlbum.albumLoading && root.unavailable === null
                         width: parent.width
                         height: 52
                         spacing: 16
@@ -1560,7 +1646,7 @@ Rectangle {
                     // the band so `centerIn` centres them, which is the fix
                     // this block used to document at length.
                     TrackListHeader {
-                        visible: !QbzAlbum.albumLoading
+                        visible: !QbzAlbum.albumLoading && root.unavailable === null
                         width: parent.width
                         bandHeight: 40
                         labelSpacing: 0.5

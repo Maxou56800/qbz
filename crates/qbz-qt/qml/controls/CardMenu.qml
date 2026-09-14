@@ -80,13 +80,23 @@ QbzContextMenu {
                 }
                 Text {
                     height: parent.height
-                    width: parent.width - 23
+                    width: parent.width - 23 - (row.modelData.submenu === true ? 22 : 0)
                     text: row.modelData.label || ""
                     color: row.isDanger ? theme.danger
                         : (row.hot ? theme.textPrimary : theme.textSecondary)
                     font.pixelSize: cmRoot.kioskHost ? 16 : 13
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
+                }
+                // Submenu marker (`submenu: true`): the host answers the pick
+                // by opening a second menu on the same anchor.
+                QbzIcon {
+                    visible: row.modelData.submenu === true
+                    name: "chevron-right"
+                    width: 14
+                    height: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    tintName: row.hot ? "textPrimary" : "muted"
                 }
             }
 

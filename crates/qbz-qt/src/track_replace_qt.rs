@@ -656,6 +656,46 @@ async fn run_release_search(release: ReleaseSeed, query: String, generation: u64
     }
 }
 
+/// The ranked release candidates for a title (and artist) the catalog no
+/// longer has — the album page's "you might be interested in these" rail
+/// (2026-09-13). Same query normalisation, search and ranking as the
+/// replacement flow; no modal state is touched. Empty when nothing to ask.
+pub(crate) async fn ranked_alternatives(album_id: &str, title: &str, artist: &str) -> Vec<Album> {
+    let seed: ReleaseSeed = match serde_json::from_value(serde_json::json!({
+        "targetKind": "album",
+        "albumId": album_id,
+        "albumTitle": title,
+        "artist": artist,
+        "albumArtist": artist,
+    })) {
+        Ok(seed) => seed,
+        Err(_) => return Vec::new(),
+    };
+    let normalized = qbz_external_reco::normalize_catalog_name(title);
+    let query = if normalized.is_empty() {
+        title.trim().to_string()
+    } else {
+        normalized
+    };
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let runtime = crate::app();
+    let found = runtime
+        .core()
+        .search_albums(&query, SEARCH_LIMIT, 0, None)
+        .await
+        .map(|page| page.items)
+        .unwrap_or_else(|error| {
+            log::warn!("[qbz-qt] album alternatives: search '{query}' failed: {error}");
+            Vec::new()
+        });
+    rank_release_candidates(&seed, &found)
+        .into_iter()
+        .map(|(album, _)| album)
+        .collect()
+}
+
 fn release_quality(album: &Album) -> (u32, f64) {
     let bit_depth = album
         .audio_info

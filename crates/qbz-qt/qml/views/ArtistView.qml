@@ -871,6 +871,9 @@ Rectangle {
     // row). Activated on demand, torn down on close (Qt.callLater so the
     // Popup is not destroyed mid-signal) — the same shape rows/TrackRow.qml
     // carries per row.
+    // One clipboard carrier for every Popular Tracks row's Copy submenu.
+    QbzClipboard { id: artistClipboard }
+
     Loader {
         id: artistTrackInfo
         active: false
@@ -1692,7 +1695,7 @@ Rectangle {
                     enabled: !popRow.selectMode
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: function (mouse) { popMenu.openAtCursor(moreArea, mouse.x, mouse.y) }
+                    onClicked: function (mouse) { popRow._menuAnchor = moreArea; popRow._menuX = mouse.x; popRow._menuY = mouse.y; popMenu.openAtCursor(moreArea, mouse.x, mouse.y) }
                 }
             }
         }
@@ -1774,6 +1777,9 @@ Rectangle {
                     m.push({ "label": t("Go to artist", r), "icon": "user", "action": "go-artist" })
                 if (!popRow.pulled)
                     m.push({ "label": t("Track info", r), "icon": "info", "action": "track-info" })
+                if (!popRow.pulledDead)
+                    m.push({ "label": t("Buy on Qobuz", r), "icon": "shopping-bag", "action": "buy" })
+                m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": true })
                 return m
             }
             onPicked: function (a) {
@@ -1804,9 +1810,31 @@ Rectangle {
                 else if (a === "cache") QbzPlayer.cacheTrack(id)
                 else if (a === "uncache") QbzPlayer.uncacheTrack(id)
                 else if (a === "recache") QbzPlayer.recacheTrack(id)
-                else if (a === "go-album") QbzAlbum.openAlbum(popRow.row.albumId)
+                else if (a === "go-album") QbzAlbum.openAlbumFrom(popRow.row.albumId, popRow.row.album || "", popRow.row.artist || "")
                 else if (a === "go-artist") QbzArtist.openArtist(popRow.row.artistId)
                 else if (a === "track-info") root.openTrackInfo(id)
+                else if (a === "buy") QbzAlbum.buyTrack(id)
+                else if (a === "copy") popCopyMenu.openAtCursor(popRow._menuAnchor, popRow._menuX, popRow._menuY)
+            }
+        }
+        // Copy submenu (2026-09-13), reopened where the row menu was.
+        property Item _menuAnchor: null
+        property real _menuX: 0
+        property real _menuY: 0
+        CardMenu {
+            id: popCopyMenu
+            menuWidth: 224
+            entries: [
+                { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
+                { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
+            ]
+            onPicked: function (a) {
+                var parts = [popRow.row.title || ""]
+                if (a === "copy-full") {
+                    if ((popRow.row.album || "") !== "") parts.push(popRow.row.album)
+                    if ((popRow.row.artist || "") !== "") parts.push(popRow.row.artist)
+                }
+                artistClipboard.copy(parts.join(" - "))
             }
         }
 
@@ -1832,7 +1860,7 @@ Rectangle {
             id: popRcArea
             anchors.fill: parent
             acceptedButtons: Qt.RightButton
-            onClicked: function (mouse) { popMenu.openAtCursor(popRcArea, mouse.x, mouse.y) }
+            onClicked: function (mouse) { popRow._menuAnchor = popRcArea; popRow._menuX = mouse.x; popRow._menuY = mouse.y; popMenu.openAtCursor(popRcArea, mouse.x, mouse.y) }
         }
     }
 

@@ -258,6 +258,10 @@ Rectangle {
     /// owns — a worse bug than the one this treatment fixes, and it would bite
     /// hardest in offline mode. It gets `pulledCached` below instead.
     readonly property bool pulledDead: root.pulled && root.cacheStatus !== 3
+    /// The whole release is gone from the catalog (`releaseUnavailable`,
+    /// decided by the row's producer): the album link and "Go to album" go
+    /// dark instead of opening an empty page (2026-09-13).
+    readonly property bool releaseGone: root.item.releaseUnavailable === true
 
     /// Pulled from the catalogue, but playable from the downloaded copy. Keeps
     /// its play cell, its heart and its click; gains only an honest badge,
@@ -1058,15 +1062,18 @@ Rectangle {
             width: cols.colAlbum
             anchors.verticalCenter: parent.verticalCenter
             text: root.item.album || ""
-            color: albumArea.containsMouse ? theme.accent : theme.textMuted
+            color: (albumArea.containsMouse && albumArea.enabled) ? theme.accent : theme.textMuted
             font.pixelSize: 12
             elide: Text.ElideRight
             MouseArea {
                 id: albumArea
                 anchors.fill: parent
+                enabled: !!root.item.albumId && !root.releaseGone
                 hoverEnabled: true
-                cursorShape: root.item.albumId ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: if (root.item.albumId) QbzAlbum.openAlbum(root.item.albumId)
+                cursorShape: Qt.PointingHandCursor
+                // The names ride along so a release the catalog lost can
+                // still be named on its page (album_qt::publish_unavailable).
+                onClicked: QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
             }
         }
         // Duration.
@@ -1268,8 +1275,51 @@ Rectangle {
     /// Build the popup on first use, then open it. Called by `openRowMenu`
     /// below, which owns the empty-menu guard.
     function openRowMenuLazy(anchor, x, y) {
+        root._menuAnchor = anchor
+        root._menuX = x
+        root._menuY = y
         rowMenuLoader.active = true
         rowMenuLoader.item.openAtCursor(anchor, x, y)
+    }
+
+    // --- Copy submenu + clipboard (2026-09-13) --------------------------------
+    // Both lazy, like the row menu: a list row must not carry a Popup tree
+    // or a TextEdit per delegate. Reopened where the row menu was.
+    property Item _menuAnchor: null
+    property real _menuX: 0
+    property real _menuY: 0
+    Loader {
+        id: copyMenuLoader
+        active: false
+        sourceComponent: CardMenu {
+            kioskHost: root.kioskHost
+            menuWidth: 224
+            entries: [
+                { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
+                { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
+            ]
+            onPicked: function (a) { root.copyRow(a) }
+        }
+    }
+    Loader {
+        id: clipboardLoader
+        active: false
+        sourceComponent: QbzClipboard { }
+    }
+    function openCopyMenu() {
+        if (!root._menuAnchor)
+            return
+        copyMenuLoader.active = true
+        copyMenuLoader.item.openAtCursor(root._menuAnchor, root._menuX, root._menuY)
+    }
+    function copyRow(which) {
+        var parts = [root.item.title || ""]
+        if (which === "copy-full") {
+            if ((root.item.album || "") !== "") parts.push(root.item.album)
+            if ((root.item.artist || "") !== "") parts.push(root.item.artist)
+        }
+        clipboardLoader.active = true
+        clipboardLoader.item.copy(parts.join(" - "))
     }
 
     // TrackContextMenu.slint, in its order. Every row here reaches a live
@@ -1362,7 +1412,7 @@ Rectangle {
                 m.push({ "label": t("Make available offline", r), "icon": "cloud-download", "action": "cache" })
             }
         }
-        if (root.menuShowGoTo && root.item.albumId)
+        if (root.menuShowGoTo && root.item.albumId && !root.releaseGone)
             m.push({ "label": t("Go to album", r), "icon": "disc-3", "action": "go-album" })
         if (root.menuShowGoTo && root.item.artistId)
             m.push({ "label": t("Go to artist", r), "icon": "user", "action": "go-artist" })
@@ -1370,6 +1420,13 @@ Rectangle {
         // opens on nothing.
         if (root.menuShowTrackInfo && !root.pulled)
             m.push({ "label": t("Track info", r), "icon": "info", "action": "track-info" })
+        // "Buy on Qobuz" (2026-09-13): the store page; store_qt answers with a
+        // toast when the catalog says the release is not sold.
+        if (root.catalogRow && !root.localSourceRow && !root.pulledDead)
+            m.push({ "label": t("Buy on Qobuz", r), "icon": "shopping-bag", "action": "buy" })
+        // Copy (2026-09-13): a submenu — the track name, or "Track - Album - Artist".
+        if ((root.item.title || "") !== "")
+            m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": true })
         return m
     }
 
@@ -1393,8 +1450,10 @@ Rectangle {
         }
         else if (a === "go-album") {
             if (root.routeGoToExternally) root.goToRequested("album")
-            else QbzAlbum.openAlbum(root.item.albumId)
+            else QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
         }
+        else if (a === "buy") QbzAlbum.buyTrack(root.item.id || "")
+        else if (a === "copy") root.openCopyMenu()
         else if (a === "favorite") root.toggleFavorite()
         else if (a === "mixtape") root.mixtapeRequested()
         // Add to playlist. The internal arm is the CATALOG one and nothing

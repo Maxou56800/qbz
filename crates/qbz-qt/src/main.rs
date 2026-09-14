@@ -299,6 +299,7 @@ mod rip_qt;
 mod rip_wizard_qt;
 mod sacd_qt;
 mod share_qt;
+mod store_qt;
 mod tag_editor_bridge;
 mod tag_editor_qt;
 // Offline cache (downloads tier): state activation on login + the action
@@ -1448,7 +1449,8 @@ pub(crate) fn open_album(album_id: String) {
             }),
             Err(e) => {
                 log::warn!("[qbz-qt] album view load failed: {e}");
-                album_bridge::ui(move |mut b| b.as_mut().set_album_loading(false));
+                let gone = e == album_qt::ALBUM_GONE;
+                album_qt::publish_unavailable(album_id, gone, e);
             }
         }
     });
@@ -2753,6 +2755,30 @@ pub(crate) fn navigate_to_tab(view: &str, tab: &str) {
 /// The active detail view ("album"/"artist" + id) — re-published on a live
 /// language switch so its Rust-built section headers re-translate.
 static LAST_DETAIL: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+
+/// The names the row that opened an album knew (id, title, artist): a 404
+/// carries none, and the "no longer available" page needs them for its
+/// heading and its alternatives search (album_qt::publish_unavailable).
+static ALBUM_HINT: Mutex<Option<(String, String, String)>> = Mutex::new(None);
+
+pub(crate) fn album_hint(album_id: &str) -> Option<(String, String)> {
+    ALBUM_HINT
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .filter(|(id, _, _)| id == album_id)
+        .map(|(_, title, artist)| (title, artist))
+}
+
+/// `open_album` with the title/artist the caller knows — every row that
+/// opens an album passes them, so the page can name a release the catalog
+/// no longer has.
+pub(crate) fn open_album_from(album_id: String, title: String, artist: String) {
+    if let Ok(mut guard) = ALBUM_HINT.lock() {
+        *guard = Some((album_id.clone(), title, artist));
+    }
+    open_album(album_id);
+}
 
 /// Settings > Appearance > Language: the pref is already persisted by the
 /// settings arm; this applies it LIVE — "auto" resolves POSIX env — then:

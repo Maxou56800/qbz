@@ -159,6 +159,14 @@ pub struct PlaylistTrackRow {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub upcoming: bool,
+    /// The whole RELEASE this row belongs to is gone from the catalog: every
+    /// track withdrawn, or `/album/get` answering unavailable — decided by
+    /// `library_qt::unavailable_release_ids` once the rows are built, one
+    /// probe per distinct album of the pulled rows. A pulled track on a live
+    /// album keeps `false`: its album page still opens. The row's album link
+    /// and "Go to album" go dark on `true` (2026-09-13).
+    #[serde(rename = "releaseUnavailable")]
+    pub release_unavailable: bool,
     /// The recording identifier, carried so the replacement search's ISRC
     /// short-circuit can fire (`qbz-playlist-import/src/match_qobuz.rs:156-159`
     /// scores an ISRC hit 1.0). That is the owner's "a veces cambia el ID del
@@ -1199,6 +1207,8 @@ pub async fn load(
     .await
     .unwrap_or_default();
     let mixed = !sidecar.is_empty();
+    // Release-wide withdrawals among the pulled rows (see the field).
+    let gone_releases = crate::library_qt::unavailable_release_ids(runtime, &tracks).await;
     let merged = interleave_rows(tracks, sidecar);
 
     // Display rows + the playable snapshot + the row positions in ONE pass, so
@@ -1216,6 +1226,13 @@ pub async fn load(
             merged_queue.push(q);
         }
         rows.push(item);
+    }
+    if !gone_releases.is_empty() {
+        for item in rows.iter_mut() {
+            if item.not_streamable && gone_releases.contains(&item.album_id) {
+                item.release_unavailable = true;
+            }
+        }
     }
 
     // Seam B: a mixed detail plays through local_playlist's merged queue
