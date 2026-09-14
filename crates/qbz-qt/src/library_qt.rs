@@ -151,6 +151,9 @@ pub struct FeedItem {
     pub genre: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
+    /// Catalog label id behind `label` ("" when the release carries none) —
+    /// the Releases list column and the "View label" menu entry open it.
+    pub label_id: String,
     #[serde(default, rename = "updatedAt", skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
     #[serde(default, rename = "trackCount", skip_serializing_if = "Option::is_none")]
@@ -722,6 +725,11 @@ fn map_album(album: Album, ready_offline_tracks: usize) -> FeedItem {
         subtitle: artist.clone(),
         artist,
         artist_id: album.artist.id.to_string(),
+        label_id: album
+            .label
+            .as_ref()
+            .map(|label| label.id.to_string())
+            .unwrap_or_default(),
         label: album.label.map(|label| label.name).unwrap_or_default(),
         duration_secs: album.duration.unwrap_or(0),
         track_count: Some(track_count as u32),
@@ -1009,7 +1017,7 @@ async fn probe_release_availability(
 /// Resolve release-wide availability only for favourite tracks already known
 /// to be unavailable. Explicit embedded answers cost no request; unknown album
 /// ids are de-duplicated and probed with a bounded fan-out.
-async fn unavailable_release_ids(
+pub(crate) async fn unavailable_release_ids(
     runtime: &Arc<AppRuntime<LoggingAdapter>>,
     tracks: &[Track],
 ) -> HashSet<String> {
@@ -1662,6 +1670,7 @@ fn map_purchased_album(a: qbz_models::PurchaseAlbum) -> FeedItem {
         ),
         added_at: a.purchased_at.unwrap_or(0),
         label: a.label.as_ref().map(|label| label.name.clone()).unwrap_or_default(),
+        label_id: a.label.as_ref().map(|label| label.id.to_string()).unwrap_or_default(),
         duration_secs: a.duration.unwrap_or(0),
         track_count: a.tracks_count,
         genre: a.genre.as_ref().map(|g| g.name.clone()).unwrap_or_default(),

@@ -27,6 +27,10 @@ Rectangle {
 
     // AlbumListCols: art 52, quality 150, year 64, overflow 36, gap 12.
     readonly property int colArt: 52
+    /// The release's label, between the item and its quality (2026-09-13);
+    /// off on the label page itself, where every row would repeat the same.
+    property bool showLabel: true
+    readonly property int colLabel: showLabel ? 150 : 0
     readonly property int colQuality: 150
     readonly property int colYear: 64
     readonly property int colOverflow: 36
@@ -56,9 +60,15 @@ Rectangle {
         ColLabel {
             width: parent.width - root.colArt - root.colQuality - root.colYear
                 - root.colOverflow - 4 * root.colGap
+                - (root.showLabel ? root.colLabel + root.colGap : 0)
                 - (root.selectMode ? 18 + root.colGap : 0)
             text: QbzSession.tr("ITEM", QbzSession.trRev)
             elide: Text.ElideRight
+        }
+        ColLabel {
+            visible: root.showLabel
+            width: root.colLabel
+            text: QbzSession.tr("LABEL", QbzSession.trRev)
         }
         ColLabel {
             width: root.colQuality

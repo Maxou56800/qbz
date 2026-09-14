@@ -88,6 +88,7 @@ Item {
             title: cell.item.title
             artist: cell.item.artist
             artistId: cell.item.artistId
+            labelId: cell.item.labelId || ""
             genre: cell.item.genre
             year: cell.item.year
             qualityTier: cell.item.qualityTier

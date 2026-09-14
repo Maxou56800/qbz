@@ -76,6 +76,9 @@ Rectangle {
 
     // Same columns (and widths) as AlbumListHeader.qml.
     readonly property int colArt: 52
+    /// See AlbumListHeader.showLabel.
+    property bool showLabel: true
+    readonly property int colLabel: (!root.showLabel || (root.kioskHost && width < 500)) ? 0 : 150
     readonly property int colQuality: root.kioskHost && width < 500 ? 0 : 150
     readonly property int colYear: root.kioskHost && width < 500 ? 0 : 64
     readonly property int colOverflow: root.kioskHost ? 44 : 36
@@ -107,7 +110,7 @@ Rectangle {
                 return
             }
             if (root.selectMode) root.toggleSelect(mouse.modifiers)
-            else if (!root.pulledDead) QbzAlbum.openAlbum(root.item.id || "")
+            else if (!root.pulledDead) QbzAlbum.openAlbumFrom(root.item.id || "", root.item.title || "", root.item.artist || "")
         }
         // Touch has no right button. Desktop-inert: `pressAndHold` never
         // fires for a mouse press that is released normally, and the guard
@@ -160,13 +163,17 @@ Rectangle {
         }
         if (!root.pulledDead && root.catalogRow)
             m.push({ "label": t("Block this album", r), "icon": "blind-eye", "action": "block" })
+        // The label page outlives a pulled release, so this one stays.
+        if ((root.item.labelId || "") !== "")
+            m.push({ "label": t("View label", r), "icon": "tags", "action": "view-label" })
         return m
     }
     function menuAction(a) {
         var id = root.item.id || ""
         if (id === "") return
+        if (a === "view-label") { QbzHome.openLabel(root.item.labelId || ""); return }
         if (root.pulledDead) return
-        if (a === "open") QbzAlbum.openAlbum(id)
+        if (a === "open") QbzAlbum.openAlbumFrom(id, root.item.title || "", root.item.artist || "")
         else if (a === "play") QbzPlayer.playAlbum(id)
         // `artUrl`, never `artPath`: the store keeps a denormalized cover url
         // and a file:// cache path is dead on any other machine.
@@ -274,6 +281,7 @@ Rectangle {
             // multi-select is switched on.
             width: parent.width - root.colArt - root.colQuality - root.colYear
                 - root.colOverflow - 4 * root.colGap
+                - (root.colLabel > 0 ? root.colLabel + root.colGap : 0)
                 - (root.selectMode ? 18 + root.colGap : 0)
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
@@ -301,6 +309,32 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: QbzArtist.openArtist(root.item.artistId)
+                }
+            }
+        }
+
+        // LABEL — the release's label, a link to its page when the feed
+        // carries the id (2026-09-13). Zero-width (and skipped by the Row)
+        // where the column is off.
+        Item {
+            visible: root.colLabel > 0
+            width: root.colLabel
+            height: parent.height
+            Text {
+                id: labelText
+                width: parent.width
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.item.label || ""
+                color: labelArea.containsMouse && labelArea.enabled ? theme.accent : theme.textMuted
+                font.pixelSize: 12
+                elide: Text.ElideRight
+                MouseArea {
+                    id: labelArea
+                    anchors.fill: parent
+                    enabled: (root.item.labelId || "") !== ""
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: QbzHome.openLabel(root.item.labelId)
                 }
             }
         }
