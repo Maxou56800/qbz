@@ -197,6 +197,9 @@ pub struct AlbumHeader {
     pub label: String,
     #[serde(rename = "labelId")]
     pub label_id: String,
+    /// The catalog's `purchasable` for the release: the header's "Buy on
+    /// Qobuz" action shows only on `true` (2026-09-13).
+    pub purchasable: bool,
     /// (id, name) award pairs for the sidebar.
     pub awards: Vec<(String, String)>,
     #[serde(rename = "isFavorite")]
@@ -619,11 +622,19 @@ pub async fn load_album(
     runtime: &Arc<AppRuntime<LoggingAdapter>>,
     album_id: &str,
 ) -> Result<AlbumViewData, String> {
+    // A release the catalog no longer has is the one failure the page can
+    // explain (and offer alternatives for): it travels as `ALBUM_GONE` so
+    // `open_album` can tell it from a network error.
     let album = runtime
         .core()
         .get_album(album_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| match e {
+            qbz_core::CoreError::Api(ref error) if error.is_album_unavailable(album_id) => {
+                ALBUM_GONE.to_string()
+            }
+            other => other.to_string(),
+        })?;
 
     let artist = album.artist.name.clone();
     let artist_id = album.artist.id.to_string();
@@ -770,6 +781,7 @@ pub async fn load_album(
             .as_ref()
             .map(|l| l.id.to_string())
             .unwrap_or_default(),
+        purchasable: album.purchasable == Some(true),
         awards,
         has_booklet: !booklet_url.is_empty(),
         // album.rs:677-679 — the whole album is cached when every track is.
@@ -1077,6 +1089,84 @@ pub(crate) fn format_album_title(title: &str, version: Option<&str>) -> String {
 /// `main-artist` role, else the first entry). `/album/suggest` returns items
 /// whose flat `artist` is empty but whose `artists[]` is populated — without
 /// the fallback the "Listening suggestions" cards render no artist line.
+/// `load_album`'s error for a release the catalog no longer has (see there).
+pub(crate) const ALBUM_GONE: &str = "album-gone";
+
+/// The album page when the release cannot be shown (2026-09-13). `gone` is
+/// the catalog saying the release no longer exists — a pulled album that
+/// still answers keeps its normal page, rows marked — and anything else is a
+/// load failure. Published as the `unavailable` arm of the album document,
+/// which AlbumView renders instead of a header; for a gone release whose
+/// title is known (the row that opened it passes one, a 404 carries none),
+/// the best-ranked alternatives Qobuz still sells follow, through the same
+/// ranking the playlist replacement flow uses.
+pub(crate) fn publish_unavailable(album_id: String, gone: bool, error: String) {
+    let (title, artist) = crate::album_hint(&album_id).unwrap_or_default();
+    let generation = ALBUM_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let searching = gone && !title.trim().is_empty();
+    let doc = json!({
+        "unavailable": {
+            "id": album_id,
+            "title": title,
+            "artist": artist,
+            "gone": gone,
+            "error": if gone { String::new() } else { error },
+            "loading": searching,
+            "alternatives": [],
+        }
+    });
+    if let Ok(mut guard) = ALBUM_DOC.lock() {
+        *guard = Some((generation, doc.clone()));
+    }
+    let json = doc.to_string();
+    crate::album_bridge::ui(move |mut b| {
+        b.as_mut().set_album_json(QString::from(json.as_str()));
+        b.as_mut().set_album_loading(false);
+    });
+    if !searching {
+        return;
+    }
+    crate::spawn(async move {
+        let found =
+            crate::track_replace_qt::ranked_alternatives(&album_id, &title, &artist).await;
+        let cards: Vec<AlbumCardData> = found.iter().take(12).map(album_to_card).collect();
+        let value = serde_json::to_value(&cards).unwrap_or_else(|_| json!([]));
+        publish_patch(generation, move |doc| {
+            if let Some(arm) = doc.get_mut("unavailable") {
+                arm["alternatives"] = value;
+                arm["loading"] = json!(false);
+            }
+        });
+    });
+}
+
+/// A catalog album as one card of a rail (the alternatives rail above).
+fn album_to_card(album: &Album) -> AlbumCardData {
+    let (artist, artist_id) = card_artist(album);
+    let date = album
+        .release_date_original
+        .as_deref()
+        .or_else(|| album.dates.as_ref().and_then(|d| d.original.as_deref()));
+    AlbumCardData {
+        id: album.id.clone(),
+        title: format_album_title(&album.title, album.version.as_deref()),
+        artist,
+        artist_id,
+        genre: album.genre.as_ref().map(|g| g.name.clone()).unwrap_or_default(),
+        year: qbz_text_utils::dates::release_label(date),
+        release_sort_key: qbz_text_utils::dates::release_sort_key(date),
+        quality_tier: home_qt::quality_tier_from_depth(album.maximum_bit_depth).to_string(),
+        quality_detail: home_qt::quality_detail_from_parts(
+            album.maximum_bit_depth,
+            album.maximum_sampling_rate,
+        ),
+        art_url: album.image.best().cloned().unwrap_or_default(),
+        is_pinned: crate::sidebar_qt::is_pinned("album", &album.id),
+        is_favorite: crate::library_qt::is_favorite("album", &album.id),
+        default_order: 0,
+    }
+}
+
 fn card_artist(album: &Album) -> (String, String) {
     if !album.artist.name.is_empty() {
         return (album.artist.name.clone(), album.artist.id.to_string());

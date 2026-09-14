@@ -393,6 +393,7 @@ mod tests {
     fn qobuz_track(id: u64, title: &str, artist: &str) -> Track {
         Track {
             favorited_at: None,
+            purchasable: None,
             id,
             title: title.to_string(),
             version: None,

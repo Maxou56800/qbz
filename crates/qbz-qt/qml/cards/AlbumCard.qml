@@ -40,6 +40,9 @@ Rectangle {
     property string title: ""
     property string artist: ""
     property string artistId: ""
+    /// The release's label id when the host knows it (library feed rows do):
+    /// the "View label" menu entry (2026-09-13). "" = no entry.
+    property string labelId: ""
     // Hosts with only a display snapshot (Home's persisted Pinned row) can
     // still make the artist line a link and resolve the destination lazily.
     // Normal catalog cards keep the direct artistId path and pay no lookup.
@@ -391,6 +394,8 @@ Rectangle {
         }
         // Host tail (see `extraMenuEntries`). `concat` so the host's array is
         // never mutated — it is usually a binding's return value.
+        if (root.labelId !== "")
+            m.push({ "label": t("View label", r), "icon": "tags", "action": "view-label" })
         var extra = root.extraMenuEntries || []
         return extra.length > 0 ? m.concat(extra) : m
     }
@@ -415,6 +420,7 @@ Rectangle {
         // denormalized snapshot and a file:// cache path is dead on any other
         // machine, the same reason the pin payload uses it.
         if (a === "favorite") { root.toggleFavorite(); return }
+        if (a === "view-label") { QbzHome.openLabel(root.labelId); return }
         if (a === "find-release") {
             QbzTrackReplace.openRelease(JSON.stringify({
                 "targetKind": "album",

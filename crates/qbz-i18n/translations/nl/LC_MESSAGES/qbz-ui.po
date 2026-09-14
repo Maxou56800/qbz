@@ -7635,3 +7635,51 @@ msgstr "Basisgegevens kopiëren"
 #: crates/qbz-qt/qml/shell/TrackInfoBody.qml
 msgid "Copy full"
 msgstr "Alles kopiëren"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "View label"
+msgstr "Label bekijken"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Buy on Qobuz"
+msgstr "Kopen bij Qobuz"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release isn't sold on Qobuz."
+msgstr "Deze release wordt niet verkocht bij Qobuz."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't check the store for this release."
+msgstr "Kon de winkel niet controleren voor deze release."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Could not open the browser"
+msgstr "Kon de browser niet openen"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track name"
+msgstr "Tracknaam"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track - Album - Artist"
+msgstr "Track - Album - Artiest"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release is no longer available on Qobuz."
+msgstr "Deze release is niet meer beschikbaar op Qobuz."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "You might be interested in these instead"
+msgstr "Misschien zijn deze alternatieven interessant"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't load this release."
+msgstr "Kon deze release niet laden."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Looking for other versions…"
+msgstr "Andere versies zoeken…"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release"
+msgstr "Deze release"

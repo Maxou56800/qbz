@@ -657,7 +657,7 @@ Rectangle {
                     favorite: root.npFavorite
                     ephemeral: root.npEphemeral
                     tooltip: root.tooltip
-                    onAddRequested: function (anchorItem) { addMenu.openBelowRight(anchorItem) }
+                    onAddRequested: function (anchorItem) { root.addAnchor = anchorItem; addMenu.openBelowRight(anchorItem) }
                     onTrackInfoRequested: root.openTrackInfo()
                 }
             }
@@ -680,7 +680,7 @@ Rectangle {
                     playCircle: true
                     favorite: root.npFavorite
                     tooltip: root.tooltip
-                    onAddRequested: function (anchorItem) { addMenu.openBelowRight(anchorItem) }
+                    onAddRequested: function (anchorItem) { root.addAnchor = anchorItem; addMenu.openBelowRight(anchorItem) }
                     onTrackInfoRequested: root.openTrackInfo()
                 }
             }
@@ -908,6 +908,26 @@ Rectangle {
     // "Add to…" flyout behind the transport "+" (TransportControls.slint's
     // add-menu), on the shared CardMenu surface. Same seven entries, same
     // order, same icons.
+    // The "+" button that opened the add-menu: the Copy submenu reopens on it.
+    property Item addAnchor: null
+    QbzClipboard { id: npClipboard }
+    CardMenu {
+        id: npCopyMenu
+        menuWidth: 232
+        entries: [
+            { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
+            { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
+        ]
+        onPicked: function (a) {
+            var parts = [QbzPlayer.npTitle || ""]
+            if (a === "copy-full") {
+                if ((QbzPlayer.npAlbum || "") !== "") parts.push(QbzPlayer.npAlbum)
+                if ((QbzPlayer.npArtist || "") !== "") parts.push(QbzPlayer.npArtist)
+            }
+            npClipboard.copy(parts.join(" - "))
+        }
+    }
+
     CardMenu {
         id: addMenu
         menuWidth: 232
@@ -963,6 +983,23 @@ Rectangle {
                     "action": "album-favorite"
                 })
             }
+            // "Buy on Qobuz" (2026-09-13): catalog tracks only; store_qt
+            // resolves whether the release is sold and toasts when not.
+            if (root.npSource === "qobuz") {
+                m.push({
+                    "label": QbzSession.tr("Buy on Qobuz", QbzSession.trRev),
+                    "icon": "shopping-bag",
+                    "action": "buy"
+                })
+            }
+            // Copy (2026-09-13): a submenu — the track name, or
+            // "Track - Album - Artist".
+            m.push({
+                "label": QbzSession.tr("Copy", QbzSession.trRev),
+                "icon": "copy",
+                "action": "copy",
+                "submenu": true
+            })
             return m.concat(root.abEntries())
         }
         onPicked: function (a) {
@@ -978,6 +1015,10 @@ Rectangle {
             } else if (a === "album-favorite") {
                 if (QbzPlayer.npAlbumId !== "")
                     QbzLibrary.libraryToggleFavorite("album", QbzPlayer.npAlbumId)
+            } else if (a === "buy") {
+                if (id !== "") QbzAlbum.buyTrack(id)
+            } else if (a === "copy") {
+                if (root.addAnchor) npCopyMenu.openBelowRight(root.addAnchor)
             } else if (a === "ab-mark") {
                 QbzPlayer.abMark()
             } else if (a === "ab-clear") {

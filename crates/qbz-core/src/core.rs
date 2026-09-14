@@ -3863,6 +3863,7 @@ mod tests {
         .collect();
         Album {
             favorited_at: None,
+            purchasable: None,
             id: String::new(),
             title: String::new(),
             artist: Artist {
@@ -3900,6 +3901,7 @@ mod tests {
     fn track_with(performer_id: Option<u64>, composer_id: Option<u64>) -> Track {
         Track {
             favorited_at: None,
+            purchasable: None,
             id: 0,
             title: String::new(),
             version: None,

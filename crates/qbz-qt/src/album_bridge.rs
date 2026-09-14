@@ -62,6 +62,16 @@ pub mod qbz_album_bridge {
         /// Open the album detail view (pushes "album" on the nav stack).
         #[qinvokable]
         fn open_album(self: Pin<&mut QbzAlbum>, album_id: QString);
+        /// `open_album` with the title/artist the caller knows, so a release
+        /// the catalog no longer has can still be named on its page.
+        #[qinvokable]
+        fn open_album_from(self: Pin<&mut QbzAlbum>, album_id: QString, title: QString, artist: QString);
+        /// "Buy on Qobuz": the store page in the browser when the release is
+        /// sold, a toast otherwise (store_qt).
+        #[qinvokable]
+        fn buy_album(self: Pin<&mut QbzAlbum>, album_id: QString);
+        #[qinvokable]
+        fn buy_track(self: Pin<&mut QbzAlbum>, track_id: QString);
         /// AlbumCard's picture-in-picture action. Fetches the compact album
         /// document without navigating or touching `album_json`.
         #[qinvokable]
@@ -188,6 +198,20 @@ impl qbz_album_bridge::QbzAlbum {
 
     pub fn open_album(self: Pin<&mut Self>, album_id: QString) {
         crate::open_album(album_id.to_string());
+    }
+    pub fn open_album_from(
+        self: Pin<&mut Self>,
+        album_id: QString,
+        title: QString,
+        artist: QString,
+    ) {
+        crate::open_album_from(album_id.to_string(), title.to_string(), artist.to_string());
+    }
+    pub fn buy_album(self: Pin<&mut Self>, album_id: QString) {
+        crate::store_qt::buy_album(album_id.to_string());
+    }
+    pub fn buy_track(self: Pin<&mut Self>, track_id: QString) {
+        crate::store_qt::buy_track(track_id.to_string());
     }
     pub fn open_quick_view(self: Pin<&mut Self>, album_id: QString) {
         crate::album_quick_view_qt::open(album_id.to_string());
