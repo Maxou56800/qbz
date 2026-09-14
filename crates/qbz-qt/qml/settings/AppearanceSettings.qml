@@ -148,6 +148,27 @@ Column {
             onSelected: function (i) { QbzBridge.settingsSelect("app-background", i) }
         }
     }
+    // The picture behind the two Wallpaper modes: the desktop's, or one of
+    // the user's own (wallpaper_qt.rs).
+    SettingRow { kioskHost: root.kioskHost;
+        visible: (root.doc.appBackgroundIndex || 0) >= 3
+        label: QbzSession.tr("Background image", QbzSession.trRev)
+        description: (root.doc.appBackgroundImage || "") !== ""
+            ? root.doc.appBackgroundImage
+            : QbzSession.tr("The system wallpaper. Choose an image of your own instead.", QbzSession.trRev)
+        Row {
+            spacing: 8
+            SettingsButton { kioskHost: root.kioskHost;
+                text: QbzSession.tr("Choose image…", QbzSession.trRev)
+                onClicked: QbzBridge.settingsPickBackgroundImage()
+            }
+            SettingsButton { kioskHost: root.kioskHost;
+                visible: (root.doc.appBackgroundImage || "") !== ""
+                text: QbzSession.tr("System wallpaper", QbzSession.trRev)
+                onClicked: QbzBridge.settingsClearBackgroundImage()
+            }
+        }
+    }
     // Auto-theme rows (the "auto" theme only).
     SettingRow { kioskHost: root.kioskHost;
         visible: QbzShell.themeSlug === "auto"

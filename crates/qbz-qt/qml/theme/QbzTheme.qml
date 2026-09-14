@@ -161,7 +161,10 @@ QtObject {
     // renderer-tier arm: the Qt field renders on the software path too
     // (ShaderEffect where shaders exist, Canvas where they do not), so the
     // feature is never taken away from a weak GPU here.
-    readonly property bool ambientOn: QbzShell.ambientMode > 0 && QbzPlayer.npHasTrack
+    // The wallpaper modes (3, 4) do not depend on a playing track: the
+    // picture is always there.
+    readonly property bool ambientOn: QbzShell.ambientMode > 0
+        && (QbzShell.ambientMode >= 3 || QbzPlayer.npHasTrack)
 
     // --- ON AN ACCENT FILL: the glyph tint and its colour twin -----------
     //

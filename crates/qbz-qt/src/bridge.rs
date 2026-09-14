@@ -84,6 +84,10 @@ pub mod qbz_bridge {
         /// Select rows: the picked OPTION INDEX within the row's list.
         #[qinvokable]
         fn settings_select(self: Pin<&mut QbzBridge>, key: QString, index: i32);
+        #[qinvokable]
+        fn settings_pick_background_image(self: Pin<&mut QbzBridge>);
+        #[qinvokable]
+        fn settings_clear_background_image(self: Pin<&mut QbzBridge>);
         /// Slider rows (initial buffer size).
         #[qinvokable]
         fn settings_slider(self: Pin<&mut QbzBridge>, key: QString, value: i32);
@@ -279,6 +283,14 @@ impl qbz_bridge::QbzBridge {
 
     pub fn settings_bool(self: Pin<&mut Self>, key: QString, value: bool) {
         crate::settings_bool(key.to_string(), value);
+    }
+
+    pub fn settings_pick_background_image(self: Pin<&mut Self>) {
+        crate::settings_qt::pick_background_image();
+    }
+
+    pub fn settings_clear_background_image(self: Pin<&mut Self>) {
+        crate::settings_qt::clear_background_image();
     }
 
     pub fn settings_select(self: Pin<&mut Self>, key: QString, index: i32) {

@@ -121,6 +121,55 @@ Rectangle {
         opacity: root.veilStrength
     }
 
+    // Mode 3 — Wallpaper: the desktop wallpaper, the part of it that lies
+    // BEHIND this window (where the platform tells the window its place:
+    // X11, macOS, Windows — Wayland hides it, so a centred crop stands in),
+    // lightly blurred under the half-alpha chrome. Static: it costs a frame
+    // only when the window moves or resizes (shell/WallpaperField.qml).
+    // Mode 4 — Wallpaper, blurred: the wallpaper through the SAME atmosphere
+    // pass Blurred art gives the cover, held still (no transport to follow).
+    // Neither waits for a playing track (QbzTheme.ambientOn).
+    readonly property bool wallpaperModeOn: root.ambientOn && QbzShell.ambientMode === 3
+    readonly property bool wallpaperBlurOn: root.ambientOn && QbzShell.ambientMode === 4
+    WallpaperField {
+        anchors.fill: parent
+        visible: root.wallpaperModeOn
+        source: root.wallpaperModeOn ? QbzShell.wallpaperUrl : ""
+        hostWindow: root.hostWindow
+        blur: 0.35
+        dim: theme.isDark ? QbzShell.ambientDim : 0.0
+    }
+    Rectangle {
+        anchors.fill: parent
+        visible: root.wallpaperModeOn && !theme.isDark
+        color: theme.surfaceMain
+        opacity: root.veilStrength
+    }
+    ImmersiveAtmosphere {
+        anchors.fill: parent
+        visible: root.wallpaperBlurOn
+        source: root.wallpaperBlurOn ? QbzShell.wallpaperAtmosphereUrl : ""
+        animated: false
+        dim: theme.isDark ? QbzShell.ambientDim : 0.0
+    }
+    Rectangle {
+        anchors.fill: parent
+        visible: root.wallpaperBlurOn && !theme.isDark
+        color: theme.surfaceMain
+        opacity: root.veilStrength
+    }
+    // The wallpaper can change while QBZ runs: re-resolve when the window
+    // comes back to the front (wallpaper_qt memoises path + mtime, so a
+    // wallpaper that did not change republishes nothing).
+    Connections {
+        target: root.hostWindow
+        ignoreUnknownSignals: true
+        function onActiveChanged() {
+            if (root.hostWindow && root.hostWindow.active && QbzShell.ambientMode >= 3)
+                QbzShell.refreshWallpaper()
+        }
+    }
+
     // The host ApplicationWindow (custom chrome: drag / maximize / resize).
     property var hostWindow: null
 

@@ -7693,3 +7693,27 @@ msgstr "Recherche d'autres versions…"
 #: crates/qbz-qt/qml/views/AlbumView.qml
 msgid "This release"
 msgstr "Cette sortie"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper"
+msgstr "Fond d'écran"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper, blurred"
+msgstr "Fond d'écran flouté"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Background image"
+msgstr "Image de fond"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "The system wallpaper. Choose an image of your own instead."
+msgstr "Le fond d'écran du système. Vous pouvez aussi choisir votre propre image."
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Choose image…"
+msgstr "Choisir une image…"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "System wallpaper"
+msgstr "Fond d'écran du système"

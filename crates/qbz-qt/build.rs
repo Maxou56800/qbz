@@ -656,6 +656,7 @@ fn main() {
                 "qml/settings/OrbitSettings.qml",
                 "qml/settings/OrbitSettingsPanel.qml",
                 "qml/shell/AmbientField.qml",
+                "qml/shell/WallpaperField.qml",
                 "qml/shell/AppShell.qml",
                 "qml/shell/OrbitBanner.qml",
                 "qml/shell/ArtPreviewOverlay.qml",

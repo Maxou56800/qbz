@@ -7693,3 +7693,27 @@ msgstr "A procurar outras versões…"
 #: crates/qbz-qt/qml/views/AlbumView.qml
 msgid "This release"
 msgstr "Este lançamento"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper"
+msgstr "Papel de parede"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper, blurred"
+msgstr "Papel de parede desfocado"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Background image"
+msgstr "Imagem de fundo"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "The system wallpaper. Choose an image of your own instead."
+msgstr "O papel de parede do sistema. Também pode escolher uma imagem sua."
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Choose image…"
+msgstr "Escolher imagem…"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "System wallpaper"
+msgstr "Papel de parede do sistema"

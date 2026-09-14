@@ -291,6 +291,7 @@ mod label_qt;
 mod local_media_info_qt;
 mod nav_qt;
 mod page_restore_qt;
+mod wallpaper_qt;
 mod now_playing;
 mod offline_fwd;
 mod output_labels;
@@ -837,6 +838,8 @@ fn on_session_entered() {
     };
     nav_qt::record(&entry_view);
     hydrate_view(&entry_view);
+    // The desktop wallpaper, when a background mode paints it (a no-op otherwise).
+    wallpaper_qt::refresh();
     // Logged-off startup is the ONLY automatic redirect. An authenticated
     // account keeps the established startup/restore flow even when physical
     // connectivity is down. The selected tab is the first user-ordered Local
