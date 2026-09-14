@@ -15,6 +15,7 @@
 
 import QtQuick
 import com.blitzfc.qbz
+import "../controls"
 import "../theme"
 
 Column {
@@ -41,6 +42,59 @@ Column {
     readonly property color cAccent: overAmbient ? bodyAmbientAccent.value : theme.accent
 
     readonly property var doc: host ? host.doc : ({})
+
+    // --- Copy (2026-09-13) -------------------------------------------------
+    // Basic = "{Track} - {Album} - {Artist}"; full = everything the modal
+    // shows, as plain text. The glyph turns into a check for a moment.
+    QbzClipboard { id: clipboard }
+    property bool justCopied: false
+    Timer {
+        id: copiedTimer
+        interval: 1400
+        onTriggered: body.justCopied = false
+    }
+    function nonEmpty(s) { return (s || "") !== "" }
+    function basicText() {
+        return [body.doc.title, body.doc.album, body.doc.artist].filter(body.nonEmpty).join(" - ")
+    }
+    function fullText() {
+        var t = QbzSession.tr
+        var r = QbzSession.trRev
+        var d = body.doc
+        var lines = [d.title, d.album, d.artist].filter(body.nonEmpty)
+        var meta = []
+        if (body.nonEmpty(d.duration)) meta.push(t("Duration", r) + ": " + d.duration)
+        if (body.nonEmpty(d.quality)) meta.push(t("Quality", r) + ": " + d.quality)
+        if (body.nonEmpty(d.isrc)) meta.push("ISRC: " + d.isrc)
+        if (body.nonEmpty(d.label)) meta.push(t("Label", r) + ": " + d.label)
+        if (meta.length > 0) { lines.push(""); lines = lines.concat(meta) }
+        var credits = body.host ? body.host.credits : []
+        if (credits.length > 0) {
+            lines.push("")
+            for (var i = 0; i < credits.length; i++) {
+                var c = credits[i]
+                lines.push((c.role || c.roleRaw || "") + ": " + (c.names || []).join(", "))
+            }
+        }
+        if (body.nonEmpty(d.copyright)) { lines.push(""); lines.push(d.copyright) }
+        return lines.join("\n")
+    }
+    function copy(which) {
+        var text = which === "full" ? body.fullText() : body.basicText()
+        if (clipboard.copy(text)) {
+            body.justCopied = true
+            copiedTimer.restart()
+        }
+    }
+    CardMenu {
+        id: copyMenu
+        menuWidth: 200
+        entries: [
+            { "label": QbzSession.tr("Copy basic data", QbzSession.trRev), "icon": "copy", "action": "basic" },
+            { "label": QbzSession.tr("Copy full", QbzSession.trRev), "icon": "clipboard", "action": "full" }
+        ]
+        onPicked: function (a) { body.copy(a) }
+    }
 
     // ---- Loading ---------------------------------------------------------
     Item {
@@ -115,53 +169,71 @@ Column {
                 x: 24
                 y: 16
                 // 24 L + 24 R padding, 16 gap, 32 close X.
-                width: Math.max(0, parent.width - 24 - 24 - 16 - 32)
+                width: Math.max(0, parent.width - 24 - 24 - 16 - 32 - 8 - 32)
                 spacing: 4
 
-                Text {
+                // Every field is selectable (2026-09-13): QbzSelectableText,
+                // raised (plain, shadowed) on the ambient host.
+                QbzSelectableText {
                     width: parent.width
                     text: body.doc.title || ""
                     color: body.cPrimary
-                    style: body.cStyle
-                    styleColor: body.cShadow
+                    raised: body.overAmbient
+                    raisedShadow: body.cShadow
                     // The immersive panel reads at a distance — its header
                     // steps up (owner, 2026-08-31 round 2).
-                    font.pixelSize: body.overAmbient ? 24 : 16
-                    font.weight: theme.weightSemibold
-                    wrapMode: Text.WordWrap
+                    pixelSize: body.overAmbient ? 24 : 16
+                    weight: theme.weightSemibold
                 }
-                Text {
+                QbzSelectableText {
                     visible: (body.doc.album || "") !== ""
                     width: parent.width
                     text: body.doc.album || ""
                     color: body.cMuted
-                    style: body.cStyle
-                    styleColor: body.cShadow
-                    font.pixelSize: body.overAmbient ? 15 : theme.fontLegal
-                    elide: Text.ElideRight
+                    raised: body.overAmbient
+                    raisedShadow: body.cShadow
+                    pixelSize: body.overAmbient ? 15 : theme.fontLegal
                 }
                 // Artist — a link only when an id exists.
-                Item {
+                QbzSelectableText {
                     visible: (body.doc.artist || "") !== ""
                     width: parent.width
-                    height: visible ? artistText.implicitHeight : 0
-                    Text {
-                        id: artistText
-                        text: body.doc.artist || ""
-                        color: (body.doc.artistId || "") !== ""
-                            ? body.cAccent : body.cPrimary
-                        style: body.cStyle
-                        styleColor: body.cShadow
-                        font.pixelSize: body.overAmbient ? 20 : 16
-                        font.weight: theme.weightSemibold
-                    }
-                    MouseArea {
-                        width: Math.min(artistText.implicitWidth, parent.width)
-                        height: artistText.implicitHeight
-                        cursorShape: (body.doc.artistId || "") !== ""
-                            ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: body.host.openArtist(body.doc.artistId || "")
-                    }
+                    text: body.doc.artist || ""
+                    color: (body.doc.artistId || "") !== "" ? body.cAccent : body.cPrimary
+                    linkHref: (body.doc.artistId || "") !== "" ? "artist" : ""
+                    linkHoverColor: body.cAccent
+                    raised: body.overAmbient
+                    raisedShadow: body.cShadow
+                    pixelSize: body.overAmbient ? 20 : 16
+                    weight: theme.weightSemibold
+                    onLinkActivated: body.host.openArtist(body.doc.artistId || "")
+                }
+            }
+
+            // Copy — basic line or the full sheet, from the flyout; the
+            // glyph turns into a check for a moment as the receipt.
+            Item {
+                id: copyBtn
+                width: 32
+                height: 32
+                x: parent.width - 24 - 32 - 8 - 32
+                y: 16
+                QbzIcon {
+                    name: body.justCopied ? "check" : "copy"
+                    width: 17
+                    height: 17
+                    anchors.centerIn: parent
+                    tintName: body.justCopied ? "accent"
+                        : body.overAmbient
+                            ? (copyArea.containsMouse ? "white" : "muted")
+                            : (copyArea.containsMouse ? "textPrimary" : "muted")
+                }
+                MouseArea {
+                    id: copyArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: copyMenu.openBelowLeft(copyBtn)
                 }
             }
 
@@ -211,28 +283,26 @@ Column {
                         cellWidth: loadedCol.metaColW
                         overAmbient: body.overAmbient
                         label: QbzSession.tr("Duration", QbzSession.trRev)
-                        Text {
+                        QbzSelectableText {
                             width: loadedCol.metaColW
                             text: body.doc.duration || ""
                             color: body.cPrimary
-                            style: body.cStyle
-                            styleColor: body.cShadow
-                            font.pixelSize: 14
-                            elide: Text.ElideRight
+                            raised: body.overAmbient
+                            raisedShadow: body.cShadow
+                            pixelSize: 14
                         }
                     }
                     InfoMetaCell {
                         cellWidth: loadedCol.metaColW
                         overAmbient: body.overAmbient
                         label: QbzSession.tr("Quality", QbzSession.trRev)
-                        Text {
+                        QbzSelectableText {
                             width: loadedCol.metaColW
                             text: body.doc.quality || ""
                             color: body.cPrimary
-                            style: body.cStyle
-                            styleColor: body.cShadow
-                            font.pixelSize: 14
-                            elide: Text.ElideRight
+                            raised: body.overAmbient
+                            raisedShadow: body.cShadow
+                            pixelSize: 14
                         }
                     }
                     // ISRC — the cell is dropped (not blanked) when absent;
@@ -242,14 +312,13 @@ Column {
                         cellWidth: loadedCol.metaColW
                         overAmbient: body.overAmbient
                         label: "ISRC"
-                        Text {
+                        QbzSelectableText {
                             width: loadedCol.metaColW
                             text: body.doc.isrc || ""
                             color: body.cMuted
-                            style: body.cStyle
-                            styleColor: body.cShadow
-                            font.pixelSize: 14
-                            elide: Text.ElideRight
+                            raised: body.overAmbient
+                            raisedShadow: body.cShadow
+                            pixelSize: 14
                         }
                     }
                     Item {
@@ -271,30 +340,16 @@ Column {
                         cellWidth: loadedCol.metaColW
                         overAmbient: body.overAmbient
                         label: QbzSession.tr("Label", QbzSession.trRev)
-                        Item {
+                        QbzSelectableText {
                             width: loadedCol.metaColW
-                            height: labelText.implicitHeight
-                            Text {
-                                id: labelText
-                                width: loadedCol.metaColW
-                                text: body.doc.label || ""
-                                color: (labelArea.containsMouse
-                                        && (body.doc.labelId || "") !== "")
-                                    ? body.cAccent : body.cPrimary
-                                style: body.cStyle
-                                styleColor: body.cShadow
-                                font.pixelSize: 14
-                                elide: Text.ElideRight
-                            }
-                            MouseArea {
-                                id: labelArea
-                                width: Math.min(labelText.implicitWidth, loadedCol.metaColW)
-                                height: labelText.implicitHeight
-                                hoverEnabled: true
-                                cursorShape: (body.doc.labelId || "") !== ""
-                                    ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                onClicked: body.host.openLabel(body.doc.labelId || "")
-                            }
+                            text: body.doc.label || ""
+                            color: body.cPrimary
+                            linkHref: (body.doc.labelId || "") !== "" ? "label" : ""
+                            linkHoverColor: body.cAccent
+                            raised: body.overAmbient
+                            raisedShadow: body.cShadow
+                            pixelSize: 14
+                            onLinkActivated: body.host.openLabel(body.doc.labelId || "")
                         }
                     }
                 }
@@ -369,15 +424,14 @@ Column {
                     width: 1
                     height: 20
                 }
-                Text {
+                QbzSelectableText {
                     visible: (body.doc.copyright || "") !== ""
                     width: parent.width
                     text: body.doc.copyright || ""
                     color: body.cMuted
-                    style: body.cStyle
-                    styleColor: body.cShadow
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
+                    raised: body.overAmbient
+                    raisedShadow: body.cShadow
+                    pixelSize: 12
                 }
             }
         }

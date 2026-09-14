@@ -7620,3 +7620,11 @@ msgstr "プレイリストを削除しますか？"
 #: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
 msgid "“{}” will be deleted. This cannot be undone."
 msgstr "「{}」を削除します。この操作は取り消せません。"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy basic data"
+msgstr "基本情報をコピー"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy full"
+msgstr "すべてコピー"

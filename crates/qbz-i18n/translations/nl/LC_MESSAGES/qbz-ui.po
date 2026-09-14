@@ -7627,3 +7627,11 @@ msgstr "Afspeellijst verwijderen?"
 #: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
 msgid "“{}” will be deleted. This cannot be undone."
 msgstr "“{}” wordt verwijderd. Dit kan niet ongedaan worden gemaakt."
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy basic data"
+msgstr "Basisgegevens kopiëren"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy full"
+msgstr "Alles kopiëren"

@@ -17,6 +17,7 @@
 import QtQuick
 import QtQuick.Controls
 import com.blitzfc.qbz
+import "../controls"
 import "../theme"
 
 Popup {
@@ -59,6 +60,64 @@ Popup {
     // the one /album/get echoed back (album_info_qt.rs::map). Do not "fix"
     // that to the API's id: any divergence blanks this card with no log.
     property string requestedId: ""
+
+    // --- Copy (2026-09-13) --------------------------------------------------
+    // Basic = "{Album} - {Artist}"; full = the header lines plus the ACTIVE
+    // tab as plain text: every track with its performers (Credits) or the
+    // review. The glyph turns into a check for a moment as the receipt.
+    QbzClipboard { id: clipboard }
+    property bool justCopied: false
+    Timer {
+        id: copiedTimer
+        interval: 1400
+        onTriggered: root.justCopied = false
+    }
+    function nonEmpty(s) { return (s || "") !== "" }
+    function basicText() {
+        return [root.doc.title, root.doc.artist].filter(root.nonEmpty).join(" - ")
+    }
+    function fullText() {
+        var d = root.doc
+        var lines = [d.title, d.artist].filter(root.nonEmpty)
+        var meta = [d.label, d.releaseDate, d.metaLine, d.quality].filter(root.nonEmpty)
+        if (meta.length > 0) lines.push(meta.join(" · "))
+        if (root.activeTab === "review") {
+            if (root.nonEmpty(d.review)) { lines.push(""); lines.push(d.review) }
+            return lines.join("\n")
+        }
+        var tracks = d.tracks || []
+        if (tracks.length > 0) lines.push("")
+        for (var i = 0; i < tracks.length; i++) {
+            var tr = tracks[i]
+            var num = (tr.number === undefined || tr.number === null) ? "" : String(tr.number)
+            var head = (num !== "" ? num + ". " : "") + (tr.title || "")
+            if (root.nonEmpty(tr.artist)) head += " — " + tr.artist
+            lines.push(head)
+            var perf = tr.performers || []
+            for (var j = 0; j < perf.length; j++) {
+                var p = perf[j]
+                lines.push("    " + (p.name || "") + (root.nonEmpty(p.roles) ? ": " + p.roles : ""))
+            }
+            if (root.nonEmpty(tr.copyright)) lines.push("    " + tr.copyright)
+        }
+        return lines.join("\n")
+    }
+    function copy(which) {
+        var text = which === "full" ? root.fullText() : root.basicText()
+        if (clipboard.copy(text)) {
+            root.justCopied = true
+            copiedTimer.restart()
+        }
+    }
+    CardMenu {
+        id: copyMenu
+        menuWidth: 200
+        entries: [
+            { "label": QbzSession.tr("Copy basic data", QbzSession.trRev), "icon": "copy", "action": "basic" },
+            { "label": QbzSession.tr("Copy full", QbzSession.trRev), "icon": "clipboard", "action": "full" }
+        ]
+        onPicked: function (a) { root.copy(a) }
+    }
 
     // --- Actions ---------------------------------------------------------
 
@@ -220,26 +279,20 @@ Popup {
                     spacing: 0
                     topPadding: 4
                     bottomPadding: 4
-                    Text {
+                    QbzSelectableText {
                         id: perfName
                         text: modelData.name
-                        color: perfArea.containsMouse ? theme.accent : theme.textPrimary
-                        font.pixelSize: 13
-                        font.weight: theme.weightMedium
-                        MouseArea {
-                            id: perfArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.openMusician(modelData.name, modelData.primaryRole)
-                        }
+                        color: theme.textPrimary
+                        linkHref: "musician"
+                        pixelSize: 13
+                        weight: theme.weightMedium
+                        onLinkActivated: root.openMusician(modelData.name, modelData.primaryRole)
                     }
-                    Text {
-                        width: parent.width - perfName.implicitWidth
-                        text: modelData.roles
+                    QbzSelectableText {
+                        width: Math.max(0, parent.width - perfName.width)
+                        text: String(modelData.roles || "")
                         color: theme.textMuted
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
+                        pixelSize: 13
                     }
                 }
             }
@@ -303,23 +356,45 @@ Popup {
                     spacing: 16
                     Item { width: 8; height: 1 }
                     Column {
-                        width: parent.width - 82
+                        width: parent.width - 130
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 4
-                        Text {
+                        // Selectable (2026-09-13), like every field below.
+                        QbzSelectableText {
                             width: parent.width
                             text: root.doc.title || ""
                             color: theme.textPrimary
-                            font.pixelSize: 16
-                            font.weight: theme.weightSemibold
-                            elide: Text.ElideRight
+                            pixelSize: 16
+                            weight: theme.weightSemibold
                         }
-                        Text {
+                        QbzSelectableText {
                             width: parent.width
                             text: root.doc.artist || ""
                             color: theme.textMuted
-                            font.pixelSize: theme.fontLegal
-                            elide: Text.ElideRight
+                            pixelSize: theme.fontLegal
+                        }
+                    }
+                    // Copy: basic line or the active tab, from the flyout.
+                    Rectangle {
+                        id: copyBtn
+                        width: 32
+                        height: 32
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: "transparent"
+                        QbzIcon {
+                            anchors.centerIn: parent
+                            name: root.justCopied ? "check" : "copy"
+                            width: 17
+                            height: 17
+                            tintName: root.justCopied ? "accent"
+                                : (copyArea.containsMouse ? "primary" : "muted")
+                        }
+                        MouseArea {
+                            id: copyArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: copyMenu.openBelowLeft(copyBtn)
                         }
                     }
                     Rectangle {
@@ -376,43 +451,38 @@ Popup {
                                 color: theme.textMuted
                                 font.pixelSize: 13
                             }
-                            Text {
+                            QbzSelectableText {
+                                width: parent.width
                                 text: root.doc.label || ""
-                                color: (labelArea.containsMouse && (root.doc.labelId || "") !== "")
-                                    ? theme.accent : theme.textPrimary
-                                font.pixelSize: 13
-                                font.weight: theme.weightSemibold
-                                MouseArea {
-                                    id: labelArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: (root.doc.labelId || "") !== ""
-                                        ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                    onClicked: root.openLabel(root.doc.labelId || "")
-                                }
+                                color: theme.textPrimary
+                                linkHref: (root.doc.labelId || "") !== "" ? "label" : ""
+                                pixelSize: 13
+                                weight: theme.weightSemibold
+                                onLinkActivated: root.openLabel(root.doc.labelId || "")
                             }
-                            Text {
+                            QbzSelectableText {
                                 visible: (root.doc.releaseDate || "") !== ""
+                                width: parent.width
                                 text: QbzSession.tr("on", QbzSession.trRev) + " " + (root.doc.releaseDate || "")
                                 color: theme.textMuted
-                                font.pixelSize: 13
+                                pixelSize: 13
                             }
                         }
                         Item { visible: (root.doc.label || "") !== ""; width: 1; height: 8 }
-                        Text {
+                        QbzSelectableText {
                             visible: (root.doc.metaLine || "") !== ""
                             width: parent.width
                             text: root.doc.metaLine || ""
                             color: theme.textMuted
-                            font.pixelSize: 13
-                            wrapMode: Text.WordWrap
+                            pixelSize: 13
                         }
                         Item { visible: (root.doc.quality || "") !== ""; width: 1; height: 12 }
-                        Text {
+                        QbzSelectableText {
                             visible: (root.doc.quality || "") !== ""
+                            width: parent.width
                             text: root.doc.quality || ""
                             color: theme.textSecondary
-                            font.pixelSize: 13
+                            pixelSize: 13
                         }
                     }
 
@@ -502,13 +572,12 @@ Popup {
                                         }
                                     }
 
-                                    Text {
+                                    QbzSelectableText {
                                         visible: root.activeTab === "review"
                                         width: parent.width
                                         text: root.doc.review || ""
                                         color: theme.textSecondary
-                                        font.pixelSize: 14
-                                        wrapMode: Text.WordWrap
+                                        pixelSize: 14
                                     }
                                 }
                             }
