@@ -16,10 +16,12 @@ pub struct CachedTrack {
     pub track_id: u64,
     pub data: Vec<u8>,
     pub size_bytes: usize,
+    pub quality: Option<crate::CacheQuality>,
 }
 
 #[derive(Clone)]
 struct SharedTrack {
+    quality: Option<crate::CacheQuality>,
     track_id: u64,
     data: Arc<Vec<u8>>,
     size_bytes: usize,
@@ -154,12 +156,19 @@ impl AudioCache {
             track_id: t.track_id,
             data: (*t.data).clone(),
             size_bytes: t.size_bytes,
+            quality: t.quality,
         })
     }
 
     /// Check if a track is in cache without updating access order
     pub fn contains(&self, track_id: u64) -> bool {
         self.state.lock().unwrap().tracks.contains_key(&track_id)
+    }
+
+    /// Inspect one immutable entry without copying a track-sized allocation.
+    pub fn peek_with_quality(&self, track_id: u64) -> Option<(Arc<Vec<u8>>, Option<crate::CacheQuality>)> {
+        self.state.lock().unwrap().tracks.get(&track_id)
+            .map(|track| (track.data.clone(), track.quality))
     }
 
     /// Check if a track is currently being fetched
@@ -297,12 +306,24 @@ impl AudioCache {
     /// Admit a sealed streaming buffer without allocating a second track-sized copy.
     /// Reservation, eviction and insertion are atomic with respect to other writers.
     pub fn insert_shared(&self, track_id: u64, data: Arc<Vec<u8>>) -> CacheAdmission {
-        self.admit(track_id, data, true)
+        self.insert_shared_with_quality(track_id, data, None)
+    }
+
+    pub fn insert_with_quality(&self, track_id: u64, data: Vec<u8>, quality: Option<crate::CacheQuality>) -> CacheAdmission {
+        self.insert_shared_with_quality(track_id, Arc::new(data), quality)
+    }
+
+    pub fn insert_shared_with_quality(&self, track_id: u64, data: Arc<Vec<u8>>, quality: Option<crate::CacheQuality>) -> CacheAdmission {
+        self.admit(track_id, data, true, quality)
     }
 
     /// L2 reads may warm L1, but an oversized hit must not rewrite the same file.
     pub fn promote_from_disk(&self, track_id: u64, data: Vec<u8>) -> CacheAdmission {
-        self.admit(track_id, Arc::new(data), false)
+        self.promote_from_disk_with_quality(track_id, data, None)
+    }
+
+    pub fn promote_from_disk_with_quality(&self, track_id: u64, data: Vec<u8>, quality: Option<crate::CacheQuality>) -> CacheAdmission {
+        self.admit(track_id, Arc::new(data), false, quality)
     }
 
     /// Decide storage before a download allocates its payload. Dynamic growth
@@ -349,7 +370,7 @@ impl AudioCache {
         }
     }
 
-    fn admit(&self, track_id: u64, data: Arc<Vec<u8>>, spill_rejected: bool) -> CacheAdmission {
+    fn admit(&self, track_id: u64, data: Arc<Vec<u8>>, spill_rejected: bool, quality: Option<crate::CacheQuality>) -> CacheAdmission {
         let size = data.len();
         let mut retired = Vec::new();
         let admitted = {
@@ -369,6 +390,7 @@ impl AudioCache {
                 state.tracks.insert(
                     track_id,
                     SharedTrack {
+                        quality,
                         track_id,
                         data: data.clone(),
                         size_bytes: size,
@@ -380,7 +402,7 @@ impl AudioCache {
         };
         if let Some(disk) = &self.playback_cache {
             for track in retired {
-                disk.insert(track.track_id, &track.data);
+                disk.insert_with_quality(track.track_id, &track.data, track.quality);
             }
         }
         if admitted {
@@ -389,7 +411,7 @@ impl AudioCache {
             && self
                 .playback_cache
                 .as_ref()
-                .is_some_and(|disk| disk.insert(track_id, &data))
+                .is_some_and(|disk| disk.insert_with_quality(track_id, &data, quality))
         {
             CacheAdmission::Disk
         } else {

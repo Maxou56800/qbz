@@ -56,6 +56,8 @@
 //! ```
 
 mod audio_cache;
+mod quality;
+pub use quality::CacheQuality;
 mod memory;
 mod image_cache;
 mod playback_cache;
