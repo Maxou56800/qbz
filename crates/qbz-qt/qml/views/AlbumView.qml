@@ -59,14 +59,15 @@ Rectangle {
 
     // The view's album + url-keyed cover map (artwork pipeline).
     //
-    // Applied imperatively so a SAME-ALBUM deferred rail publish can preserve
-    // the ListView offset. Binding `model` to a freshly parsed JS array makes
-    // QQuickItemView reset contentY whenever Similar albums / Suggestions / More
-    // from this artist lands — the forced jump the owner caught while reading.
+    // Applied imperatively so the page can tell a SAME-ALBUM deferred rail
+    // publish (Similar albums / Suggestions / More from this artist landing
+    // while the user reads: the viewport stays put) from a NEW album (the
+    // track filter resets and the page starts at the top). The tape itself is
+    // swapped on `cellsModel`, a QbzArrayModel: reassigning the ListView's
+    // `model` would reset contentY on every publish and, on Qt 6.11, focus a
+    // delegate — see that control's header for both.
     property var album: ({})
     property string documentAlbumId: ""
-    property int albumDocumentEpoch: 0
-    property real albumRestoreY: 0
 
     function parseAlbumDocument() {
         try {
@@ -82,27 +83,18 @@ Rectangle {
         var nextId = nextHeader.id !== undefined && nextHeader.id !== null
             ? String(nextHeader.id) : ""
         var sameAlbum = nextId !== "" && nextId === root.documentAlbumId
-        var savedY = sameAlbum ? pageFlick.contentY : 0
-        root.albumDocumentEpoch += 1
-        var epoch = root.albumDocumentEpoch
+        if (!sameAlbum && root.documentAlbumId !== "") {
+            // A different release replacing the one on screen (the empty
+            // document a load publishes first counts): its track list starts
+            // unfiltered — the header's search box mirrors `trackQuery` — and
+            // at the top. The first document of a mount leaves the viewport
+            // alone: ScrollMemory may be restoring a Back navigation.
+            root.trackQuery = ""
+            cellsModel.scrollToTop()
+        }
         root.album = next
         if (nextId !== "")
             root.documentAlbumId = nextId
-        if (!sameAlbum || savedY <= pageFlick.originY)
-            return
-        root.albumRestoreY = savedY
-        // The model reset and its content-height polish happen after the
-        // document assignment. One deferred restore coalesces a publish burst
-        // and clamps if the replacement document is genuinely shorter.
-        Qt.callLater(function () {
-            if (epoch !== root.albumDocumentEpoch
-                    || nextId !== root.documentAlbumId)
-                return
-            pageFlick.forceLayout()
-            var minY = pageFlick.originY
-            var maxY = minY + Math.max(0, pageFlick.contentHeight - pageFlick.height)
-            pageFlick.contentY = Math.max(minY, Math.min(root.albumRestoreY, maxY))
-        })
     }
 
     readonly property var albumHeader: album.header || ({})
@@ -850,7 +842,17 @@ Rectangle {
         anchors.fill: parent
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.listCells
+        // The tape is swapped on this model, never on `model:` itself: a
+        // fresh array assigned to the ListView after completion makes Qt 6.11
+        // force currentIndex 0 and focus delegate 0, which robbed the header's
+        // track filter of the keyboard on every keystroke (2026-09-13). The
+        // wrapper also keeps the viewport across a same-album rail publish;
+        // applyAlbumDocument() asks for the top when the album changes.
+        model: QbzArrayModel {
+            id: cellsModel
+            view: pageFlick
+            rows: root.listCells
+        }
         reuseItems: true
         currentIndex: -1
         // The track tape is cheap enough that a fast wheel can consume one
@@ -1561,13 +1563,25 @@ Rectangle {
                             height: 1
                         }
                         // Track filter (QbzSearchField: Escape clears + blurs,
-                        // clear cross, focus kept across the list rebuild).
+                        // clear cross). The keyboard survives the tape rebuild
+                        // because the tape lives on a QbzArrayModel.
                         QbzSearchField {
+                            id: trackSearch
                             width: 168
                             height: 34
                             anchors.verticalCenter: parent.verticalCenter
                             placeholder: QbzSession.tr("Search tracks...", QbzSession.trRev)
                             onEdited: function (text) { root.trackQuery = text }
+                            // A new release resets `trackQuery`
+                            // (applyAlbumDocument); the box follows, so no
+                            // stale query outlives the album it was typed on.
+                            Connections {
+                                target: root
+                                function onTrackQueryChanged() {
+                                    if (trackSearch.text !== root.trackQuery)
+                                        trackSearch.text = root.trackQuery
+                                }
+                            }
                         }
                         // Multi-select toggle (AlbumPageView.slint:752-787):
                         // accent border + tint while active; leaving the mode
@@ -2029,7 +2043,9 @@ Rectangle {
     // Back/forward scroll memory (controls/ScrollMemory.qml): reports
     // this container's offset while it is the live page, and restores it
     // when a back/forward step arms this route.
-    ScrollMemory { target: pageFlick; scope: "album" }
+    // Origin-relative: the tape swaps on cellsModel drift ListView.originY,
+    // so an absolute contentY would restore a different row after Back.
+    ScrollMemory { target: pageFlick; scope: "album"; relativeToOrigin: true }
     QbzScrollBar {
         anchors.right: parent.right
         anchors.rightMargin: 4

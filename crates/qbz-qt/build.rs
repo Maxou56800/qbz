@@ -574,6 +574,7 @@ fn main() {
                 "qml/controls/PlaylistImportModal.qml",
                 "qml/controls/PlaylistPickerModal.qml",
                 "qml/controls/PmFolderIcon.qml",
+                "qml/controls/QbzArrayModel.qml",
                 "qml/controls/QbzCircleAction.qml",
                 "qml/controls/QbzClipboard.qml",
                 "qml/controls/QbzColorPicker.qml",

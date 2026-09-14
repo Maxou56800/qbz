@@ -53,14 +53,28 @@ Rectangle {
     function toggleSelected(id, mods) { selected = selection.next(selected, id, visibleTracks, mods === undefined ? Qt.NoModifier : mods) }
     readonly property string navigationStateJson: JSON.stringify({trackQuery: trackQuery})
     function restoreNavigationState(state) { trackQuery = state.trackQuery || "" }
-    onDocChanged: exitMultiSelectMode()
+    // An in-place album switch starts at the top; the first document of a
+    // mount does not touch the viewport (ScrollMemory may be restoring it).
+    property string loadedAlbumId: ""
+    onDocChanged: {
+        exitMultiSelectMode()
+        var id = root.album ? String(root.album.id || "") : ""
+        if (id === root.loadedAlbumId)
+            return
+        if (root.loadedAlbumId !== "")
+            rowsModel.scrollToTop()
+        root.loadedAlbumId = id
+    }
 
     ListView {
         id: list
         anchors.fill: parent
         anchors.margins: 12
         clip: true
-        model: root.visibleTracks
+        // Swapped on a QbzArrayModel, never on `model:` — a fresh array there
+        // makes Qt 6.11 focus delegate 0 and the header's search box loses the
+        // keyboard on every keystroke (see the control's header).
+        model: QbzArrayModel { id: rowsModel; view: list; rows: root.visibleTracks }
         cacheBuffer: height
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
@@ -168,6 +182,6 @@ Rectangle {
         ]
         onPicked: function(a) { if (root.selectedCount > 0) root.bulkAction(a) }
     }
-    ScrollMemory { target: list; scope: "localalbum" }
+    ScrollMemory { target: list; scope: "localalbum"; relativeToOrigin: true }
     QbzScrollBar { target: list; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom }
 }

@@ -86,6 +86,7 @@ on:
       - "scripts/test-text-edit-menu-qml.sh"
       - "scripts/test-compact-seek-qml.sh"
       - "scripts/test-library-folders-qml.sh"
+      - "scripts/test-array-model-qml.sh"
       - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   push:
@@ -114,6 +115,7 @@ on:
       - "scripts/test-text-edit-menu-qml.sh"
       - "scripts/test-compact-seek-qml.sh"
       - "scripts/test-library-folders-qml.sh"
+      - "scripts/test-array-model-qml.sh"
       - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   workflow_dispatch:
