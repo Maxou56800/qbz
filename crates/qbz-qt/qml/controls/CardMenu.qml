@@ -93,8 +93,16 @@ QbzContextMenu {
         leaveTimer.stop()
     }
     readonly property bool subOpen: cmRoot._sub !== null && cmRoot._sub.opened
-    readonly property bool pairHovered: cmRoot.menuHovered
-        || (cmRoot._sub !== null && cmRoot._sub.menuHovered)
+    // The pointer is over THIS menu: its panel or one of its rows. The rows'
+    // MouseAreas take the hover events, so the panel's HoverHandler alone
+    // sees only the 5px padding — the pair looked "left" the moment the
+    // pointer crossed from that padding into a child row, and the leave
+    // timer closed both (2026-09-14). One row is hot at a time, so an item
+    // reference beats a counter that a destroyed row could leave high.
+    property Item _hotRow: null
+    readonly property bool hovering: cmRoot.menuHovered || cmRoot._hotRow !== null
+    readonly property bool pairHovered: cmRoot.hovering
+        || (cmRoot._sub !== null && cmRoot._sub.hovering)
     onPairHoveredChanged: {
         if (!cmRoot.subOpen)
             return
@@ -113,7 +121,10 @@ QbzContextMenu {
             }
         }
     }
-    onClosed: closeSubmenu()
+    onClosed: {
+        cmRoot._hotRow = null
+        closeSubmenu()
+    }
 
     QbzTheme { id: theme }
 
@@ -133,6 +144,10 @@ QbzContextMenu {
             height: isSep ? 7 : (cmRoot.kioskHost ? 44 : 33)
             radius: isSep ? 0 : 5
             color: hot ? theme.surfaceHover : "transparent"
+            Component.onDestruction: {
+                if (cmRoot._hotRow === row)
+                    cmRoot._hotRow = null
+            }
             // ContextMenuItem.slint: `opacity: enabled ? 1.0 : 0.4`.
             opacity: (isSep || rowEnabled) ? 1.0 : 0.4
 
@@ -202,8 +217,12 @@ QbzContextMenu {
                 // row puts it away. Leaving the row itself does nothing —
                 // the pointer is usually on its way into the child.
                 onContainsMouseChanged: {
-                    if (!containsMouse)
+                    if (!containsMouse) {
+                        if (cmRoot._hotRow === row)
+                            cmRoot._hotRow = null
                         return
+                    }
+                    cmRoot._hotRow = row
                     if (row.hasSub)
                         cmRoot.openSubmenu(row)
                     else if (cmRoot.subOpen)
