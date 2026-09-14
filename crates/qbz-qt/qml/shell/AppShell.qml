@@ -140,7 +140,7 @@ Rectangle {
         visible: root.wallpaperModeOn
         source: root.wallpaperModeOn ? QbzShell.wallpaperUrl : ""
         hostWindow: root.hostWindow
-        blur: 0.6
+        blur: 0.75
         dim: theme.isDark ? QbzShell.ambientDim : 0.0
     }
     Rectangle {
