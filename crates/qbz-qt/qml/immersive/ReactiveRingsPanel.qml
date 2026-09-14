@@ -53,7 +53,9 @@ Rectangle {
     readonly property color primaryColor: QbzShell.ambientPrimary
     readonly property color accentColor: QbzShell.ambientAccent
     readonly property color secondaryColor: QbzShell.ambientSecondary
-    readonly property var palette: [
+    // `ringPalette`, not `palette`: Item already owns a `palette` (QPalette)
+    // and shadowing it drew a propertyCache warning on every start.
+    readonly property var ringPalette: [
         root.primaryColor,
         root.accentColor,
         root.secondaryColor,
@@ -65,15 +67,15 @@ Rectangle {
     readonly property var bandNames: ["SUB", "BASS", "MID", "PRES", "AIR"]
 
     function paletteColor(position, alpha) {
-        var count = root.palette.length
+        var count = root.ringPalette.length
         var wrapped = position % count
         if (wrapped < 0)
             wrapped += count
         var lo = Math.floor(wrapped)
         var hi = (lo + 1) % count
         var mix = wrapped - lo
-        var a = Qt.lighter(root.palette[lo], 1.0)
-        var b = Qt.lighter(root.palette[hi], 1.0)
+        var a = Qt.lighter(root.ringPalette[lo], 1.0)
+        var b = Qt.lighter(root.ringPalette[hi], 1.0)
         return Qt.rgba(a.r + (b.r - a.r) * mix,
                        a.g + (b.g - a.g) * mix,
                        a.b + (b.b - a.b) * mix,
@@ -181,7 +183,7 @@ Rectangle {
                     "speed": 0.006 + intensity * 0.013,
                     "color": root.nextColor
                 })
-                root.nextColor = (root.nextColor + 1) % root.palette.length
+                root.nextColor = (root.nextColor + 1) % root.ringPalette.length
                 if (next.length > root.maxPulseRings)
                     next.shift()
             }
