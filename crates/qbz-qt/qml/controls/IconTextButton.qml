@@ -36,7 +36,7 @@ Rectangle {
     radius: theme.radiusSm
     border.width: 1
     border.color: theme.borderSubtle
-    color: hoverArea.containsMouse && root.btnEnabled ? theme.surfaceHover : theme.surfaceElevated
+    color: hoverArea.containsMouse && root.btnEnabled ? theme.surfaceHover : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
     opacity: root.btnEnabled ? 1.0 : 0.4
 
     Row {

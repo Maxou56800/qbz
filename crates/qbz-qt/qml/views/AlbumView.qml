@@ -1591,7 +1591,8 @@ Rectangle {
                             height: 30
                             radius: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            color: selectToggleArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: selectToggleArea.containsMouse ? theme.surfaceHover
+                                : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                             border.width: 1
                             border.color: root.multiSelect ? theme.accent : theme.borderSubtle
                             QbzIcon {

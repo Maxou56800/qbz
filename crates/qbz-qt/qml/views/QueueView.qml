@@ -885,7 +885,7 @@ Rectangle {
                     width: root.kioskHost ? 64 : 36
                     height: root.kioskHost ? 64 : 36
                     radius: theme.radiusSm
-                    color: theme.surfaceCard
+                    color: (theme.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard)
                     border.width: 1
                     border.color: root.followPlaying ? theme.accent
                                                      : theme.borderSubtle
@@ -908,7 +908,7 @@ Rectangle {
                     width: root.kioskHost ? 64 : 36
                     height: root.kioskHost ? 64 : 36
                     radius: theme.radiusSm
-                    color: theme.surfaceCard
+                    color: (theme.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard)
                     border.width: 1
                     border.color: theme.borderSubtle
                     QbzIconButton {

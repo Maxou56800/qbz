@@ -429,7 +429,7 @@ Rectangle {
                 height: 34
                 radius: 4
                 anchors.verticalCenter: parent.verticalCenter
-                color: theme.surfaceElevated
+                color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                 // No clip: RoundedImage self-confines. One batch root per
                 // visible queue row.
                 RoundedImage {
@@ -893,7 +893,8 @@ Rectangle {
                             width: parent.width
                             height: 44
                             radius: theme.radiusSm
-                            color: theme.surfaceElevated
+                            // Ambient-aware: the one opaque card left in a translucent sidebar.
+                            color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                             Row {
                                 anchors.fill: parent
                                 anchors.leftMargin: 6
@@ -906,7 +907,7 @@ Rectangle {
                                     height: 34
                                     radius: 4
                                     anchors.verticalCenter: parent.verticalCenter
-                                    color: theme.surfaceCard
+                                    color: (theme.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard)
                                     // No clip: RoundedImage self-confines.
                                     RoundedImage {
                                         anchors.fill: parent

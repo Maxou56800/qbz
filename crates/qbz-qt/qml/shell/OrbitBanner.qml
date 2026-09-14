@@ -12,7 +12,7 @@ Rectangle {
     property string hostName: ""
     visible: remoteActive
     height: remoteActive ? Math.max(38, label.implicitHeight + 16) : 0
-    color: theme.surfaceElevated
+    color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
     border.width: 1
     border.color: theme.accent
     Accessible.role: Accessible.StaticText

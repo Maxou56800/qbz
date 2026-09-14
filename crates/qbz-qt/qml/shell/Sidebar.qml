@@ -1009,7 +1009,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 22
                         radius: 4
-                        color: theme.surfaceElevated
+                        color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                         border.width: 1
                         border.color: theme.borderSubtle
                         TextInput {
@@ -1286,7 +1286,7 @@ Rectangle {
                 width: parent.width - 4 * 26
                 height: 22
                 radius: 4
-                color: theme.surfaceElevated
+                color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
                 border.width: 1
                 border.color: theme.borderSubtle
                 TextInput {

@@ -82,7 +82,7 @@ Item {
         width: 30
         height: 30
         radius: 6
-        color: active ? theme.surfaceElevated
+        color: active ? (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
              : ttArea.containsMouse ? theme.surfaceHover : "transparent"
         QbzIcon {
             name: parent.name
@@ -234,7 +234,9 @@ Item {
         y: 25 - height / 2
         width: tabRow.width
         height: tabRow.height
-        color: theme.surfaceElevated
+        // Ambient-aware like the tab bar it hosts (the strip read opaque
+        // under the ambient field while Discover's and Local's had alpha).
+        color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
         radius: 6
         Row {
             id: tabRow

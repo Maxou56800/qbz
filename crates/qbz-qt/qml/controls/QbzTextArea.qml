@@ -33,7 +33,7 @@ Rectangle {
     width: 240
     height: 96
     radius: theme.radiusSm
-    color: theme.surfaceElevated
+    color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
     border.width: 1
     border.color: input.activeFocus ? theme.accent : theme.borderSubtle
 

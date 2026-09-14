@@ -63,6 +63,9 @@ Rectangle {
     // HeaderBar.slint's with-alpha(app-background-surface-alpha)).
     color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
     readonly property bool ambientOn: theme.ambientOn
+    /// The fill of an ACTIVE nav item / open button: elevated, at half alpha
+    /// under the ambient field like every other chrome control.
+    readonly property color activeFill: root.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated
 
 
     /// Raised by the app menu's "Report an issue" row; AppShell owns the modal.
@@ -312,7 +315,7 @@ Rectangle {
         height: 30
         width: purchaseRow.implicitWidth
         radius: theme.radiusSm
-        color: purchaseTab.isActive ? theme.surfaceElevated
+        color: purchaseTab.isActive ? root.activeFill
             : purchaseArea.containsMouse ? theme.surfaceHover : "transparent"
 
         Row {
@@ -363,7 +366,7 @@ Rectangle {
         width: tabRow.implicitWidth
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (tabArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
 
         Row {
@@ -439,7 +442,7 @@ Rectangle {
         height: 30
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (cnbArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
         // Baked glyph, or the section's own raw image when it carries one
         // (My QBZ branding) — see shell/NavSectionGlyph.qml.
@@ -640,7 +643,7 @@ Rectangle {
                 height: 30
                 radius: theme.radiusSm
                 anchors.verticalCenter: parent.verticalCenter
-                color: plPopup.opened ? theme.surfaceElevated
+                color: plPopup.opened ? root.activeFill
                     : plBtnArea.containsMouse ? theme.surfaceHover : "transparent"
                 QbzIcon {
                     name: "list-music"

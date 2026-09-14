@@ -40,7 +40,7 @@ Item {
         radius: 6
         border.width: 1
         border.color: root.marked ? theme.accent : theme.borderSubtle
-        color: btnArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: btnArea.containsMouse ? theme.surfaceHover : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
         QbzIcon {
             name: root.iconName
             width: 15

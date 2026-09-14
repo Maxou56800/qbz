@@ -32,7 +32,8 @@ Rectangle {
     implicitWidth: 168
     implicitHeight: 34
     radius: 6
-    color: theme.surfaceElevated
+    // The header search's ambient-aware fill, so every search box reads alike.
+    color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
     border.width: 1
     border.color: input.activeFocus ? theme.accent : theme.borderSubtle
 
