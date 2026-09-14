@@ -95,6 +95,8 @@ Item {
         root.draftPreset = root.doc.iconPreset || "folder"
         root.draftColor = root.doc.iconColor || ""
         root.draftHidden = root.doc.isHidden === true
+        // The box as well as the draft (QbzLineEdit.reset()).
+        nameField.reset()
     }
 
     /// Focus the name field. Split out so the host can call it AFTER the panel

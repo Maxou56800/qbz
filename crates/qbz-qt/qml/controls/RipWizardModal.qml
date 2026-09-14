@@ -75,6 +75,11 @@ Item {
         album = doc.album || ""
         albumArtist = doc.albumArtist || ""
         year = doc.year || ""
+        // The boxes too (QbzLineEdit.reset()): a disc re-read with the same
+        // tags changes no draft above.
+        albumField.reset()
+        yearField.reset()
+        albumArtistField.reset()
         libraryChoice = "none"
         var copy = []
         var src = doc.tracks || []
@@ -254,6 +259,7 @@ Item {
                                    font.pixelSize: theme.fontLegal }
                             QbzLineEdit {
                                 width: parent.width
+                                id: albumField
                                 text: root.album
                                 onEdited: function (v) { root.album = v }
                             }
@@ -265,6 +271,7 @@ Item {
                                    font.pixelSize: theme.fontLegal }
                             QbzLineEdit {
                                 width: parent.width
+                                id: yearField
                                 text: root.year
                                 onEdited: function (v) { root.year = v }
                             }
@@ -277,6 +284,7 @@ Item {
                                font.pixelSize: theme.fontLegal }
                         QbzLineEdit {
                             width: parent.width
+                            id: albumArtistField
                             text: root.albumArtist
                             onEdited: function (v) { root.albumArtist = v }
                         }

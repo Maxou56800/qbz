@@ -101,6 +101,20 @@ Rectangle {
     property bool _cleared: false
     onTextChanged: root._cleared = false
 
+    /// Re-seed the box from `value` (default: `text`) NOW, focus or not.
+    ///
+    /// The re-seed below reacts only to a CHANGE of `text`, and only while
+    /// the box is not being edited. A modal that resets its draft on the
+    /// CLOSE edge (the input still holds focus for that frame), or that
+    /// reopens with the same seed it closed on, produces neither — and the
+    /// box kept the last thing typed while the draft said otherwise (the
+    /// dirty-form report of 2026-09-14). Every modal form calls this from
+    /// its open handler, after seeding its drafts.
+    function reset(value) {
+        root._cleared = false
+        input.text = (value === undefined) ? root.text : String(value)
+    }
+
     function clearSearch() {
         input.text = ""
         root._cleared = true

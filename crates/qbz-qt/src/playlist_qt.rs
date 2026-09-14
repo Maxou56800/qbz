@@ -1874,6 +1874,26 @@ pub async fn rename_by_id(
         .await
         .map_err(|e| format!("rename playlist {pid} failed: {e}"))?;
 
+    // The editor seeds a Qobuz playlist from the manager's WARM cache before
+    // it fetches (`playlist_manager_qt::cached_playlist_seed`), and the
+    // reload `after_write` orders lands later — or never, offline. Patch the
+    // cache now, so an editor reopened right after Save never shows the
+    // pre-save name or description (the dirty-form report of 2026-09-14).
+    {
+        let cache_name = name.clone();
+        let cache_desc = description.map(|d| d.trim().to_string());
+        if crate::playlist_manager_qt::patch_cache(|data| {
+            if let Some(p) = data.playlists.iter_mut().find(|p| p.id == pid) {
+                p.name = cache_name;
+                if let Some(desc) = cache_desc {
+                    p.description = Some(desc);
+                }
+            }
+        }) {
+            crate::playlist_manager_qt::publish_document();
+        }
+    }
+
     let target = pid.to_string();
     let patched = with_doc(|d| {
         if d.id != target {
