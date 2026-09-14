@@ -596,18 +596,11 @@ Rectangle {
                                 if (root.rowCanGoArtist(row))
                                     items.push({ "label": QbzSession.tr("Go to artist", QbzSession.trRev), "icon": "user", "action": "go-artist" })
                                 if (row.isEphemeral !== true) {
-                                    // LOCAL/Plex rows drop it too: the queue's
-                                    // `add_to_playlist` refuses them
-                                    // (queue_qt.rs — a queue row's id is a
-                                    // library.db / Plex synthetic id and this
-                                    // panel has no source-aware resolver to
-                                    // turn it into a local-mode ref), so the
-                                    // entry would render and no-op. Absent
-                                    // beats dead; the LOCAL surfaces that DO
-                                    // have the resolver offer it instead
-                                    // (local/LocalTrackRow.qml).
-                                    if (row.isLocal !== true)
-                                        items.push({ "label": QbzSession.tr("Add to playlist", QbzSession.trRev), "icon": "list-plus", "action": "add-to-playlist" })
+                                    // Local/Plex/media rows too (2026-09-14):
+                                    // the queue resolves them to picker refs
+                                    // by source (local_playlist_qt::
+                                    // local_picker_ref_for_queue_track).
+                                    items.push({ "label": QbzSession.tr("Add to playlist", QbzSession.trRev), "icon": "list-plus", "action": "add-to-playlist" })
                                     items.push({ "label": QbzSession.tr("Track info", QbzSession.trRev), "icon": "info", "action": "track-info" })
                                     items.push({ "label": root.favState(row) ? QbzSession.tr("Remove from Library", QbzSession.trRev) : QbzSession.tr("Add to Library", QbzSession.trRev), "icon": root.favState(row) ? "heart-filled" : "heart", "action": "favorite" })
                                 }

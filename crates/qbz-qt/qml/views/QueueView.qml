@@ -319,9 +319,10 @@ Rectangle {
             items.push({ "label": t("Go to artist", r), "icon": "user",
                          "action": "go-artist", "external": true })
         if (row.isEphemeral !== true) {
-            if (row.isLocal !== true)
-                items.push({ "label": t("Add to playlist", r), "icon": "list-plus",
-                             "action": "add-to-playlist", "external": true })
+            // Local rows too (2026-09-14): the queue resolves them to picker
+            // refs by source (queue_qt::picker_payload_for).
+            items.push({ "label": t("Add to playlist", r), "icon": "list-plus",
+                         "action": "add-to-playlist", "external": true })
             items.push({ "label": t("Track info", r), "icon": "info", "action": "track-info" })
             if (row.isLocal !== true)
                 items.push({ "label": row.isFavorite === true

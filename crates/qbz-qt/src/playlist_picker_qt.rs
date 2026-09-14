@@ -76,6 +76,11 @@ pub enum Payload {
     /// source-aware at insert time to a local path / an offline-copy Qobuz id)
     /// or `"plex:<rating key>"` Plex rows.
     LocalRefs(Vec<String>),
+    /// Both at once — the QUEUE saved as a playlist while it holds catalog
+    /// and local rows (queue_qt::save_as_playlist). Routed as the two
+    /// halves would be on their own; the confusion the enum exists to make
+    /// unrepresentable stays so, each half in its own typed slot.
+    Mixed { qobuz: Vec<u64>, local: Vec<String> },
 }
 
 impl Default for Payload {
@@ -89,6 +94,7 @@ impl Payload {
         match self {
             Self::Qobuz(v) => v.len(),
             Self::LocalRefs(v) => v.len(),
+            Self::Mixed { qobuz, local } => qobuz.len() + local.len(),
         }
     }
 
@@ -360,6 +366,18 @@ pub fn open_for_local_refs(runtime: &Runtime, refs: Vec<String>) {
     open_payload(runtime, Payload::LocalRefs(refs));
 }
 
+/// Open the picker with catalog ids AND local refs — the queue saved as a
+/// playlist. Either half may be empty, in which case this is the matching
+/// single-kind open.
+pub fn open_for_mixed(runtime: &Runtime, ids: Vec<String>, refs: Vec<String>) {
+    let qobuz: Vec<u64> = ids.iter().filter_map(|s| s.parse::<u64>().ok()).collect();
+    match (qobuz.is_empty(), refs.is_empty()) {
+        (true, _) => open_payload(runtime, Payload::LocalRefs(refs)),
+        (false, true) => open_payload(runtime, Payload::Qobuz(qobuz)),
+        (false, false) => open_payload(runtime, Payload::Mixed { qobuz, local: refs }),
+    }
+}
+
 fn open_payload(runtime: &Runtime, payload: Payload) {
     if payload.is_empty() {
         return;
@@ -425,6 +443,14 @@ async fn refresh_containment(epoch: u64) {
             Payload::Qobuz(ids) => ids.iter().map(|&id| PlaylistTrackRef::Qobuz(id)).collect(),
             Payload::LocalRefs(strings) => {
                 crate::local_playlist_qt::membership_refs_blocking(strings)
+            }
+            Payload::Mixed { qobuz, local } => {
+                let mut refs: Vec<PlaylistTrackRef> = qobuz
+                    .iter()
+                    .map(|&id| PlaylistTrackRef::Qobuz(id))
+                    .collect();
+                refs.extend(crate::local_playlist_qt::membership_refs_blocking(local));
+                refs
             }
         };
         // Only the Qobuz snapshot can be incomplete; the sidecar and local
@@ -648,6 +674,11 @@ pub fn pick(playlist_id: &str) {
                 Payload::Qobuz(ids) => {
                     crate::local_playlist_qt::add_qobuz_tracks_blocking(&target, &ids)
                 }
+                // Cases 1 + 2 at once: the queue's mixed payload.
+                Payload::Mixed { qobuz, local } => {
+                    crate::local_playlist_qt::add_qobuz_tracks_blocking(&target, &qobuz)
+                        + crate::local_playlist_qt::add_local_refs_blocking(&target, &local)
+                }
             })
             .await
             .unwrap_or(0);
@@ -663,6 +694,26 @@ pub fn pick(playlist_id: &str) {
     };
 
     match payload {
+        // Cases 3 + 4 at once — the queue's MIXED payload: the local refs
+        // ride the sidecar right away, and the catalog ids take the Qobuz arm
+        // below (its duplicate check included) through one more pass of this
+        // function with only them carried.
+        Payload::Mixed { qobuz, local } => {
+            let qobuz_count = crate::sidebar_qt::playlist_track_count(pid).unwrap_or(0);
+            let sidecar_runtime = runtime.clone();
+            crate::spawn(async move {
+                let written = write_sidecar_refs(pid, qobuz_count, local).await;
+                log::info!(
+                    "[qbz-qt] playlist picker: {written} local row(s) filed on the sidecar of {pid}"
+                );
+                crate::playlist_qt::refresh_after_membership_change(&sidecar_runtime, pid).await;
+            });
+            {
+                let mut st = STATE.lock().unwrap();
+                st.payload = Payload::Qobuz(qobuz);
+            }
+            pick(playlist_id);
+        }
         // Case 3 — local refs onto a QOBUZ playlist. They attach through the
         // library.db sidecar tables (the same tables the merged detail
         // renders), never through the API: a library row id posted to Qobuz
@@ -820,6 +871,10 @@ pub fn create_and_add(name: &str) {
                     Payload::Qobuz(ids) => {
                         crate::local_playlist_qt::add_qobuz_tracks_blocking(&new_id, &ids)
                     }
+                    Payload::Mixed { qobuz, local } => {
+                        crate::local_playlist_qt::add_qobuz_tracks_blocking(&new_id, &qobuz)
+                            + crate::local_playlist_qt::add_local_refs_blocking(&new_id, &local)
+                    }
                 }
             })
             .await
@@ -887,6 +942,20 @@ pub fn create_and_add(name: &str) {
                         toast_added(written, &name);
                         crate::playlist_qt::refresh_after_membership_change(&runtime, pid).await;
                     }
+                    // The queue's mixed payload: local refs on the sidecar,
+                    // catalog ids through the API, one toast for the ids.
+                    Payload::Mixed { qobuz, local } => {
+                        if !local.is_empty() {
+                            let written = write_sidecar_refs(pid, 0, local).await;
+                            log::info!(
+                                "[qbz-qt] playlist picker: {written} local row(s) filed on the new playlist {pid}"
+                            );
+                        }
+                        if !qobuz.is_empty() {
+                            add_and_toast(&runtime, pid, qobuz, name).await;
+                        }
+                        crate::playlist_qt::refresh_after_membership_change(&runtime, pid).await;
+                    }
                     _ => {}
                 }
                 close();
@@ -926,6 +995,10 @@ pub async fn add_dropped_payload_to_target(runtime: &Runtime, target_id: &str, p
                     Payload::Qobuz(ids) => {
                         crate::local_playlist_qt::add_qobuz_tracks_blocking(&target, &ids)
                     }
+                    Payload::Mixed { qobuz, local } => {
+                        crate::local_playlist_qt::add_qobuz_tracks_blocking(&target, &qobuz)
+                            + crate::local_playlist_qt::add_local_refs_blocking(&target, &local)
+                    }
                 }
             })
             .await
@@ -935,13 +1008,25 @@ pub async fn add_dropped_payload_to_target(runtime: &Runtime, target_id: &str, p
             refresh_local_target(runtime, &target).await;
         }
         Some(crate::local_playlist_qt::PlaylistRef::Qobuz(pid)) => {
-            let Payload::LocalRefs(refs) = payload else {
-                return;
+            let (ids, refs) = match payload {
+                Payload::LocalRefs(refs) => (Vec::new(), refs),
+                Payload::Mixed { qobuz, local } => (qobuz, local),
+                Payload::Qobuz(_) => return,
             };
+            let had_ids = !ids.is_empty();
             let qobuz_count = crate::sidebar_qt::playlist_track_count(pid).unwrap_or(0);
-            let written = write_sidecar_refs(pid, qobuz_count, refs).await;
-            set_last_used(&pid.to_string(), written);
-            toast_added(written, "");
+            let written = if refs.is_empty() {
+                0
+            } else {
+                write_sidecar_refs(pid, qobuz_count, refs).await
+            };
+            if had_ids {
+                add_and_toast(runtime, pid, ids, String::new()).await;
+            }
+            set_last_used(&pid.to_string(), written.max(1));
+            if written > 0 || !had_ids {
+                toast_added(written, "");
+            }
             crate::playlist_qt::refresh_after_membership_change(runtime, pid).await;
         }
         None => {}

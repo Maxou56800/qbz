@@ -1493,37 +1493,62 @@ pub async fn panel_opened(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
 /// (or a synthetic ephemeral id), and the picker's Qobuz arm would add an
 /// unrelated catalog track under that number.
 ///
-/// The local-mode ARM now exists (`playlist_picker_qt::open_for_local_refs`),
-/// so the remaining blocker is narrower than the old note claimed: what this
-/// module lacks is a source-aware row -> ref RESOLVER. A `QueueTrack`'s
-/// `source_item_id_hint` is overloaded (`local_playback` documents it as the
-/// album id on the non-mixtape enqueue paths), so it is not a safe Plex rating
-/// key outside the local queue builder's own rows. PARITY-DEBT, recorded
-/// rather than silently mixing the id spaces.
+/// Every row the picker can file rides along, by SOURCE: a catalog row its
+/// id, a local row (file, Plex, Jellyfin/Subsonic, offline copy) the ref
+/// `local_playlist_qt::local_picker_ref_for_queue_track` builds, an
+/// ephemeral row nothing. A queue of only local rows opens the picker in
+/// local mode (its list is the local playlists, which is the whole list
+/// offline); a queue of both kinds carries a MIXED payload the picker
+/// routes as the two halves would be on their own. Until 2026-09-14 the
+/// local rows were skipped, so an all-local queue opened nothing at all.
 pub async fn save_as_playlist(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     let state = runtime.core().get_queue_state_full().await;
+    let (ids, refs, skipped) =
+        picker_payload_for(state.current_track.iter().chain(state.upcoming.iter()));
+    if skipped > 0 {
+        log::info!(
+            "[qbz-qt] queue save-as-playlist: skipped {skipped} row(s) with nothing to file \
+             (ephemeral, or a local row without its key)"
+        );
+    }
+    if ids.is_empty() && refs.is_empty() {
+        log::warn!("[qbz-qt] queue save-as-playlist: nothing to file");
+        return;
+    }
+    crate::playlist_picker_qt::open_for_mixed(runtime, ids, refs);
+}
+
+/// The picker payload for queue rows: catalog ids and local refs, each
+/// de-duplicated, plus the count of rows that could not be filed.
+fn picker_payload_for<'a>(
+    rows: impl Iterator<Item = &'a QueueTrack>,
+) -> (Vec<String>, Vec<String>, usize) {
     let mut ids: Vec<String> = Vec::new();
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut refs: Vec<String> = Vec::new();
+    let mut seen_ids: HashSet<u64> = HashSet::new();
+    let mut seen_refs: HashSet<String> = HashSet::new();
     let mut skipped = 0usize;
-    for track in state.current_track.iter().chain(state.upcoming.iter()) {
-        if track.is_local || crate::local_ephemeral::is_ephemeral_id(track.id as i64) {
+    for track in rows {
+        if crate::local_ephemeral::is_ephemeral_id(track.id as i64) {
             skipped += 1;
             continue;
         }
-        if seen.insert(track.id) {
+        if track.is_local {
+            match crate::local_playlist_qt::local_picker_ref_for_queue_track(track) {
+                Some(r) => {
+                    if seen_refs.insert(r.clone()) {
+                        refs.push(r);
+                    }
+                }
+                None => skipped += 1,
+            }
+            continue;
+        }
+        if seen_ids.insert(track.id) {
             ids.push(track.id.to_string());
         }
     }
-    if skipped > 0 {
-        log::info!(
-            "[qbz-qt] queue save-as-playlist: skipped {skipped} local/ephemeral row(s) — \
-             no local-mode picker in this port"
-        );
-    }
-    if ids.is_empty() {
-        return;
-    }
-    crate::playlist_picker_qt::open_for_ids(runtime, ids);
+    (ids, refs, skipped)
 }
 
 /// Open the picker seeded with ONE upcoming row (page-local `page_index`) —
@@ -1541,15 +1566,20 @@ pub async fn add_to_playlist(runtime: &Arc<AppRuntime<LoggingAdapter>>, page_ind
         log::warn!("[qbz-qt] queue: add_to_playlist {page_index} -> no upcoming track");
         return;
     };
-    if track.is_local || crate::local_ephemeral::is_ephemeral_id(track.id as i64) {
-        // Defensive: QueuePanel.qml drops the entry for `isLocal` and
-        // `isEphemeral` rows, so this is only reachable from a stale page
-        // index. Not "no local-mode picker" (that arm exists) — no
-        // source-aware row -> ref resolver here; see `save_as_playlist`.
+    if crate::local_ephemeral::is_ephemeral_id(track.id as i64) {
         log::warn!(
-            "[qbz-qt] queue: add_to_playlist {page_index} is a local/ephemeral row — \
-             no source-aware ref resolver on the queue"
+            "[qbz-qt] queue: add_to_playlist {page_index} is an ephemeral row — nothing to file"
         );
+        return;
+    }
+    if track.is_local {
+        // By source, the way the local surfaces do it (2026-09-14).
+        match crate::local_playlist_qt::local_picker_ref_for_queue_track(track) {
+            Some(r) => crate::playlist_picker_qt::open_for_local_refs(runtime, vec![r]),
+            None => log::warn!(
+                "[qbz-qt] queue: add_to_playlist {page_index} is a local row without a picker key"
+            ),
+        }
         return;
     }
     crate::playlist_picker_qt::open_for_ids(runtime, vec![track.id.to_string()]);
@@ -1622,6 +1652,49 @@ mod tests {
             isrc: None,
             recording_mbid: None,
         }
+    }
+
+    #[test]
+    fn save_as_playlist_files_every_source_it_can() {
+        let mut local = track(41, "file");
+        local.is_local = true;
+        local.source = Some("local".into());
+        let mut plex = track(4200, "plex");
+        plex.is_local = true;
+        plex.source = Some("plex".into());
+        plex.source_item_id_hint = Some("12345".into());
+        let mut jelly = track(77, "jf");
+        jelly.is_local = true;
+        jelly.source = Some("jellyfin".into());
+        jelly.source_item_id_hint = Some("abc".into());
+        let mut copy = track(900, "copy");
+        copy.is_local = true;
+        copy.source = Some("qobuz_download".into());
+        copy.source_item_id_hint = Some("58".into());
+        let mut keyless = track(78, "lost");
+        keyless.is_local = true;
+        keyless.source = Some("subsonic".into());
+        let rows = [
+            track(555, "q"),
+            local,
+            plex,
+            jelly,
+            copy,
+            keyless,
+            track(555, "q again"),
+        ];
+        let (ids, refs, skipped) = picker_payload_for(rows.iter());
+        assert_eq!(ids, vec!["555".to_string()]);
+        assert_eq!(
+            refs,
+            vec![
+                "41".to_string(),
+                "plex:12345".to_string(),
+                "jellyfin:abc".to_string(),
+                "58".to_string()
+            ]
+        );
+        assert_eq!(skipped, 1);
     }
 
     /// §4.4 JSON shape: {index, tracks:[{id,title,artist,artUrl}]} over the
