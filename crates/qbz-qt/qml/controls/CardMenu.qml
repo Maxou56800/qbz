@@ -34,6 +34,87 @@ QbzContextMenu {
     property var entries: []
     signal picked(string action)
 
+    // --- Submenus (2026-09-13) ------------------------------------------
+    // An entry with `submenu: [ { label, icon, action }, … ]` opens a
+    // second CardMenu beside its row ON HOVER (a click does the same and
+    // never closes this one). The child forwards its pick here, so hosts
+    // handle sub-actions in the same `onPicked`. Both menus stay open
+    // while the pointer is over EITHER; once it has left both for a
+    // moment they close together, as does a press outside or Escape.
+    property var _sub: null
+    property var _subRow: null
+    // The child is the same type; QML refuses a type that contains itself
+    // ("instantiated recursively"), so it is created from its file at run
+    // time instead of through a Component.
+    function _makeSubmenu() {
+        var component = Qt.createComponent("CardMenu.qml")
+        if (component.status !== Component.Ready) {
+            console.warn("[CardMenu] submenu component: " + component.errorString())
+            return null
+        }
+        var sub = component.createObject(cmRoot.contentItem, {
+            "kioskHost": cmRoot.kioskHost,
+            "menuWidth": cmRoot.menuWidth
+        })
+        if (sub)
+            sub.picked.connect(function (a) {
+                cmRoot.close()
+                cmRoot.picked(a)
+            })
+        return sub
+    }
+    function hasSubmenu(entry) {
+        return entry && entry.submenu !== undefined && entry.submenu !== null
+            && entry.submenu.length !== undefined && entry.submenu.length > 0
+    }
+    function openSubmenu(row) {
+        if (cmRoot._subRow === row && cmRoot._sub && cmRoot._sub.opened)
+            return
+        if (!cmRoot._sub)
+            cmRoot._sub = cmRoot._makeSubmenu()
+        if (!cmRoot._sub)
+            return
+        cmRoot._subRow = row
+        cmRoot._sub.entries = row.modelData.submenu
+        // Beside the row: to the right, or to the left when the window
+        // has no room there. A 4px overlap leaves no gap to cross.
+        var win = row.Window.window
+        var g = row.mapToItem(null, 0, 0)
+        var gx = cmRoot.x + cmRoot.width - 4
+        if (win && gx + cmRoot._sub.width > win.width - 8)
+            gx = cmRoot.x - cmRoot._sub.width + 4
+        cmRoot._sub._place(gx, g.y - cmRoot._sub.topPadding, win)
+        leaveTimer.stop()
+    }
+    function closeSubmenu() {
+        cmRoot._subRow = null
+        if (cmRoot._sub && cmRoot._sub.opened)
+            cmRoot._sub.close()
+        leaveTimer.stop()
+    }
+    readonly property bool subOpen: cmRoot._sub !== null && cmRoot._sub.opened
+    readonly property bool pairHovered: cmRoot.menuHovered
+        || (cmRoot._sub !== null && cmRoot._sub.menuHovered)
+    onPairHoveredChanged: {
+        if (!cmRoot.subOpen)
+            return
+        if (cmRoot.pairHovered)
+            leaveTimer.stop()
+        else
+            leaveTimer.restart()
+    }
+    Timer {
+        id: leaveTimer
+        interval: 350
+        onTriggered: {
+            if (cmRoot.subOpen && !cmRoot.pairHovered) {
+                cmRoot.closeSubmenu()
+                cmRoot.close()
+            }
+        }
+    }
+    onClosed: closeSubmenu()
+
     QbzTheme { id: theme }
 
     Repeater {
@@ -43,9 +124,10 @@ QbzContextMenu {
             required property var modelData
 
             readonly property bool isSep: modelData.sep === true
+            readonly property bool hasSub: cmRoot.hasSubmenu(modelData)
             readonly property bool rowEnabled: modelData.enabled !== false
             readonly property bool isDanger: modelData.danger === true
-            readonly property bool hot: cmiArea.containsMouse && rowEnabled
+            readonly property bool hot: (cmiArea.containsMouse || cmRoot._subRow === row) && rowEnabled
 
             width: parent ? parent.width : 0
             height: isSep ? 7 : (cmRoot.kioskHost ? 44 : 33)
@@ -80,7 +162,7 @@ QbzContextMenu {
                 }
                 Text {
                     height: parent.height
-                    width: parent.width - 23 - (row.modelData.submenu === true ? 22 : 0)
+                    width: parent.width - 23 - (row.hasSub ? 22 : 0)
                     text: row.modelData.label || ""
                     color: row.isDanger ? theme.danger
                         : (row.hot ? theme.textPrimary : theme.textSecondary)
@@ -88,10 +170,9 @@ QbzContextMenu {
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }
-                // Submenu marker (`submenu: true`): the host answers the pick
-                // by opening a second menu on the same anchor.
+                // Submenu marker: the row opens its child menu on hover.
                 QbzIcon {
-                    visible: row.modelData.submenu === true
+                    visible: row.hasSub
                     name: "chevron-right"
                     width: 14
                     height: 14
@@ -110,8 +191,23 @@ QbzContextMenu {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
+                    if (row.hasSub) {
+                        cmRoot.openSubmenu(row)
+                        return
+                    }
                     cmRoot.close()
                     cmRoot.picked(row.modelData.action)
+                }
+                // Hovering a submenu row opens its child; hovering any other
+                // row puts it away. Leaving the row itself does nothing —
+                // the pointer is usually on its way into the child.
+                onContainsMouseChanged: {
+                    if (!containsMouse)
+                        return
+                    if (row.hasSub)
+                        cmRoot.openSubmenu(row)
+                    else if (cmRoot.subOpen)
+                        cmRoot.closeSubmenu()
                 }
             }
         }

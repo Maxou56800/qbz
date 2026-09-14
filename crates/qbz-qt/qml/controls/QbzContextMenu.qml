@@ -49,11 +49,16 @@ Popup {
 
     QbzTheme { id: theme }
 
+    /// The pointer is over the panel (padding included). CardMenu's
+    /// submenus read it on both menus to decide when leaving closes them.
+    readonly property bool menuHovered: panelHover.hovered
+
     background: Rectangle {
         color: theme.surfaceMain
         radius: theme.radiusSm
         border.width: 1
         border.color: theme.borderMuted
+        HoverHandler { id: panelHover }
     }
     implicitHeight: col.implicitHeight + topPadding + bottomPadding
     height: kioskHost && parent ? Math.min(implicitHeight, parent.height - 16) : implicitHeight

@@ -1275,42 +1275,18 @@ Rectangle {
     /// Build the popup on first use, then open it. Called by `openRowMenu`
     /// below, which owns the empty-menu guard.
     function openRowMenuLazy(anchor, x, y) {
-        root._menuAnchor = anchor
-        root._menuX = x
-        root._menuY = y
         rowMenuLoader.active = true
         rowMenuLoader.item.openAtCursor(anchor, x, y)
     }
 
-    // --- Copy submenu + clipboard (2026-09-13) --------------------------------
-    // Both lazy, like the row menu: a list row must not carry a Popup tree
-    // or a TextEdit per delegate. Reopened where the row menu was.
-    property Item _menuAnchor: null
-    property real _menuX: 0
-    property real _menuY: 0
-    Loader {
-        id: copyMenuLoader
-        active: false
-        sourceComponent: CardMenu {
-            kioskHost: root.kioskHost
-            menuWidth: 224
-            entries: [
-                { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
-                { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
-            ]
-            onPicked: function (a) { root.copyRow(a) }
-        }
-    }
+    // --- Copy (2026-09-13) ----------------------------------------------------
+    // The Copy entry is a CardMenu submenu (hover-opened, declared as data
+    // in menuModel); the clipboard carrier stays lazy, like the row menu —
+    // a list row must not carry a TextEdit per delegate.
     Loader {
         id: clipboardLoader
         active: false
         sourceComponent: QbzClipboard { }
-    }
-    function openCopyMenu() {
-        if (!root._menuAnchor)
-            return
-        copyMenuLoader.active = true
-        copyMenuLoader.item.openAtCursor(root._menuAnchor, root._menuX, root._menuY)
     }
     function copyRow(which) {
         var parts = [root.item.title || ""]
@@ -1426,7 +1402,10 @@ Rectangle {
             m.push({ "label": t("Buy on Qobuz", r), "icon": "shopping-bag", "action": "buy" })
         // Copy (2026-09-13): a submenu — the track name, or "Track - Album - Artist".
         if ((root.item.title || "") !== "")
-            m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": true })
+            m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": [
+                { "label": t("Track name", r), "icon": "copy", "action": "copy-title" },
+                { "label": t("Track - Album - Artist", r), "icon": "clipboard", "action": "copy-full" }
+            ] })
         return m
     }
 
@@ -1453,7 +1432,7 @@ Rectangle {
             else QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
         }
         else if (a === "buy") QbzAlbum.buyTrack(root.item.id || "")
-        else if (a === "copy") root.openCopyMenu()
+        else if (a === "copy-title" || a === "copy-full") root.copyRow(a)
         else if (a === "favorite") root.toggleFavorite()
         else if (a === "mixtape") root.mixtapeRequested()
         // Add to playlist. The internal arm is the CATALOG one and nothing
