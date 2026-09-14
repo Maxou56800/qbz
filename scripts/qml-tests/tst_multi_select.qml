@@ -12,6 +12,7 @@ import "../../crates/qbz-qt/qml/rows"
 import "../../crates/qbz-qt/qml/cards"
 import "../../crates/qbz-qt/qml/views" as Views
 import "../../crates/qbz-qt/qml/views/local" as Local
+import "../../crates/qbz-qt/qml/views/myqbz" as MyQbz
 
 Item {
     id: root
@@ -119,6 +120,17 @@ Item {
         onToggled: function (mods) { root.selectCheckMods = root.selectCheckMods.concat([mods]) }
     }
 
+    // ---- a My QBZ collection row (selection lives in Rust) ----------------------
+    MyQbz.MyQbzDetailRow {
+        id: myqbzRow
+        x: 0; y: 820
+        width: 1000
+        selectMode: true
+        item: ({ "position": 3, "itemType": "album", "source": "qobuz",
+                 "sourceItemId": "alb3", "title": "Collected record", "subtitle": "Collected band",
+                 "subtitleIsLink": true, "artistId": "cb" })
+    }
+
     TestCase {
         name: "MultiSelect"
         when: windowShown
@@ -182,6 +194,9 @@ Item {
             QbzArtist.opened = []
             QbzAlbum.opened = []
             QbzHome.labels = []
+            QbzMyQbz.selectCalls = []
+            QbzMyQbz.opened = []
+            QbzMyQbz.played = []
         }
 
         // A point of the row with nothing drawn over it but the body: the
@@ -277,6 +292,18 @@ Item {
             keyClick(Qt.Key_Space)
             compare(root.checkboxMods.length, 2)
             compare(root.checkboxMods[1] & Qt.ShiftModifier, 0, "the keyboard toggle is a plain toggle")
+        }
+
+        function test_myqbz_row_targets_select_with_shift() {
+            var title = textItem(myqbzRow, "Collected record")
+            clickOn(title, 10, title.height / 2)
+            var subtitle = textItem(myqbzRow, "Collected band")
+            clickOn(subtitle, 10, subtitle.height / 2, Qt.ShiftModifier)
+            compare(QbzMyQbz.opened.length, 0, "nothing opens in select mode")
+            compare(QbzMyQbz.selectCalls.length, 2)
+            compare(QbzMyQbz.selectCalls[0].position, 3)
+            compare(QbzMyQbz.selectCalls[0].shift, false)
+            compare(QbzMyQbz.selectCalls[1].shift, true, "Shift reaches the Rust range")
         }
     }
 

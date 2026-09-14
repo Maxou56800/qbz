@@ -13,3 +13,4 @@ singleton QbzArtist 1.0 QbzArtist.qml
 singleton QbzAlbum 1.0 QbzAlbum.qml
 singleton QbzSearch 1.0 QbzSearch.qml
 singleton QbzHome 1.0 QbzHome.qml
+singleton QbzMyQbz 1.0 QbzMyQbz.qml

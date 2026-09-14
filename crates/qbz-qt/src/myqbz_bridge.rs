@@ -162,9 +162,11 @@ pub mod qbz_myqbz_bridge {
         /// Leaving select mode clears the selection.
         #[qinvokable]
         fn detail_toggle_select_mode(self: Pin<&mut QbzMyQbz>);
-        /// `position` is the 0-based persisted position (the stable key).
+        /// `position` is the 0-based persisted position (the stable key);
+        /// `shift` = the click held Shift, i.e. add the range from the last
+        /// plain click (myqbz_detail_qt::toggle_item_select).
         #[qinvokable]
-        fn detail_toggle_item_select(self: Pin<&mut QbzMyQbz>, position: i32);
+        fn detail_toggle_item_select(self: Pin<&mut QbzMyQbz>, position: i32, shift: bool);
         /// Resets type/source/sort; the search text is left INTACT
         /// (myqbz_detail.rs:540-541).
         #[qinvokable]
@@ -472,8 +474,8 @@ impl qbz_myqbz_bridge::QbzMyQbz {
         crate::myqbz_detail_qt::toggle_select_mode();
     }
 
-    pub fn detail_toggle_item_select(self: Pin<&mut Self>, position: i32) {
-        crate::myqbz_detail_qt::toggle_item_select(position);
+    pub fn detail_toggle_item_select(self: Pin<&mut Self>, position: i32, shift: bool) {
+        crate::myqbz_detail_qt::toggle_item_select(position, shift);
     }
 
     pub fn detail_reset_filters(self: Pin<&mut Self>) {
