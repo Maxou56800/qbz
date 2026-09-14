@@ -997,9 +997,13 @@ Rectangle {
             QbzTextEditMenu { }
             id: searchInput
             anchors.left: parent.left
-            anchors.right: parent.right
+            // Stop short of whatever sits at the right end (the clear cross,
+            // the Enter glyph while the cortinilla is open): TextInput scrolls
+            // its text within its own width, so nothing hides under them.
+            anchors.right: clearCross.visible ? clearCross.left
+                : (enterHint.visible ? enterHint.left : parent.right)
             anchors.leftMargin: 30
-            anchors.rightMargin: 8
+            anchors.rightMargin: (clearCross.visible || enterHint.visible) ? 2 : 8
             height: parent.height
             color: theme.textPrimary
             font.pixelSize: 13
@@ -1118,6 +1122,7 @@ Rectangle {
         // sits to the LEFT of the ↵ hint while the dropdown is open, at the
         // right edge otherwise.
         Rectangle {
+            id: clearCross
             visible: searchInput.text !== ""
             anchors.right: QbzSearch.cortinillaOpen ? enterHint.left : parent.right
             anchors.rightMargin: QbzSearch.cortinillaOpen ? 4 : 5
