@@ -244,10 +244,11 @@ Rectangle {
     // in-view QML JS (library_bulk.rs:8: "select-all / clear never reach
     // Rust"), so the QbzShell signals route to the mounted view's
     // duck-typed interface: selectAll() / exitMultiSelectMode() /
-    // multiSelectOn. Implemented by LibraryView, LocalLibraryView and
-    // LocalAlbumView (MyQbzDetailView is EXIT-ONLY — its selection lives in
-    // Rust with no select-all arm); views without multi-select (Artist,
-    // Playlist, Mix, Label, Offline) match nothing — PARITY-DEBT (K4).
+    // multiSelectOn. Implemented by every view with a multi-select list:
+    // Library, Local Library, Local Album, Album, Artist, Playlist, Mix,
+    // Label and the Offline manager. MyQbzDetailView is EXIT-ONLY — its
+    // selection lives in Rust and its bar has no select-all arm (the Slint
+    // never had one there either).
     Connections {
         target: QbzShell
         function onSelectAllRequested() {

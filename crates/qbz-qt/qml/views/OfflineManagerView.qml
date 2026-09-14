@@ -119,6 +119,18 @@ Rectangle {
                                         mods === undefined ? Qt.NoModifier : mods)
     }
 
+    // Ctrl+A / Escape hotkey seam (AppShell duck-types these). The selection
+    // here is always on (no select mode), so Ctrl+A ticks every track — as
+    // the Slint's select_all_active_surface did for this view — and Escape
+    // drops a non-empty selection.
+    readonly property bool multiSelectOn: Object.keys(root.selected).length > 0
+    function selectAll() {
+        root.bulkAction("select-all")
+    }
+    function exitMultiSelectMode() {
+        root.bulkAction("clear")
+    }
+
     function bulkAction(id) {
         if (id === "clear") {
             root.selected = ({})

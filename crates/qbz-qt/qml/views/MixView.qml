@@ -124,7 +124,10 @@ Rectangle {
         if (action !== "add-to-playlist" && action !== "add-to-mixtape")
             root.selected = ({})
     }
-    // Ctrl+A / Escape hotkey seam (AppShell duck-types these).
+    // Ctrl+A / Escape hotkey seam (AppShell duck-types these). Without
+    // `multiSelectOn` the Escape stack never saw this view in select mode, so
+    // Escape did not leave it here while it did on every other track list.
+    readonly property bool multiSelectOn: root.multiSelect
     function selectAll() {
         if (!root.multiSelect) root.setMultiSelect(true)
         root.bulkAction("select-all")
