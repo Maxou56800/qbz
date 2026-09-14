@@ -64,6 +64,7 @@ enum AudioCommand {
     Play {
         data: Vec<u8>,
         track_id: u64,
+        start_position_secs: u64,
         duration_secs: u64,
         sample_rate: u32,
         channels: u16,
@@ -91,9 +92,9 @@ enum AudioCommand {
         play_gen: u64,
     },
     /// Pause playback
-    Pause,
+    Pause { play_gen: u64 },
     /// Resume playback
-    Resume,
+    Resume { play_gen: u64 },
     /// Stop playback
     Stop { completed: Option<tokio::sync::oneshot::Sender<()>> },
     /// Set volume (0.0 - 1.0)
@@ -1421,6 +1422,9 @@ pub struct SharedState {
     /// can detect that a queued `PlayStreaming` was superseded by a newer play
     /// and stop waiting on its initial buffer instead of blocking ~60s (#591).
     play_generation: Arc<AtomicU64>,
+    /// Transport intent is published before decoding; installation holds this
+    /// short lock so a pause during buffering cannot briefly start the writer.
+    play_intent: Arc<Mutex<(u64, bool)>>,
     /// Monotonic engine-empty notification plus the track that raised it.
     /// This is durable across polling intervals; a boolean pulse would have
     /// the same sampling race as the old `was_playing` predicate.
@@ -1485,6 +1489,7 @@ impl SharedState {
             bit_perfect_mode: Arc::new(AtomicU8::new(0)),
             output_stream_format: Arc::new(AtomicU64::new(0)),
             play_generation: Arc::new(AtomicU64::new(0)),
+            play_intent: Arc::new(Mutex::new((0, false))),
             engine_empty_generation: Arc::new(AtomicU64::new(0)),
             engine_empty_track_id: Arc::new(AtomicU64::new(0)),
             source_failure_generation: Arc::new(AtomicU64::new(0)),
@@ -1549,8 +1554,15 @@ impl SharedState {
 
     /// Start a new play intent; returns the generation token for this intent
     /// (see `Player::begin_play`).
+    #[cfg(test)]
     pub(crate) fn begin_play(&self) -> u64 {
+        self.begin_play_with_state(true)
+    }
+
+    fn begin_play_with_state(&self, playing: bool) -> u64 {
+        let mut intent = self.play_intent.lock().unwrap();
         let generation = self.play_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        *intent = (generation, playing);
         if let Ok(mut slot) = self.buffer_state.lock() {
             *slot = PlaybackBufferSlot {
                 state: PlaybackBufferState::Idle,
@@ -1559,6 +1571,46 @@ impl SharedState {
             };
         }
         generation
+    }
+
+    fn request_playing(&self, playing: bool) -> u64 {
+        let mut intent = self.play_intent.lock().unwrap();
+        intent.1 = playing;
+        intent.0
+    }
+
+    fn apply_playing_intent(&self, engine: &PlaybackEngine, generation: u64, playing: bool) -> bool {
+        let intent = self.play_intent.lock().unwrap();
+        if *intent != (generation, playing) { return false; }
+        if playing {
+            engine.play();
+            self.resume_playback_timer();
+        } else {
+            engine.pause();
+            self.pause_playback_timer();
+        }
+        self.is_playing.store(playing, Ordering::SeqCst);
+        true
+    }
+
+    fn append_initial_source<S>(&self, engine: &mut PlaybackEngine, source: S,
+        generation: u64, position: u64) -> Result<(), String>
+    where S: Source<Item = f32> + Send + 'static {
+        let intent = self.play_intent.lock().unwrap();
+        if intent.0 != generation {
+            return Err("source installation superseded".into());
+        }
+        engine.append_with_state(source, intent.1)?;
+        self.is_playing.store(intent.1, Ordering::SeqCst);
+        self.position.store(position, Ordering::SeqCst);
+        if intent.1 {
+            self.start_playback_timer(position);
+        } else {
+            self.pause_playback_timer();
+            self.position.store(position, Ordering::SeqCst);
+            self.position_at_start.store(position, Ordering::SeqCst);
+        }
+        Ok(())
     }
 
     /// The most recent play generation (the token a play command sent right
@@ -2418,6 +2470,7 @@ impl Player {
                         AudioCommand::Play {
                             data,
                             track_id,
+                            start_position_secs,
                             duration_secs,
                             sample_rate,
                             channels,
@@ -2874,6 +2927,12 @@ impl Player {
                                 .duration
                                 .store(actual_duration, Ordering::SeqCst);
 
+                            let start_position_secs = if actual_duration > 0 {
+                                start_position_secs.min(actual_duration)
+                            } else { start_position_secs };
+                            let source: Box<dyn Source<Item = f32> + Send> =
+                                Box::new(source.skip_duration(Duration::from_secs(start_position_secs)));
+
                             // Start gain BEFORE the first sample (normalization.rs):
                             // cache row > ReplayGain tags > unity while measuring.
                             let plan = normalization::plan_start_gain(
@@ -2901,15 +2960,15 @@ impl Player {
                                     sample_rate,
                                     channels,
                                     duration_secs: actual_duration,
-                                    start_frame: 0,
+                                    start_frame: start_position_secs.saturating_mul(sample_rate as u64),
                                     target_lufs: plan.target_lufs,
                                     gain_atomic,
                                     known_gain: plan.known_gain,
                                     prevent_clipping: plan.prevent_clipping,
                                 }),
-                                0,
+                                start_position_secs.saturating_mul(sample_rate as u64),
                             );
-                            if let Err(e) = engine.append(source) {
+                            if let Err(e) = thread_state.append_initial_source(&mut engine, source, play_gen, start_position_secs) {
                                 log::error!("Failed to append source to engine: {}", e);
                                 thread_state.set_buffer_state_for_play(
                                     PlaybackBufferState::Error,
@@ -2925,13 +2984,13 @@ impl Player {
                                 play_gen,
                             );
 
-                            thread_state.is_playing.store(true, Ordering::SeqCst);
-                            thread_state.position.store(0, Ordering::SeqCst);
+                            thread_state.position.store(start_position_secs, Ordering::SeqCst);
                             thread_state
                                 .current_track_id
                                 .store(track_id, Ordering::SeqCst);
-                            thread_state.start_playback_timer(0);
 
+                            *pause_suspend_deadline = (!thread_state.is_playing.load(Ordering::SeqCst))
+                                .then(|| Instant::now() + Duration::from_millis(PAUSE_SUSPEND_DELAY_MS));
                             *current_engine = Some(engine);
                             log::info!(
                                 "Audio thread: playback started, duration: {}s, normalization: {}",
@@ -3534,7 +3593,7 @@ impl Player {
                                 }),
                                 start_position_secs.saturating_mul(actual_sr as u64),
                             );
-                            if let Err(e) = engine.append(source_to_play) {
+                            if let Err(e) = thread_state.append_initial_source(&mut engine, source_to_play, play_gen, start_position_secs) {
                                 log::error!("Failed to append streaming source to engine: {}", e);
                                 thread_state.set_buffer_state_for_play(
                                     PlaybackBufferState::Error,
@@ -3545,15 +3604,15 @@ impl Player {
                             }
 
                             thread_state.set_dsd_mode(0);
-                            thread_state.is_playing.store(true, Ordering::SeqCst);
                             thread_state
                                 .position
                                 .store(start_position_secs, Ordering::SeqCst);
                             thread_state
                                 .current_track_id
                                 .store(track_id, Ordering::SeqCst);
-                            thread_state.start_playback_timer(start_position_secs);
 
+                            *pause_suspend_deadline = (!thread_state.is_playing.load(Ordering::SeqCst))
+                                .then(|| Instant::now() + Duration::from_millis(PAUSE_SUSPEND_DELAY_MS));
                             *current_engine = Some(engine);
                             log::info!(
                             "Audio thread: streaming playback STARTED in {}ms at {}s (incremental decode active)",
@@ -3928,21 +3987,15 @@ impl Player {
                                 thread_state.set_gapless_ready(false);
                             }
                         }
-                        AudioCommand::Pause => {
+                        AudioCommand::Pause { play_gen } => {
                             if let Some(ref engine) = *current_engine {
-                                engine.pause();
-                                thread_state.pause_playback_timer();
-                                thread_state.is_playing.store(false, Ordering::SeqCst);
-                                *pause_suspend_deadline = Some(
-                                    Instant::now() + Duration::from_millis(PAUSE_SUSPEND_DELAY_MS),
-                                );
-                                log::info!(
-                                    "Audio thread: paused at {}s",
-                                    thread_state.position.load(Ordering::SeqCst)
-                                );
+                                if thread_state.apply_playing_intent(engine, play_gen, false) {
+                                    *pause_suspend_deadline = Some(Instant::now() + Duration::from_millis(PAUSE_SUSPEND_DELAY_MS));
+                                }
                             }
                         }
-                        AudioCommand::Resume => {
+                        AudioCommand::Resume { play_gen } => {
+                            if *thread_state.play_intent.lock().unwrap() != (play_gen, true) { return; }
                             *pause_suspend_deadline = None;
                             if current_engine.is_none() {
                                 // Try to get audio data from regular storage or streaming source
@@ -4090,12 +4143,10 @@ impl Player {
                                         (*current_track_sample_rate).unwrap_or(0) as u64,
                                     ),
                                 );
-                                if let Err(e) = engine.append(skipped_source) {
+                                if let Err(e) = thread_state.append_initial_source(&mut engine, skipped_source, play_gen, resume_pos) {
                                     log::error!("Failed to append source for resume: {}", e);
                                     return;
                                 }
-                                thread_state.start_playback_timer(resume_pos);
-                                thread_state.is_playing.store(true, Ordering::SeqCst);
                                 *current_engine = Some(engine);
 
                                 log::info!("Audio thread: resumed from {}s", resume_pos);
@@ -4103,9 +4154,7 @@ impl Player {
                             }
 
                             if let Some(ref engine) = *current_engine {
-                                engine.play();
-                                thread_state.resume_playback_timer();
-                                thread_state.is_playing.store(true, Ordering::SeqCst);
+                                thread_state.apply_playing_intent(engine, play_gen, true);
                                 log::info!("Audio thread: resumed");
                             }
                         }
@@ -5459,7 +5508,11 @@ impl Player {
     /// previous track (last-writer race on `AudioCommand::Play`), and so the
     /// audio thread can abandon superseded buffer waits (#591).
     fn begin_play(&self) -> u64 {
-        let gen = self.state.begin_play();
+        self.begin_play_with_state(true)
+    }
+
+    fn begin_play_with_state(&self, playing: bool) -> u64 {
+        let gen = self.state.begin_play_with_state(playing);
         // The bump comes first so a concurrent `register_stream_feeder` sees
         // the new generation; then cancel the previous track's feeder —
         // every caller of `begin_play` is a superseding intent (new play or
@@ -5469,10 +5522,8 @@ impl Player {
         gen
     }
 
-    /// A passing check is a snapshot, not a lock: a newer intent can still
-    /// begin between this check and the subsequent AudioCommand send. That
-    /// residual window is accepted; closing it would require the generation
-    /// to travel inside the audio command itself.
+    /// Early cancellation check. Commands retain this same generation through
+    /// source installation, so a later intent also fences the final enqueue.
     fn is_current_play(&self, gen: u64) -> bool {
         self.state.is_current_play(gen)
     }
@@ -5492,8 +5543,19 @@ impl Player {
         quality: Quality,
         start_position_secs: u64,
     ) -> Result<(), String> {
+        self.play_track_with_state(client, track_id, quality, start_position_secs, true).await
+    }
+
+    pub async fn play_track_with_state(
+        &self,
+        client: &QobuzClient,
+        track_id: u64,
+        quality: Quality,
+        start_position_secs: u64,
+        playing: bool,
+    ) -> Result<(), String> {
         // Supersede any earlier in-flight play_track for a different intent.
-        let gen = self.begin_play();
+        let gen = self.begin_play_with_state(playing);
         log::info!(
             "Player: Starting playback for track {} with quality {:?} (start {}s, gen {gen})",
             track_id,
@@ -5525,22 +5587,14 @@ impl Player {
                     track_id,
                     cached.size_bytes
                 );
-                // Use apply_play_data so we do not bump generation again.
-                let r = self.apply_play_data(cached.data, track_id);
-                // Cached tracks play from in-memory data (no streaming resume
-                // offset); honor a session-resume position with a best-effort
-                // seek once playback has been handed to the audio thread.
-                if r.is_ok() && start_position_secs > 0 && self.is_current_play(gen) {
-                    let _ = self.seek(start_position_secs);
-                }
-                return r;
+                return self.apply_play_data_at(cached.data, track_id, start_position_secs, gen);
             }
         }
 
         if let Some((source, meta, duration)) = self.cached_disk_source(track_id, quality)? {
             self.ensure_loudness_row(client, track_id).await;
             if self.is_current_play(gen) {
-                return self.apply_completed_source(source, meta, duration, track_id, start_position_secs);
+                return self.apply_completed_source(source, meta, duration, track_id, start_position_secs, gen);
             }
             return Ok(());
         }
@@ -5627,6 +5681,7 @@ impl Player {
                     speed_mbps,
                     duration_secs,
                     start_position_secs, // session-resume offset (0 = from start)
+                    gen,
                 )?;
 
                 // Spawn the background task that fetches + decrypts + pushes
@@ -5723,7 +5778,7 @@ impl Player {
         }
         if !self.is_current_play(gen) { return Ok(()); }
         let (meta, duration) = disk_playback::source_metadata(&source)?;
-        self.apply_completed_source(source, meta, duration, track_id, start_position_secs)
+        self.apply_completed_source(source, meta, duration, track_id, start_position_secs, gen)
     }
 
     /// Queue a cold Qobuz successor as an incremental source. This is the
@@ -6534,20 +6589,29 @@ impl Player {
     /// Bumps play generation so this call supersedes any in-flight
     /// `play_track` that has not yet applied audio.
     pub fn play_data(&self, data: Vec<u8>, track_id: u64) -> Result<(), String> {
-        let _gen = self.begin_play();
-        self.apply_play_data(data, track_id)
+        self.play_data_with_state(data, track_id, true)
+    }
+
+    pub fn play_data_with_state(&self, data: Vec<u8>, track_id: u64, playing: bool) -> Result<(), String> {
+        self.play_data_at(data, track_id, 0, playing)
+    }
+
+    /// Install downloaded audio at its requested position and transport state.
+    pub fn play_data_at(&self, data: Vec<u8>, track_id: u64, position: u64, playing: bool) -> Result<(), String> {
+        let gen = self.begin_play_with_state(playing);
+        self.apply_play_data_at(data, track_id, position, gen)
     }
 
     /// Send `Play` without bumping generation (used by `play_track` after
     /// its own `begin_play` + supersede checks).
-    fn apply_play_data(&self, data: Vec<u8>, track_id: u64) -> Result<(), String> {
+    fn apply_play_data_at(&self, data: Vec<u8>, track_id: u64, start_position_secs: u64, play_gen: u64) -> Result<(), String> {
         log::info!(
             "Player: Playing {} bytes of audio data for track {}",
             data.len(),
             track_id
         );
 
-        let play_gen = self.state.current_play_generation();
+        if !self.is_current_play(play_gen) { return Err("play superseded before source preparation".into()); }
         self.state.begin_buffering(track_id, play_gen);
 
         // Extract audio metadata (sample rate, channels, bit depth) - fast header-only read
@@ -6578,6 +6642,7 @@ impl Player {
             .send(AudioCommand::Play {
                 data,
                 track_id,
+                start_position_secs,
                 duration_secs: 0, // Will be determined by decoder
                 sample_rate,
                 channels,
@@ -6969,7 +7034,22 @@ impl Player {
         duration_secs: u64,
         start_position_secs: u64,
     ) -> Result<BufferWriter, String> {
-        let _gen = self.begin_play();
+        self.play_streaming_dynamic_with_state(track_id, sample_rate, channels, bit_depth, content_length, speed_mbps, duration_secs, start_position_secs, true)
+    }
+
+    pub fn play_streaming_dynamic_with_state(
+        &self,
+        track_id: u64,
+        sample_rate: u32,
+        channels: u16,
+        bit_depth: u32,
+        content_length: u64,
+        speed_mbps: f64,
+        duration_secs: u64,
+        start_position_secs: u64,
+        playing: bool,
+    ) -> Result<BufferWriter, String> {
+        let gen = self.begin_play_with_state(playing);
         self.apply_play_streaming_dynamic(
             track_id,
             sample_rate,
@@ -6979,6 +7059,7 @@ impl Player {
             speed_mbps,
             duration_secs,
             start_position_secs,
+            gen,
         )
     }
 
@@ -6996,6 +7077,7 @@ impl Player {
         speed_mbps: f64,
         duration_secs: u64,
         start_position_secs: u64,
+        play_gen: u64,
     ) -> Result<BufferWriter, String> {
         log::info!(
             "Player: Starting dynamic streaming for track {} ({}Hz, {}ch, {}-bit, {:.2} MB, {:.1} MB/s, {}s, start={}s)",
@@ -7047,7 +7129,7 @@ impl Player {
 
         let (source, writer) = self.streaming_buffer(config, Some(content_length))?;
         let source = Arc::new(source);
-        let play_gen = self.state.current_play_generation();
+        if !self.is_current_play(play_gen) { return Err("stream superseded before source preparation".into()); }
         self.state.begin_buffering(track_id, play_gen);
 
         self.tx
@@ -7122,14 +7204,14 @@ impl Player {
     /// Pause playback
     pub fn pause(&self) -> Result<(), String> {
         self.tx
-            .send(AudioCommand::Pause)
+            .send(AudioCommand::Pause { play_gen: self.state.request_playing(false) })
             .map_err(|e| format!("Failed to send pause command: {}", e))
     }
 
     /// Resume playback
     pub fn resume(&self) -> Result<(), String> {
         self.tx
-            .send(AudioCommand::Resume)
+            .send(AudioCommand::Resume { play_gen: self.state.request_playing(true) })
             .map_err(|e| format!("Failed to send resume command: {}", e))
     }
 
@@ -7424,6 +7506,19 @@ mod tests {
         assert!(cached_metadata_below_requested(&meta, Quality::UltraHiRes, None));
         assert!(!cached_metadata_below_requested(&meta, Quality::HiRes, limited));
         assert!(cached_quality_below_requested(b"corrupt", Quality::UltraHiRes, highest));
+    }
+
+    #[test]
+    fn buffering_transport_intent_is_scoped_to_current_play() {
+        let state = SharedState::new();
+        let first = state.begin_play_with_state(true);
+        assert_eq!(state.request_playing(false), first);
+        assert_eq!(*state.play_intent.lock().unwrap(), (first, false));
+        let second = state.begin_play_with_state(false);
+        assert!(!state.is_current_play(first));
+        assert_eq!(*state.play_intent.lock().unwrap(), (second, false));
+        assert_eq!(state.request_playing(true), second);
+        assert_eq!(*state.play_intent.lock().unwrap(), (second, true));
     }
 
     #[test]

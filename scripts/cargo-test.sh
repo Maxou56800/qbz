@@ -200,6 +200,17 @@ cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- queue_reso
 cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- decoder::tests::controller_
 cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- repeat::tests::
 
+say "gate: handoff execution, PCM progress, and bounded CMAF assembly regressions"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list handoff_ 2>/dev/null | grep -c ': test$' || true)
+(( n >= 8 )) || { echo "handoff suite has $n tests (expected >= 8)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list pcm_write::tests:: 2>/dev/null | grep -c ': test$' || true)
+(( n >= 3 )) || { echo "PCM progress suite has $n tests (expected >= 3)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-qobuz --lib -- --list incremental_ 2>/dev/null | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "CMAF assembly suite has $n tests (expected >= 2)"; exit 1; }
+cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- handoff_
+cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- pcm_write::tests::
+cargo test --manifest-path crates/Cargo.toml -p qbz-qobuz --lib -- incremental_
+
 say "gate: 2026-09 static-review regressions present (image-cache LRU, loudness-cache degrade, log-rotation lock, URL-free CDN errors + signed-param redaction, link-resolver timeout)"
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list image_cache::tests:: 2>/dev/null \
     | grep -c ': test$' || true)

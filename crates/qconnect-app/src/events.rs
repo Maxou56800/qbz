@@ -77,6 +77,17 @@ pub trait QconnectEventSink: Send + Sync {
         None
     }
 
+    /// Command execution has an acknowledgement distinct from observations.
+    /// Hosts override this to propagate engine/authority failures to reporting.
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &QConnectRendererState,
+    ) -> Result<(), String> {
+        self.on_event(QconnectAppEvent::RendererCommandApplied {
+            command: command.clone(), state: state.clone(),
+        }).await;
+        Ok(())
+    }
+
     async fn on_event(&self, event: QconnectAppEvent);
 }
 

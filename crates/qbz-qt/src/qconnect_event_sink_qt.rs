@@ -623,6 +623,36 @@ impl QconnectEventSink for QtQconnectEventSink {
         self.is_current().then(|| self.engine.playback_event())
     }
 
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &qconnect_app::QConnectRendererState,
+    ) -> Result<(), String> {
+        if !self.is_current() {
+            return Err("renderer authority retired".into());
+        }
+        if remote_renderer_commands_are_fenced(&*self.sync_state.lock().await) {
+            return Err("renderer command fenced by local authority".into());
+        }
+        qconnect_app::renderer::apply_renderer_command(
+            &self.engine, &self.sync_state, command, state,
+        ).await?;
+        if !self.is_current() {
+            return Err("renderer authority retired during execution".into());
+        }
+        if matches!(command, RendererCommand::SetActive { active: true }) && self.engine.has_loaded_audio() {
+            self.report_active_renderer_ready().await;
+        }
+        let (volume, muted) = local_volume_ui_projection(command, state);
+        if let Some(volume) = volume { crate::now_playing::set_volume(volume); }
+        if let Some(muted) = muted { crate::now_playing::set_muted(muted); }
+        if matches!(command, RendererCommand::SetState { .. }) {
+            self.refresh_local_ui().await;
+        } else if matches!(command, RendererCommand::SetShuffleMode { .. } | RendererCommand::SetLoopMode { .. }) {
+            self.refresh_transport_modes().await;
+        }
+        if !self.is_current() { return Err("renderer authority retired".into()); }
+        Ok(())
+    }
+
     async fn on_event(&self, event: QconnectAppEvent) {
         if !self.is_current() {
             return;
@@ -727,82 +757,7 @@ impl QconnectEventSink for QtQconnectEventSink {
                     return;
                 }
             }
-            QconnectAppEvent::RendererCommandApplied { command, state } => {
-                let fenced = {
-                    let sync_state = self.sync_state.lock().await;
-                    remote_renderer_commands_are_fenced(&sync_state)
-                };
-                if fenced {
-                    log::info!(
-                        "[QConnect] Ignoring stale renderer command while local queue authority settles"
-                    );
-                    return;
-                }
-                // SetState is the routine playback/position command and may be
-                // republished. Lifecycle commands remain visible at info.
-                if matches!(command, RendererCommand::SetState { .. }) {
-                    log::debug!(
-                        "[QConnect] Renderer command applied: {}",
-                        renderer_command_label(command)
-                    );
-                } else {
-                    log::info!(
-                        "[QConnect] Renderer command applied: {}",
-                        renderer_command_label(command)
-                    );
-                }
-                let became_active = matches!(command, RendererCommand::SetActive { active: true });
-                let result = qconnect_app::renderer::apply_renderer_command(
-                    &self.engine,
-                    &self.sync_state,
-                    command,
-                    state,
-                )
-                .await;
-                if !self.is_current() {
-                    return;
-                }
-                let applied = if let Err(err) = result {
-                    log::warn!("[QConnect] Failed to apply renderer command: {err}");
-                    false
-                } else if became_active {
-                    self.report_active_renderer_ready().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                    true
-                } else {
-                    true
-                };
-                if applied {
-                    let (volume, muted) = local_volume_ui_projection(command, state);
-                    if let Some(volume) = volume {
-                        crate::now_playing::set_volume(volume);
-                    }
-                    if let Some(muted) = muted {
-                        crate::now_playing::set_muted(muted);
-                    }
-                }
-                // A SetState changes the current track / play-state — reflect it
-                // in the QBZ now-playing card + queue cursor highlight. A
-                // standalone SetShuffleMode / SetLoopMode does NOT move the track,
-                // so only refresh the lightweight shuffle/repeat button state (a
-                // full refresh would reset the now-playing card position/art).
-                if matches!(command, RendererCommand::SetState { .. }) {
-                    self.refresh_local_ui().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                } else if matches!(
-                    command,
-                    RendererCommand::SetShuffleMode { .. } | RendererCommand::SetLoopMode { .. }
-                ) {
-                    self.refresh_transport_modes().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                }
-            }
+            QconnectAppEvent::RendererCommandApplied { .. } => {}
             QconnectAppEvent::RendererUnreachable { renderer_id } => {
                 log::warn!("[QConnect] Renderer {renderer_id} unreachable");
                 crate::toast_qt::error(qbz_i18n::t("Qobuz Connect renderer unreachable"));

@@ -29,6 +29,8 @@
 #[cfg(target_os = "linux")]
 pub mod alsa_backend;
 pub mod alsa_direct;
+#[cfg(target_os = "linux")]
+mod pcm_write;
 pub mod alsa_hardware_volume;
 pub mod wasapi_direct;
 /// Endpoint capabilities: the exclusive-mode rate sweep and the hotplug watch.

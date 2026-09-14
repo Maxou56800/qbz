@@ -128,8 +128,9 @@ impl Player {
         duration_secs: u64,
         track_id: u64,
         start_position_secs: u64,
+        play_gen: u64,
     ) -> Result<(), String> {
-        let play_gen = self.state.current_play_generation();
+        if !self.is_current_play(play_gen) { return Err("cached source superseded before preparation".into()); }
         self.state
             .set_stream_quality(meta.sample_rate, meta.bit_depth.unwrap_or(16));
         self.state.begin_buffering(track_id, play_gen);

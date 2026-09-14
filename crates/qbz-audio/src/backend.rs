@@ -1067,12 +1067,41 @@ impl CpalDefaultBackend {
 /// exactly what `playback_engine.rs` already called on the ALSA stream - no
 /// method was invented for the trait, and neither implementation gains or
 /// loses behaviour by having it.
+#[derive(Debug)]
+pub struct DirectWriteError {
+    pub frames_written: usize,
+    pub canceled: bool,
+    pub message: String,
+}
+
+impl From<String> for DirectWriteError {
+    fn from(message: String) -> Self {
+        Self { frames_written: 0, canceled: false, message }
+    }
+}
+
 pub trait DirectSink: Send + Sync + 'static {
     /// Interleaved f32, blocking when the device's queue is full. That block
     /// IS the back-pressure that paces the writer thread.
     fn write_f32(&self, samples: &[f32]) -> Result<(), String>;
+    /// Backends with interruptible I/O override this to report partial progress.
+    fn write_f32_interruptible(&self, samples: &[f32], cancel: &std::sync::atomic::AtomicBool)
+        -> Result<usize, DirectWriteError> {
+        if cancel.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(DirectWriteError { frames_written: 0, canceled: true, message: "write canceled".into() });
+        }
+        let channels = usize::from(self.channels());
+        if channels == 0 || samples.len() % channels != 0 {
+            return Err(DirectWriteError::from("PCM input must contain whole frames".to_string()));
+        }
+        self.write_f32(samples).map_err(DirectWriteError::from)?;
+        Ok(samples.len() / channels)
+    }
     /// Play out what is queued, then return. Bounded internally.
     fn drain(&self) -> Result<(), String>;
+    fn drain_interruptible(&self, _cancel: &std::sync::atomic::AtomicBool) -> Result<(), String> {
+        self.drain()
+    }
     fn stop(&self) -> Result<(), String>;
     fn sample_rate(&self) -> u32;
     fn channels(&self) -> u16;
