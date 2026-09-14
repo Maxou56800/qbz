@@ -60,9 +60,13 @@ fn install_with_file_sink(default_level: &str, file_name: Option<&str>) {
     // in #555 logs) — and each suppressed record now costs nothing, since
     // `log!` checks the filter before formatting. An explicit RUST_LOG still
     // replaces the whole default, so full zbus tracing stays one env var away.
+    // discord_rich_presence warns on every failed IPC connect ("find_pipe:
+    // could not find pipe"); qbz-integrations logs its own single line and
+    // backs off, so the crate's copy only needs to surface real errors.
     let inner = env_logger::Builder::from_env(
-        env_logger::Env::default()
-            .default_filter_or(format!("{default_level},zbus=warn,tracing=warn")),
+        env_logger::Env::default().default_filter_or(format!(
+            "{default_level},zbus=warn,tracing=warn,discord_rich_presence=error"
+        )),
     )
     .build();
     let level = inner.filter();

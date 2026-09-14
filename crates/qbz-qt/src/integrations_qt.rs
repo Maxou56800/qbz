@@ -122,11 +122,23 @@ static DISCOVER: OnceLock<Mutex<Option<DiscoverPrefsStore>>> = OnceLock::new();
 
 fn with_discover<T>(f: impl FnOnce(&DiscoverPrefsStore) -> T) -> Option<T> {
     let cell = DISCOVER.get_or_init(|| {
-        let store =
-            crate::sidebar_qt::user_dir().and_then(|dir| DiscoverPrefsStore::new_at(&dir).ok());
-        if store.is_none() {
-            log::warn!("[qbz-qt] discover prefs store unavailable");
-        }
+        // Before the session restores there is no user directory yet; that
+        // is the normal startup order, not a failure (`bind_qobuz_user`
+        // replaces this handle on activation). Only a directory that exists
+        // and still cannot open its store is worth a warning.
+        let store = match crate::sidebar_qt::user_dir() {
+            None => {
+                log::debug!("[qbz-qt] discover prefs store not bound yet: no active user");
+                None
+            }
+            Some(dir) => match DiscoverPrefsStore::new_at(&dir) {
+                Ok(store) => Some(store),
+                Err(e) => {
+                    log::warn!("[qbz-qt] discover prefs store unavailable: {e}");
+                    None
+                }
+            },
+        };
         Mutex::new(store)
     });
     let guard = cell.lock().ok()?;

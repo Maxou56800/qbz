@@ -1001,11 +1001,22 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 0
+                            // The title's natural width, measured OUTSIDE the
+                            // Text: an elided Text recomputes its implicit size
+                            // after laying out at the bound width, so a `width`
+                            // that reads its own `implicitWidth` is a binding
+                            // loop (Qt reported it on every album open).
+                            TextMetrics {
+                                id: compactTitleMetrics
+                                font.pixelSize: theme.fontSection
+                                font.weight: theme.weightBold
+                                text: albumHeader.title || ""
+                            }
                             Text {
                                 id: compactAlbumTitle
                                 width: (albumHeader.artist || "") === ""
                                     ? compactHeading.width
-                                    : Math.min(implicitWidth,
+                                    : Math.min(Math.ceil(compactTitleMetrics.advanceWidth),
                                                Math.max(80, compactHeading.width * 0.62))
                                 text: albumHeader.title || ""
                                 color: root.hdrStrong

@@ -14,7 +14,6 @@ Rectangle {
     id: root
 
     property bool checked: false
-    property bool enabled: true
     signal toggled(bool value)
 
     QbzTheme { id: theme }

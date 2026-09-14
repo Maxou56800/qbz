@@ -26,7 +26,6 @@ Rectangle {
     // window edge may opt into a lateral list without changing every other
     // QbzSelect instance. Supported values: "below" and "left".
     property string popupPlacement: "below"
-    property bool enabled: true
     property bool searchable: false
     // Bootstrap-style small variant (QbzSelect.slint:74-76). The default is the
     // standard Settings size; TOOLBARS opt in with `sm: true` — 30px tall, r6,
