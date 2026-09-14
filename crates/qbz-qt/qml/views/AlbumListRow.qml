@@ -304,8 +304,11 @@ Rectangle {
                     id: artistArea
                     anchors.fill: parent
                     // Only a real artist id is clickable — otherwise the
-                    // pointer promises a page that cannot open.
-                    enabled: (root.item.artistId || "") !== ""
+                    // pointer promises a page that cannot open. In select
+                    // mode the whole row selects (Shift / Ctrl included), so
+                    // the name stops being a link and the click falls to the
+                    // row body underneath.
+                    enabled: !root.selectMode && (root.item.artistId || "") !== ""
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: QbzArtist.openArtist(root.item.artistId)
@@ -331,7 +334,8 @@ Rectangle {
                 MouseArea {
                     id: labelArea
                     anchors.fill: parent
-                    enabled: (root.item.labelId || "") !== ""
+                    // Not a link in select mode, for the artist name's reason.
+                    enabled: !root.selectMode && (root.item.labelId || "") !== ""
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: QbzHome.openLabel(root.item.labelId)

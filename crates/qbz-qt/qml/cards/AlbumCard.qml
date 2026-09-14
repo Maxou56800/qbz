@@ -213,7 +213,10 @@ Rectangle {
     /// Park the select indicator bottom-right of the art instead of top-right.
     property bool selectMarkBottom: false
     property bool selected: false
-    signal selectToggled()
+    /// `modifiers` rides straight off the click: a grid host turns Shift into
+    /// a range (controls/SelectionModel.qml). Every select-mode target on the
+    /// card — artwork, title, artist line — emits it.
+    signal selectToggled(int modifiers)
 
     // Album blacklist ("Block this album") — LIVE since QbzBlacklist landed
     // (`blockAlbum(id, title, artist, coverUrl)`). Kept as a property, not
@@ -561,7 +564,7 @@ Rectangle {
                     }
                     // .slint:169 — in select mode the card click TOGGLES.
                     if (root.selectMode) {
-                        root.selectToggled()
+                        root.selectToggled(mouse.modifiers)
                         return
                     }
                     if (root.pulledDead)
@@ -993,7 +996,7 @@ Rectangle {
                             // .slint:465 — the title carries the SAME target
                             // as the artwork, select mode included.
                             if (root.selectMode) {
-                                root.selectToggled()
+                                root.selectToggled(mouse.modifiers)
                                 return
                             }
                             if (root.pulledDead)
@@ -1009,7 +1012,8 @@ Rectangle {
                     width: parent.width
                     height: 18
                     text: root.artist
-                    color: (root.artistId !== "" || root.hostArtistLink)
+                    color: !root.selectMode
+                        && (root.artistId !== "" || root.hostArtistLink)
                         && artistArea.containsMouse
                         ? theme.textPrimary : theme.textMuted
                     font.pixelSize: theme.fontLink - 1
@@ -1019,9 +1023,15 @@ Rectangle {
                         id: artistArea
                         anchors.fill: parent
                         hoverEnabled: true
-                        cursorShape: root.artistId !== "" || root.hostArtistLink
+                        cursorShape: root.selectMode || root.artistId !== "" || root.hostArtistLink
                             ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: {
+                        onClicked: function (mouse) {
+                            // In select mode the artist line is the card too:
+                            // opening the artist mid-selection would drop it.
+                            if (root.selectMode) {
+                                root.selectToggled(mouse.modifiers)
+                                return
+                            }
                             if (root.artistId !== "")
                                 QbzArtist.openArtist(root.artistId)
                             else if (root.hostArtistLink)
