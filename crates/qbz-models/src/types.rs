@@ -518,6 +518,10 @@ pub struct Track {
     /// Favourites-list rows only (unix seconds); see `Album::favorited_at`.
     #[serde(default, deserialize_with = "crate::purchase_serde::lenient_option")]
     pub favorited_at: Option<i64>,
+    /// Store flag from the catalog (`purchasable`): `Some(false)` is the API
+    /// saying this release is not sold on Qobuz; absence is unknown, not no.
+    #[serde(default)]
+    pub purchasable: Option<bool>,
     #[serde(default)]
     pub title: String,
     /// Subtitle/edition info from Qobuz (e.g. "Player's Ball Mix",
@@ -730,6 +734,10 @@ pub struct Album {
     /// it (unix seconds); every other album shape leaves it `None`.
     #[serde(default, deserialize_with = "crate::purchase_serde::lenient_option")]
     pub favorited_at: Option<i64>,
+    /// Store flag from the catalog (`purchasable`): `Some(false)` is the API
+    /// saying this release is not sold on Qobuz; absence is unknown, not no.
+    #[serde(default)]
+    pub purchasable: Option<bool>,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
