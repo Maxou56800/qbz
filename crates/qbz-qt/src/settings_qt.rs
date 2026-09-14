@@ -2188,6 +2188,15 @@ pub struct SettingsDoc {
     /// The user's own background image ("" = the desktop wallpaper).
     #[serde(rename = "appBackgroundImage")]
     pub app_background_image: String,
+    /// Persisted fieldset state of the Appearance > Theme groups (default
+    /// expanded): the Custom theme editor, the Auto theme rows, and the
+    /// options of the selected dynamic background.
+    #[serde(rename = "themeCustomCollapsed")]
+    pub theme_custom_collapsed: bool,
+    #[serde(rename = "themeAutoCollapsed")]
+    pub theme_auto_collapsed: bool,
+    #[serde(rename = "ambientOptionsCollapsed")]
+    pub ambient_options_collapsed: bool,
     #[serde(rename = "autoThemeSources")]
     pub auto_theme_sources: Vec<String>,
     #[serde(rename = "autoThemeSourceIndex")]
@@ -2748,6 +2757,9 @@ pub async fn publish_snapshot() {
                 .position(|v| *v == pref_str("app_background", "off"))
                 .unwrap_or(0) as i32,
             app_background_image: pref_str("app_background_image", ""),
+            theme_custom_collapsed: pref_bool("theme_custom_collapsed", false),
+            theme_auto_collapsed: pref_bool("theme_auto_collapsed", false),
+            ambient_options_collapsed: pref_bool("ambient_options_collapsed", false),
             auto_theme_sources: AUTO_THEME_SOURCE_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -3687,6 +3699,19 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         }
         "myqbz-collections-collapsed" => {
             save_pref("myqbz_collections_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        // Appearance > Theme fieldsets, read back from settingsJson.
+        "theme-custom-collapsed" => {
+            save_pref("theme_custom_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "theme-auto-collapsed" => {
+            save_pref("theme_auto_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "ambient-options-collapsed" => {
+            save_pref("ambient_options_collapsed", serde_json::json!(value));
             Ok(Apply::None)
         }
         "sidebar-playlist-collage" => {
@@ -4879,6 +4904,24 @@ mod local_tab_order_tests {
         audio.backend_type = Some(AudioBackendType::PipeWire);
         audio.output_device = Some("front:CARD=USB,DEV=0".to_string());
         assert!(!requires_alsa_direct_unity(&audio));
+    }
+}
+
+#[cfg(test)]
+mod theme_fieldset_doc_tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_document_names_the_fieldset_states_for_qml() {
+        let doc = SettingsDoc {
+            theme_custom_collapsed: true,
+            ambient_options_collapsed: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&doc).expect("settings document serializes");
+        assert_eq!(json["themeCustomCollapsed"], true);
+        assert_eq!(json["themeAutoCollapsed"], false);
+        assert_eq!(json["ambientOptionsCollapsed"], true);
     }
 }
 
