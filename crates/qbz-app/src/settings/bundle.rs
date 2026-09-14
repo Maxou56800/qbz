@@ -1219,7 +1219,7 @@ fn apply_audio_writes(data_root: &Path, writes: &[(&str, &Value)]) -> Result<(),
             "quality_fallback_behavior" => {
                 store.set_quality_fallback_behavior(value.as_str().unwrap_or("always_fallback"))?
             }
-            other => log::warn!("[bundle] apply: unhandled audio key {other}"),
+            other => return Err(format!("unsupported audio setting: {other}")),
         }
     }
     Ok(())
