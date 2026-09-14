@@ -40,6 +40,20 @@
 //
 // A NEW object is always returned: mutating a `var` map in place notifies
 // nothing, and every binding on it would go stale.
+//
+// ── EVERY CLICK TARGET MUST HAND ITS MODIFIERS OVER ───────────────────────
+// The rule only sees what the click target passes in. A select-mode surface
+// has more targets than its row body — the checkbox disc, the checkbox
+// controls, a whole album card, the name links drawn on a row — and each one
+// that called its host with no modifiers turned every Shift-click there into
+// a plain toggle. `scripts/qml-tests/tst_multi_select.qml` clicks all of them
+// through the real components.
+//
+// ── IDS COMPARE AS STRINGS ────────────────────────────────────────────────
+// `anchorId` is a string property, so a numeric id (an offline track id, a
+// settings folder id) was stored as "42" and then never found again among
+// rows carrying 42 — Shift silently degraded to a toggle. The selection map
+// keys are strings anyway, so comparing as strings is the same identity.
 
 import QtQuick
 
@@ -49,12 +63,36 @@ QtObject {
     /// The row a shift-range measures from. "" = no anchor yet. Hosts clear
     /// it when they leave select mode.
     property string anchorId: ""
+    /// The row field that identifies a row. Track and album rows use `id`;
+    /// the offline manager's rows carry `trackId`, the explorer facets `key`.
+    property string idKey: "id"
+
+    function _idOf(row) {
+        if (!row)
+            return ""
+        var value = row[root.idKey]
+        return value === undefined || value === null ? "" : String(value)
+    }
 
     function _indexOf(rows, id) {
+        var wanted = String(id)
         for (var i = 0; i < rows.length; i++)
-            if (rows[i] && rows[i].id === id)
+            if (root._idOf(rows[i]) === wanted)
                 return i
         return -1
+    }
+
+    /// Adds every identified row between the anchor and `id` to `into`.
+    /// Rows without an id (group headers riding in the same list) are skipped.
+    function _fillRange(into, rows, anchorAt, here) {
+        var lo = Math.min(anchorAt, here)
+        var hi = Math.max(anchorAt, here)
+        for (var i = lo; i <= hi; i++) {
+            var rowId = root._idOf(rows[i])
+            if (rowId !== "")
+                into[rowId] = true
+        }
+        return into
     }
 
     /// The selection map after clicking `id`, given the ordered `rows` the
@@ -63,26 +101,21 @@ QtObject {
     /// Pass the FILTERED rows when a view is filtered: a range over rows the
     /// user cannot see is not a range they asked for.
     function next(current, id, rows, modifiers) {
-        var shift = (modifiers & Qt.ShiftModifier) !== 0
+        var shift = ((modifiers || 0) & Qt.ShiftModifier) !== 0
         var anchorAt = root.anchorId !== "" ? root._indexOf(rows, root.anchorId) : -1
 
         if (shift && anchorAt >= 0) {
             var here = root._indexOf(rows, id)
-            if (here >= 0) {
-                var lo = Math.min(anchorAt, here)
-                var hi = Math.max(anchorAt, here)
-                var m = Object.assign({}, current)
-                for (var i = lo; i <= hi; i++)
-                    m[rows[i].id] = true
+            if (here >= 0)
                 // The anchor STAYS, so the same range can be re-dragged.
-                return m
-            }
+                return root._fillRange(Object.assign({}, current), rows, anchorAt, here)
         }
 
+        var key = String(id)
         var out = Object.assign({}, current)
-        if (out[id] === true) delete out[id]
-        else out[id] = true
-        root.anchorId = id
+        if (out[key] === true) delete out[key]
+        else out[key] = true
+        root.anchorId = key
         return out
     }
 }
