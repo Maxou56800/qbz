@@ -11,6 +11,7 @@ bash scripts/test-compact-seek-qml.sh
 bash scripts/test-library-folders-qml.sh
 bash scripts/test-array-model-qml.sh
 bash scripts/test-keyed-model-qml.sh
+bash scripts/test-wallpaper-field-qml.sh
 bash scripts/test-card-menu-qml.sh
 bash scripts/test-orbit-qml.sh
 node scripts/test_qt_local_views.mjs

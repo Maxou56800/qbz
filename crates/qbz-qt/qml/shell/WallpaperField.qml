@@ -36,23 +36,27 @@ Item {
 
     clip: true
 
-    readonly property bool onWayland: Qt.platform.pluginName === "wayland"
+    /// Where the window's place comes from: the compositor's report on
+    /// Wayland, Qt everywhere else. Writable only so a test can take the
+    /// Wayland branch under the offscreen platform.
+    property bool isWayland: Qt.platform.pluginName === "wayland"
 
     // Ask the compositor as soon as this field is actually painting on a
     // Wayland session (idempotent on the Rust side; a no-op elsewhere).
     function _track() {
-        if (root.visible && root.onWayland && root.source !== "")
+        if (root.visible && root.isWayland && root.source !== "")
             QbzShell.trackWindowPosition()
     }
     onVisibleChanged: _track()
     onSourceChanged: _track()
+    onIsWaylandChanged: _track()
     Component.onCompleted: _track()
 
     // Read only while this field is the background: the tracker keeps
     // reporting moves after the mode is switched away, and an invisible item
     // whose geometry changes still dirties the window (the repaint rule).
     readonly property var compositorRects: {
-        if (!root.visible || !root.onWayland)
+        if (!root.visible || !root.isWayland)
             return []
         try {
             var a = JSON.parse(QbzShell.wallpaperWindowsJson || "[]")
@@ -89,16 +93,16 @@ Item {
     }
 
     readonly property bool positionKnown: root.visible && root.hostWindow !== null
-        && (!root.onWayland || root.compositorRect !== null)
+        && (!root.isWayland || root.compositorRect !== null)
     readonly property real screenW: Math.max(1, Screen.width)
     readonly property real screenH: Math.max(1, Screen.height)
     // The window's origin inside its screen; centred when unknown.
     readonly property real offX: !root.positionKnown
         ? Math.max(0, (root.screenW - root.width) / 2)
-        : (root.onWayland ? root.compositorRect.x : root.hostWindow.x) - Screen.virtualX
+        : (root.isWayland ? root.compositorRect.x : root.hostWindow.x) - Screen.virtualX
     readonly property real offY: !root.positionKnown
         ? Math.max(0, (root.screenH - root.height) / 2)
-        : (root.onWayland ? root.compositorRect.y : root.hostWindow.y) - Screen.virtualY
+        : (root.isWayland ? root.compositorRect.y : root.hostWindow.y) - Screen.virtualY
 
     Image {
         id: picture
