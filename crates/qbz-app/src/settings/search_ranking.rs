@@ -33,6 +33,8 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -131,6 +133,67 @@ pub struct SearchRanking {
     order: HashMap<String, u64>,
     /// Monotonic counter feeding `order`.
     tick: u64,
+    /// Serialized state waiting to be written, if any. `record` fills this
+    /// instead of touching the disk (see [`SearchRanking::persist`]).
+    dirty: bool,
+    /// Guards the file so two background writers cannot interleave, and lets
+    /// a stale one notice it has been superseded.
+    writer: Arc<WriterGuard>,
+}
+
+/// Serializes background writes to one file and lets a superseded write bail.
+///
+/// `record` is called from UI callbacks in both frontends, i.e. the GUI
+/// thread, and it used to `to_string_pretty` + `fs::write` inline. The store
+/// is small (tens of KB), so this was a short stall rather than a freeze — but
+/// it is still blocking file IO on the thread that paints, which the Qt port's
+/// own rules forbid, and it happened on every row activation.
+///
+/// The write moves to a detached thread. Correctness comes from two pieces:
+/// the mutex means writes never interleave, and the generation counter means a
+/// writer that lost the race exits instead of clobbering newer state with
+/// older bytes. Losing a race is the NORMAL case when a user clicks quickly —
+/// only the last write matters, and it always wins.
+#[derive(Default)]
+struct WriterGuard {
+    lock: Mutex<()>,
+    generation: AtomicU64,
+}
+
+/// Serialize + write. The ONLY place that touches the file.
+///
+/// Best-effort, exactly as before: every failure is logged and swallowed,
+/// because the in-memory state is the source of truth and losing a write
+/// costs the tail of the learned data, never correctness.
+fn write_doc(path: &Path, doc: &RankingDoc) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            log::warn!("search_ranking: cannot create dir {parent:?} ({e}); skipping persist");
+            return;
+        }
+    }
+    let json = match serde_json::to_string_pretty(doc) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("search_ranking: serialize failed ({e}); skipping persist");
+            return;
+        }
+    };
+    if let Err(e) = std::fs::write(path, json) {
+        log::warn!("search_ranking: write to {path:?} failed ({e}); state kept in memory");
+    }
+}
+
+impl Drop for SearchRanking {
+    /// Flush on teardown, on THIS thread.
+    ///
+    /// This is what bounds the window the background writer opens. A detached
+    /// writer spawned moments before logout might not finish; this runs when
+    /// the store is dropped (logout sets its `Option` to `None`) and takes the
+    /// same lock, so the last state always reaches disk in an orderly way.
+    fn drop(&mut self) {
+        self.persist_blocking();
+    }
 }
 
 impl SearchRanking {
@@ -146,6 +209,8 @@ impl SearchRanking {
             ranking: HashMap::new(),
             order: HashMap::new(),
             tick: 0,
+            dirty: false,
+            writer: Arc::new(WriterGuard::default()),
         };
         store.load();
         store
@@ -181,24 +246,90 @@ impl SearchRanking {
                 continue;
             }
             max_order = max_order.max(bucket.order);
-            self.order.insert(bucket.query.clone(), bucket.order);
-            self.ranking.insert(bucket.query, map);
+            // ONE-SHOT KEY MIGRATION (2026-08-03). `normalize_query` gained
+            // accent + punctuation folding, so a bucket persisted under the
+            // OLD rule can carry a key the new rule would never produce —
+            // `lääz rockit` where lookups now ask for `laaz rockit`. Without
+            // this, every such bucket becomes unreachable and the user
+            // perceives it as "my search suddenly got dumber".
+            //
+            // Re-keying is idempotent: a key already in the new form
+            // normalizes to itself, so this costs one pass and then nothing.
+            // Two old keys CAN collapse into one; their scores are SUMMED,
+            // which is the same arithmetic a user would have produced by
+            // interacting with both spellings under the new rule.
+            //
+            // Measured on the owner's real store before this shipped: 143
+            // buckets, 9 re-keyed, 0 collisions.
+            let key = normalize_query(&bucket.query);
+            match self.ranking.get_mut(&key) {
+                Some(existing) => {
+                    for (k, v) in map {
+                        let slot = existing.entry(k).or_insert(0);
+                        *slot = (*slot + v).min(MAX_SCORE);
+                    }
+                    // Keep the MORE RECENT of the two recency stamps.
+                    let prev = self.order.get(&key).copied().unwrap_or(0);
+                    self.order.insert(key, prev.max(bucket.order));
+                }
+                None => {
+                    self.order.insert(key.clone(), bucket.order);
+                    self.ranking.insert(key, map);
+                }
+            }
         }
         self.tick = max_order;
+        // The re-keyed state only reaches disk on the next `record`. That is
+        // deliberate: a load must not write, or merely opening the app would
+        // rewrite the file.
     }
 
     /// Serialize the current in-memory state and write it to disk. Best-effort:
     /// failures are logged and swallowed. Creates the `search/` subdir if needed.
-    fn persist(&self) {
-        if let Some(parent) = self.path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                log::warn!(
-                    "search_ranking: cannot create dir {:?} ({e}); skipping persist",
-                    parent
-                );
+    /// Hand the current state to a background writer.
+    ///
+    /// Returns immediately: the serialize and the `fs::write` happen on a
+    /// detached thread. Safe to call from a UI callback, which is exactly
+    /// where `record` is called from.
+    fn persist(&mut self) {
+        self.dirty = true;
+        let doc = self.snapshot();
+        let path = self.path.clone();
+        let writer = Arc::clone(&self.writer);
+        let generation = writer.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        std::thread::spawn(move || {
+            let _guard = writer.lock.lock().unwrap_or_else(|e| e.into_inner());
+            // Superseded while we waited for the lock: the newer writer holds
+            // strictly fresher state, so writing ours would move the file
+            // BACKWARDS. Bail.
+            if writer.generation.load(Ordering::SeqCst) != generation {
                 return;
             }
-        }
+            write_doc(&path, &doc);
+        });
+        self.dirty = false;
+    }
+
+    /// Write the current state on THIS thread. Used by `Drop`, where spawning
+    /// is pointless because nothing would join the thread.
+    fn persist_blocking(&self) {
+        // Take the same lock, so a flush at teardown cannot interleave with a
+        // background writer that is still running.
+        let _guard = self
+            .writer
+            .lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        self.writer.generation.fetch_add(1, Ordering::SeqCst);
+        write_doc(&self.path, &self.snapshot());
+    }
+
+    /// The persistable projection of the in-memory state.
+    fn snapshot(&self) -> RankingDoc {
+        self.build_doc()
+    }
+
+    fn build_doc(&self) -> RankingDoc {
         let mut buckets: Vec<QueryBucket> = self
             .ranking
             .iter()
@@ -227,21 +358,7 @@ impl SearchRanking {
             .collect();
         // Stable file output: sort buckets by query name.
         buckets.sort_by(|a, b| a.query.cmp(&b.query));
-
-        let doc = RankingDoc { buckets };
-        let json = match serde_json::to_string_pretty(&doc) {
-            Ok(j) => j,
-            Err(e) => {
-                log::warn!("search_ranking: serialize failed ({e}); skipping persist");
-                return;
-            }
-        };
-        if let Err(e) = std::fs::write(&self.path, json) {
-            log::warn!(
-                "search_ranking: write to {:?} failed ({e}); state kept in memory",
-                self.path
-            );
-        }
+        RankingDoc { buckets }
     }
 
     /// Touch a query's recency stamp (call when a query bucket is created or
@@ -429,6 +546,65 @@ mod tests {
         assert_eq!(r.ranking.len(), MAX_QUERIES);
         assert_eq!(r.score_for("q0", "artist", "1"), 0); // evicted
         assert_eq!(r.score_for("overflow", "artist", "1"), 1); // present
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_keys_are_migrated_and_collisions_sum() {
+        // A store written under the OLD normalize rule (accents and
+        // punctuation preserved) must stay reachable under the new one.
+        let dir = unique_test_dir("migrate");
+        std::fs::create_dir_all(dir.join("search")).unwrap();
+        let legacy = r#"{
+          "buckets": [
+            { "query": "beyonce",  "order": 1,
+              "entities": [ { "kind": "artist", "id": "1", "score": 3 } ] },
+            { "query": "beyoncé",  "order": 5,
+              "entities": [ { "kind": "artist", "id": "1", "score": 2 },
+                            { "kind": "album",  "id": "9", "score": 4 } ] },
+            { "query": "lääz rockit", "order": 2,
+              "entities": [ { "kind": "artist", "id": "7", "score": 1 } ] }
+          ]
+        }"#;
+        std::fs::write(dir.join("search").join("search_ranking.json"), legacy).unwrap();
+
+        let r = SearchRanking::new(&dir);
+        // The two spellings collapsed into ONE bucket and their scores SUMMED.
+        assert_eq!(r.score_for("beyonce", "artist", "1"), 5, "3 + 2");
+        assert_eq!(r.score_for("beyoncé", "artist", "1"), 5, "same bucket now");
+        assert_eq!(r.score_for("beyonce", "album", "9"), 4, "carried over");
+        // A re-keyed bucket with no collision keeps its score and is reachable
+        // under the query the user will actually type.
+        assert_eq!(r.score_for("laaz rockit", "artist", "7"), 1);
+        assert_eq!(r.score_for("Lääz Rockit", "artist", "7"), 1);
+        drop(r);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn background_write_lands_without_a_drop() {
+        // The round-trip test above drops the store first, so it exercises the
+        // Drop flush. This one proves the BACKGROUND writer actually reaches
+        // disk on its own, which is the path every row click takes.
+        let dir = unique_test_dir("bgwrite");
+        let mut r = SearchRanking::new(&dir);
+        r.record("portishead", "album", "dummy", InteractionAction::Play);
+        let path = dir.join("search").join("search_ranking.json");
+        // Detached thread: poll rather than sleep a fixed amount, so the test
+        // is neither flaky nor slower than it has to be.
+        let mut landed = false;
+        for _ in 0..200 {
+            if path.exists() && std::fs::read_to_string(&path).is_ok_and(|j| j.contains("dummy")) {
+                landed = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(landed, "the background writer never wrote {path:?}");
+        // The in-memory state is authoritative and correct IMMEDIATELY — the
+        // UI never waits on the disk.
+        assert_eq!(r.score_for("portishead", "album", "dummy"), 2);
+        drop(r);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

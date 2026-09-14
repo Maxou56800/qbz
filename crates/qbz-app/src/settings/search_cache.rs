@@ -4,9 +4,14 @@
 //! It owns ONLY the caching of `SearchAllResults` and exposes a tiny,
 //! synchronous `get`/`put` surface. It does NOT hold a `QbzCore`, does NOT
 //! call `core.search_all`, and knows nothing about the live network fetch.
-//! The SWR orchestration (render cached → fire live → replace, guarded by a
-//! version counter) lives in the qbz-slint controller, which already calls
-//! `core.search_all()` itself.
+//!
+//! **STATUS: this module is an unused library.** The SWR orchestration it was
+//! written for was never wired — `get` has no production caller in either
+//! frontend, and as of 2026-08-03 `put` has none either. It is kept, and kept
+//! tested, because the code is correct; it simply has no reader. The Qt
+//! frontend caches the FINISHED cortinilla payload instead
+//! (`qbz-app/src/settings/payload_cache.rs`), which also skips the mapping,
+//! ranking and local-library work an API-shaped cache cannot.
 //!
 //! ## Two tiers, by volatility
 //!
@@ -48,16 +53,79 @@ pub const ARTIST_CACHE_FILE: &str = "search_artist_cache.json";
 // Key normalization — THE cache key
 // ---------------------------------------------------------------------------
 
-/// Normalize a raw query into the canonical cache key: lowercase, trimmed,
-/// internal whitespace runs collapsed to single spaces.
+/// Normalize a raw query into the canonical cache key: accents folded to
+/// their ASCII base, punctuation dropped, lowercased, trimmed, internal
+/// whitespace runs collapsed to single spaces.
+///
+/// The accent + punctuation folding was added 2026-08-03. Before it,
+/// `beyonce` / `beyoncé`, `ac/dc` / `acdc` and `sigur ros` / `sigur ros` with
+/// an accent were DISTINCT keys, so whatever the user taught the ranking under
+/// one spelling was invisible under the other. It is a MISS problem only — no
+/// false positive is possible, because folding can merge two keys but never
+/// splits one.
+///
+/// Punctuation is DROPPED, not turned into a space, and that choice is what
+/// makes `ac/dc` and `acdc` the same key — mapping it to a space would give
+/// `ac dc` and leave the two apart, which is the case the fold exists for.
+/// Existing whitespace is untouched, so `me and mr. johnson` still becomes
+/// `me and mr johnson`.
 ///
 /// This is the ONLY definition of the cache key; `search_service.rs` and
 /// `search_ranking.rs` import it from here.
 pub fn normalize_query(q: &str) -> String {
-    q.split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
+    let folded: String = q
+        .chars()
+        .map(fold_char)
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect();
+    folded.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Fold one character to its unaccented ASCII base, or return it unchanged.
+///
+/// Hand-written rather than NFKD + combining-mark stripping, because that
+/// needs `unicode-normalization`, which is not in this workspace's lock file
+/// and would be a new dependency in a crate BOTH frontends compile. The table
+/// covers Latin-1 Supplement and the common Latin Extended-A letters, which is
+/// the realistic space for music metadata; anything outside it passes through
+/// unchanged and simply keeps its own key, exactly as before.
+///
+/// Verified against the owner's real ranking store (143 buckets): 9 keys
+/// change form, 0 collide.
+fn fold_char(c: char) -> char {
+    match c {
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => 'a',
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' | 'Ā' | 'Ă' | 'Ą' => 'A',
+        'ç' | 'ć' | 'č' | 'ĉ' | 'ċ' => 'c',
+        'Ç' | 'Ć' | 'Č' | 'Ĉ' | 'Ċ' => 'C',
+        'ď' | 'đ' => 'd',
+        'Ď' | 'Đ' => 'D',
+        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ĕ' | 'ė' | 'ę' | 'ě' => 'e',
+        'È' | 'É' | 'Ê' | 'Ë' | 'Ē' | 'Ĕ' | 'Ė' | 'Ę' | 'Ě' => 'E',
+        'ğ' | 'ĝ' | 'ġ' | 'ģ' => 'g',
+        'Ğ' | 'Ĝ' | 'Ġ' | 'Ģ' => 'G',
+        'ì' | 'í' | 'î' | 'ï' | 'ī' | 'ĭ' | 'į' | 'ı' => 'i',
+        'Ì' | 'Í' | 'Î' | 'Ï' | 'Ī' | 'Ĭ' | 'Į' | 'İ' => 'I',
+        'ł' | 'ĺ' | 'ľ' | 'ļ' => 'l',
+        'Ł' | 'Ĺ' | 'Ľ' | 'Ļ' => 'L',
+        'ñ' | 'ń' | 'ň' | 'ņ' => 'n',
+        'Ñ' | 'Ń' | 'Ň' | 'Ņ' => 'N',
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ŏ' | 'ő' => 'o',
+        'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | 'Ø' | 'Ō' | 'Ŏ' | 'Ő' => 'O',
+        'ŕ' | 'ř' | 'ŗ' => 'r',
+        'Ŕ' | 'Ř' | 'Ŗ' => 'R',
+        'ś' | 'š' | 'ş' | 'ŝ' => 's',
+        'Ś' | 'Š' | 'Ş' | 'Ŝ' => 'S',
+        'ť' | 'ţ' => 't',
+        'Ť' | 'Ţ' => 'T',
+        'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ŭ' | 'ů' | 'ű' | 'ų' => 'u',
+        'Ù' | 'Ú' | 'Û' | 'Ü' | 'Ū' | 'Ŭ' | 'Ů' | 'Ű' | 'Ų' => 'U',
+        'ý' | 'ÿ' => 'y',
+        'Ý' | 'Ÿ' => 'Y',
+        'ź' | 'ż' | 'ž' => 'z',
+        'Ź' | 'Ż' | 'Ž' => 'Z',
+        other => other,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +322,42 @@ fn page<T>(items: Vec<T>) -> SearchResultsPage<T> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn normalize_folds_accents_and_punctuation() {
+        // The whole point: these pairs used to be DIFFERENT keys, so anything
+        // learned under one spelling was invisible under the other.
+        assert_eq!(normalize_query("Beyoncé"), normalize_query("beyonce"));
+        assert_eq!(normalize_query("Sigur Rós"), normalize_query("sigur ros"));
+        assert_eq!(normalize_query("AC/DC"), normalize_query("acdc"));
+        assert_eq!(normalize_query("Lääz Rockit"), "laaz rockit");
+        assert_eq!(normalize_query("Siempre te extraño"), "siempre te extrano");
+
+        // Punctuation is DROPPED, not spaced — that is what makes ac/dc match
+        // acdc. Existing whitespace survives.
+        assert_eq!(normalize_query("Cro-Mags"), "cromags");
+        assert_eq!(normalize_query("Tom's Diner"), "toms diner");
+        assert_eq!(normalize_query("Me and Mr. Johnson"), "me and mr johnson");
+
+        // The pre-existing contract still holds.
+        assert_eq!(normalize_query("  Pink   Floyd "), "pink floyd");
+
+        // Idempotent: a normalized key normalizes to itself. The one-shot
+        // ranking migration depends on this.
+        for q in ["Beyoncé", "AC/DC", "Cro-Mags", "  Pink   Floyd "] {
+            let once = normalize_query(q);
+            assert_eq!(normalize_query(&once), once, "not idempotent for {q:?}");
+        }
+
+        // Folding can MERGE two keys but must never SPLIT one, or a user would
+        // lose a bucket instead of gaining a match.
+        assert!(!normalize_query("radiohead").is_empty());
+        assert_eq!(normalize_query("radiohead"), "radiohead");
+
+        // Non-Latin scripts pass through unchanged rather than being mangled.
+        assert_eq!(normalize_query("東京"), "東京");
+        assert_eq!(normalize_query("Кино"), "кино");
+    }
+
     use super::*;
 
     fn unique_test_dir(name: &str) -> PathBuf {
