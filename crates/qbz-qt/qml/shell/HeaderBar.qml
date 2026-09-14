@@ -968,10 +968,16 @@ Rectangle {
         id: searchBox
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        // 80% of the prior search width; gives up 60px to the section nav
-        // whenever that nav lives in the header (HeaderBar.slint:569). The
-        // width animates and `x` re-centers with it.
-        width: (root.width < 960 ? 179 : 256) - (QbzShell.navInSidebar ? 0 : 60)
+        // Grows with the window from 960px up (a quarter of it), between the
+        // 256px the layout was designed around and a 480px cap: wide enough
+        // to read a query on a 1720px window, never half the screen. Small
+        // windows keep the fixed 179px. The section nav still takes its 60px
+        // whenever it lives in the header (HeaderBar.slint:569); the fit rule
+        // reads this box's real edge, so the nav goes compact by itself when
+        // the wider box leaves it no room. The width animates and `x`
+        // re-centers with it.
+        width: (root.width < 960 ? 179 : Math.round(Math.max(256, Math.min(root.width * 0.24, 480))))
+            - (QbzShell.navInSidebar ? 0 : 60)
         height: 32
         Behavior on width {
             NumberAnimation { duration: 220; easing.type: Easing.InOutQuad }
