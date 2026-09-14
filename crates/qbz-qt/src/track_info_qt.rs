@@ -65,8 +65,13 @@ fn map(track: Track) -> TrackInfoDoc {
     .map(|(role, names)| CreditRow {
         role: format_role_label(&role).to_uppercase(),
         role_raw: role,
-        names,
+        // Catalog fillers ("Not Documented") are not people (2026-09-13).
+        names: names
+            .into_iter()
+            .filter(|name| !qbz_text_utils::names::is_placeholder_name(name))
+            .collect(),
     })
+    .filter(|row| !row.names.is_empty())
     .collect();
 
     TrackInfoDoc {
