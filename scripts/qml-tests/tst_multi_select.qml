@@ -13,6 +13,7 @@ import "../../crates/qbz-qt/qml/cards"
 import "../../crates/qbz-qt/qml/views" as Views
 import "../../crates/qbz-qt/qml/views/local" as Local
 import "../../crates/qbz-qt/qml/views/myqbz" as MyQbz
+import "../../crates/qbz-qt/qml/settings" as Settings
 
 Item {
     id: root
@@ -156,6 +157,18 @@ Item {
         view: railView
     }
 
+    // ---- Settings > Local Library folders ---------------------------------------
+    Settings.LibraryFolderTable {
+        id: folderTable
+        x: 0; y: 880
+        width: 1200
+        lib: ({ "folders": [1, 2, 3, 4, 5].map(function (n) {
+            return { "id": n, "displayName": "Music " + n, "path": "/music/" + n,
+                     "isNetwork": false, "enabled": true, "accessible": true,
+                     "status": "active", "lastScan": 0 }
+        }) })
+    }
+
     TestCase {
         name: "MultiSelect"
         when: windowShown
@@ -225,6 +238,7 @@ Item {
             QbzLocal.treeCalls = []
             railView.opened = []
             railView.treeSelectMode = true
+            folderTable.selectedIds = []
         }
 
         // A point of the row with nothing drawn over it but the body: the
@@ -375,6 +389,15 @@ Item {
             wait(0)
             clickOn(railCheck("/m/b"), 6, 6, Qt.ShiftModifier)
             compare(QbzLocal.treeCalls[3], "folder:/m/b")
+        }
+
+        function test_settings_folder_table_shift_range() {
+            var first = textItem(folderTable, "Music 1")
+            clickOn(first, 10, first.height / 2)
+            var fourth = textItem(folderTable, "Music 4")
+            clickOn(fourth, 10, fourth.height / 2, Qt.ShiftModifier)
+            compare(folderTable.selectedIds.slice().sort().join(","), "1,2,3,4")
+            verify(folderTable.isSelected(2), "the numeric ids stay numbers")
         }
     }
 
