@@ -100,8 +100,19 @@ Rectangle {
     property bool queueOnly: false
     property bool zebra: false
     property bool artistLink: false
-    property bool clickPlays: true
-    // Debounce for clickPlays rows (see onReleased).
+    /// Does a SINGLE click on the row body play? Only on a kiosk host.
+    ///
+    /// Desktop policy (#790), the same on every surface: the play disc plays
+    /// on its first click, a single click on the body does nothing (it is
+    /// where a select, a drag or a right-click starts), and a double click on
+    /// any part of the row that is not a control plays. Playlists, search,
+    /// the queue and the library used to play on one click while the album
+    /// page needed two — one gesture meaning two things by screen.
+    ///
+    /// The kiosk keeps tap-to-play: it is driven by touch, has no hover to
+    /// reveal the play disc, and a double tap is not a touch convention.
+    property bool clickPlays: root.kioskHost
+    // Debounce for clickPlays rows (see bodyClicked).
     property real _lastPlayRequestMs: 0
     /// RETIRED and INERT. primitives/TrackRow.slint has exactly ONE quality
     /// form (the bare QualityBadgeFull below) — there was never an icon/text
@@ -579,7 +590,7 @@ Rectangle {
             // ENABLED even when the chevron is not armed, and the click is
             // swallowed instead. A DISABLED MouseArea does not accept the
             // press at all, so it fell through to the row body underneath
-            // (`trArea`, z:-1) — and this surface has `clickPlays: true`, so
+            // (`trArea`, z:-1) — and a kiosk host has `clickPlays` on, so
             // clicking the greyed-out ↑ on the first row STARTED PLAYBACK.
             // The reference has no disabled state at all (its chevrons are
             // always armed and the Rust arm no-ops at the ends), so a dead
@@ -836,9 +847,9 @@ Rectangle {
             // TrackPlayCell.slint:234-243 — the cell is its OWN click target:
             // a non-current cell plays the track, the current cell toggles
             // play/pause. Without it the circle was a control that rendered
-            // and did nothing on the album view (clickPlays:false there, so
-            // the press fell through to the row body, which only reacts to a
-            // double-click). Declared LAST so it sits ABOVE the glyph, and it
+            // and did nothing on the album view (clickPlays off, so the press
+            // fell through to the row body, which only reacts to a double
+            // click) — today that is every desktop surface (#790). Declared LAST so it sits ABOVE the glyph, and it
             // is above the row-body area regardless (that one is pinned z:-1).
             MouseArea {
                 id: playArea
@@ -1041,7 +1052,7 @@ Rectangle {
                         parts.push(span(i))
                     return parts.join(", ")
                 }
-                color: root.artistLink && root.item.artistId && artistLinkArea.containsMouse
+                color: !linkMode && hotSpan === 0 && root.item.artistId
                     ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -1062,6 +1073,14 @@ Rectangle {
                         prefix += ", "
                     }
                     return -1
+                }
+                /// The name under `x` that is a real link (-1 = none): the
+                /// span in link mode; the drawn text otherwise. The area spans
+                /// the whole column, and the whitespace past the names belongs
+                /// to the row body (a double click there plays, #790).
+                function linkAt(x) {
+                    var i = linkMode ? spanAt(x) : (x >= 0 && x <= contentWidth ? 0 : -1)
+                    return (i >= 0 && spans[i].href !== "") ? i : -1
                 }
                 function activate(i) {
                     var s = artistLine.spans[i]
@@ -1091,12 +1110,9 @@ Rectangle {
                     enabled: !root.selectMode
                         && root.artistLink && (artistLine.linkMode || !!root.item.artistId)
                     hoverEnabled: true
-                    cursorShape: (artistLine.linkMode
-                                  ? (artistLine.hotSpan >= 0 && artistLine.spans[artistLine.hotSpan].href !== "")
-                                  : enabled) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: artistLine.hotSpan >= 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onPositionChanged: function (mouse) {
-                        if (artistLine.linkMode)
-                            artistLine.hotSpan = artistLine.spanAt(mouse.x)
+                        artistLine.hotSpan = artistLine.linkAt(mouse.x)
                     }
                     onExited: artistLine.hotSpan = -1
                     // Entering select mode under the pointer disables the area
@@ -1106,14 +1122,15 @@ Rectangle {
                     // both through one handler, so gating only the menu would
                     // leave the LINK navigating to the track's own artist.
                     onClicked: function (mouse) {
-                        if (artistLine.linkMode) {
-                            var i = artistLine.spanAt(mouse.x)
-                            if (i >= 0)
-                                artistLine.activate(i)
-                            return
-                        }
-                        if (root.routeGoToExternally) root.goToRequested("artist")
-                        else QbzArtist.openArtist(root.item.artistId)
+                        var i = artistLine.linkAt(mouse.x)
+                        if (i >= 0)
+                            artistLine.activate(i)
+                        else
+                            root.bodyClicked()
+                    }
+                    onDoubleClicked: function (mouse) {
+                        if (artistLine.linkAt(mouse.x) < 0)
+                            root.bodyDoubleClicked()
                     }
                 }
             }
@@ -1124,7 +1141,7 @@ Rectangle {
             width: cols.colAlbum
             anchors.verticalCenter: parent.verticalCenter
             text: root.item.album || ""
-            color: (albumArea.containsMouse && albumArea.enabled) ? theme.accent : theme.textMuted
+            color: albumArea.overName ? theme.accent : theme.textMuted
             font.pixelSize: 12
             elide: Text.ElideRight
             MouseArea {
@@ -1133,10 +1150,25 @@ Rectangle {
                 // Not a link in select mode, for the artist line's reason.
                 enabled: !root.selectMode && !!root.item.albumId && !root.releaseGone
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                // Only the drawn name is the link; the rest of the column is
+                // row body (the artist line's rule, #790).
+                property bool overName: false
+                onPositionChanged: function (mouse) { overName = mouse.x <= parent.contentWidth }
+                onExited: overName = false
+                onEnabledChanged: if (!enabled) overName = false
+                cursorShape: overName ? Qt.PointingHandCursor : Qt.ArrowCursor
                 // The names ride along so a release the catalog lost can
                 // still be named on its page (album_qt::publish_unavailable).
-                onClicked: QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
+                onClicked: function (mouse) {
+                    if (mouse.x <= parent.contentWidth)
+                        QbzAlbum.openAlbumFrom(root.item.albumId, root.item.album || "", root.item.artist || "")
+                    else
+                        root.bodyClicked()
+                }
+                onDoubleClicked: function (mouse) {
+                    if (mouse.x > parent.contentWidth)
+                        root.bodyDoubleClicked()
+                }
             }
         }
         // Duration.
@@ -1611,6 +1643,32 @@ Rectangle {
             }
         })
     }
+    /// A single left click on a part of the row that is not a control.
+    /// Plays only where `clickPlays` (the kiosk); otherwise nothing.
+    function bodyClicked() {
+        if (!root.clickPlays || root.selectMode || root.pulledDead || root.playBlocked)
+            return
+        // ONE play per gesture. A double tap is two releases plus the
+        // doubleClicked handler: three `playRequested`s within ~300 ms, i.e.
+        // three restarts of the same track (2026-08-29 smoke: three "served
+        // from OFFLINE cache" in 230 ms). The second release inside the
+        // double-click window is dropped here; bodyDoubleClicked yields to
+        // clickPlays rows.
+        const now = Date.now()
+        if (now - root._lastPlayRequestMs > 400) {
+            root._lastPlayRequestMs = now
+            root.playRequested()
+        }
+    }
+    /// A double click on a part of the row that is not a control: the
+    /// desktop play gesture (#790). Inert in select mode (the two single
+    /// clicks already toggled), on a dead or play-blocked row, and on a
+    /// clickPlays row, whose first release already played.
+    function bodyDoubleClicked() {
+        if (root.clickPlays || root.selectMode || root.pulledDead || root.playBlocked)
+            return
+        root.playRequested()
+    }
     MouseArea {
         id: trArea
         anchors.fill: parent
@@ -1740,18 +1798,7 @@ Rectangle {
             if (wasDragging) {
                 mouse.accepted = true
             } else if (root.clickPlays) {
-                // ONE play per gesture. A double-click is two releases plus
-                // the doubleClicked handler: three `playRequested`s within
-                // ~300 ms, i.e. three restarts of the same track (2026-08-29
-                // smoke: three "served from OFFLINE cache" in 230 ms). The
-                // second release inside the double-click window is dropped
-                // here; the doubleClicked arm below already yields to
-                // clickPlays rows.
-                const now = Date.now()
-                if (now - root._lastPlayRequestMs > 400) {
-                    root._lastPlayRequestMs = now
-                    root.playRequested()
-                }
+                root.bodyClicked()
             } else {
                 mouse.accepted = false
             }
@@ -1764,19 +1811,10 @@ Rectangle {
             // ":156 — In select mode a double-click just selects (via
             // `clicked`); no play." The single-click release above has already
             // toggled twice by then, which lands back where it started, so the
-            // double-click must not add a third.
-            if (root.selectMode)
-                return
-            // The album view plays on DOUBLE-click (clickPlays:false there),
-            // so the single-click block above is not enough on its own.
-            if (root.pulledDead)
-                return
-            // A clickPlays row already played on the first release; a third
-            // emission here restarted the track a third time.
-            if (root.clickPlays)
-                return
+            // double-click must not add a third. That gate, the dead / blocked
+            // row and the clickPlays row all live in bodyDoubleClicked.
             if (mouse.button === Qt.LeftButton)
-                root.playRequested()
+                root.bodyDoubleClicked()
         }
     }
 }

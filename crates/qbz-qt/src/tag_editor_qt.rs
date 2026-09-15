@@ -95,6 +95,41 @@ fn editor_remote_source(track: &LocalTrack) -> String {
         .to_string()
 }
 
+/// The provider's album id inside a media-server album group key: Plex groups
+/// as `plex:album:<rating key>`, Jellyfin and Subsonic as `<source>:<id>`.
+fn remote_album_id(source: &str, group_key: &str) -> String {
+    let prefix = if source == "plex" {
+        "plex:album:".to_string()
+    } else {
+        format!("{source}:")
+    };
+    group_key
+        .strip_prefix(&prefix)
+        .unwrap_or(group_key)
+        .to_string()
+}
+
+/// The effective album group of a media-server album's rows (the first row's
+/// own key wins over the caller's fallback) and the sidecar target it edits.
+/// Media-server files live on the server, so the only writable layer is QBZ's
+/// own metadata sidecar — `validate_draft` refuses a direct write for it.
+fn remote_editor_target(source: &str, tracks: &[LocalTrack], fallback_group: &str) -> (String, EditorTarget) {
+    let group = tracks
+        .first()
+        .map(|track| track.album_group_key.as_str())
+        .filter(|key| !key.is_empty())
+        .unwrap_or(fallback_group)
+        .to_string();
+    let target = EditorTarget::Remote {
+        target: crate::remote_metadata_qt::target(
+            source,
+            &crate::remote_metadata_qt::active_source_instance(source),
+            &remote_album_id(source, &group),
+        ),
+    };
+    (group, target)
+}
+
 /// Sidecars belong to an album directory, not to the album identity string.
 /// Folder grouping normally makes both values equal, but metadata grouping
 /// deliberately does not. Prefer a real group directory, then the selected
@@ -650,6 +685,16 @@ fn open_session(
 pub fn open(album_id: String) {
     let tracks = crate::local_album_actions::current_version_tracks();
     let group_key = crate::local_album_actions::current_version_dir();
+    // A Plex / Jellyfin / Subsonic version has no local directory: it edits
+    // its sidecar, exactly like the per-track editor already does. Without
+    // this arm the album header's pencil fell into the local-directory check
+    // and answered "available for local file versions only".
+    let source = tracks.first().map(editor_remote_source).unwrap_or_default();
+    if !source.is_empty() {
+        let (group, target) = remote_editor_target(&source, &tracks, &group_key);
+        open_session(album_id, group, String::new(), tracks, target, None);
+        return;
+    }
     open_session(
         album_id,
         group_key.clone(),
@@ -721,29 +766,7 @@ pub fn open_track(track: LocalTrack) {
             return;
         };
         let target = if remote {
-            let effective_group = tracks
-                .first()
-                .map(|track| track.album_group_key.as_str())
-                .filter(|key| !key.is_empty())
-                .unwrap_or(&group_key);
-            let album_id = if source == "plex" {
-                effective_group
-                    .strip_prefix("plex:album:")
-                    .map(str::to_string)
-                    .unwrap_or_else(|| effective_group.to_string())
-            } else {
-                effective_group
-                    .strip_prefix(&format!("{source}:"))
-                    .unwrap_or(effective_group)
-                    .to_string()
-            };
-            EditorTarget::Remote {
-                target: crate::remote_metadata_qt::target(
-                    &source,
-                    &crate::remote_metadata_qt::active_source_instance(&source),
-                    &album_id,
-                ),
-            }
+            remote_editor_target(&source, &tracks, &group_key).1
         } else {
             EditorTarget::Library
         };
@@ -2008,6 +2031,15 @@ mod tests {
         assert_eq!(parse_optional_number(" 12 ", "Track").unwrap(), Some(12));
         assert!(parse_optional_number("0", "Track").is_err());
         assert!(parse_optional_number("nope", "Track").is_err());
+    }
+
+    #[test]
+    fn remote_album_ids_strip_each_providers_group_prefix() {
+        assert_eq!(remote_album_id("plex", "plex:album:4812"), "4812");
+        assert_eq!(remote_album_id("jellyfin", "jellyfin:album-9"), "album-9");
+        assert_eq!(remote_album_id("subsonic", "subsonic:al-7"), "al-7");
+        // An unprefixed key is already the provider id.
+        assert_eq!(remote_album_id("jellyfin", "album-9"), "album-9");
     }
 
     #[test]

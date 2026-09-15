@@ -22,7 +22,8 @@
 // the reference's, so the control can be armed later without moving a pixel.
 // (Flagged to the orchestrator rather than invented.)
 //
-// The row body plays, and only when `streamable` — the purchases-list default
+// A DOUBLE click on the row body plays (the track-row policy, #790: a single
+// click does nothing), and only when `streamable` — the purchases-list default
 // is TRUE (§G.2), so an unplayable row is one the API really did mark that way.
 
 import QtQuick
@@ -93,8 +94,7 @@ Rectangle {
         anchors.fill: parent
         enabled: root.streamable
         hoverEnabled: true
-        cursorShape: root.streamable ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: root.playRequested()
+        onDoubleClicked: root.playRequested()
     }
 
     Row {

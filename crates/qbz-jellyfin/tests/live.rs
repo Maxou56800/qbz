@@ -67,7 +67,7 @@ async fn session(url: &str, user: &str, pass: &str) -> &'static qbz_jellyfin::Se
 /// The authenticated client every live test shares.
 async fn client(url: &str, user: &str, pass: &str) -> qbz_jellyfin::JellyfinClient {
     let s = session(url, user, pass).await;
-    qbz_jellyfin::JellyfinClient::new(url, &s.access_token, &s.user_id).unwrap()
+    qbz_jellyfin::JellyfinClient::new(url, &s.access_token, &s.user_id, "qbz-live-test").unwrap()
 }
 
 macro_rules! skip_without_server {
@@ -246,4 +246,27 @@ async fn a_future_delta_returns_nothing() {
         .await
         .expect("delta page");
     assert!(page.is_empty(), "a year-2999 delta returned {} rows", page.len());
+}
+
+/// The delta sweep really INCLUDES what changed. A future date alone cannot
+/// catch the servers that break the filter: 10.9/10.10 answer 500 to any
+/// `minDateLastSaved` (their SQL binds a parameter the clause never names),
+/// and 10.8 evaluates the same unbound parameter as NULL — every delta comes
+/// back empty and an incremental re-scan silently sees no change.
+#[tokio::test]
+async fn a_past_delta_returns_the_whole_library() {
+    let (url, user, pass) = skip_without_server!();
+    let c = client(&url, &user, &pass).await;
+    let libs = c.music_libraries().await.expect("libraries");
+    let total = c.track_count(Some(&libs[0].id)).await.expect("count");
+    let (page, reported) = c
+        .essential_tracks_page(Some(&libs[0].id), 0, Some("2000-01-01T00:00:00Z"))
+        .await
+        .expect("delta page");
+    assert_eq!(reported, total, "a year-2000 delta did not report the library");
+    assert_eq!(
+        page.len() as u64,
+        total.min(u64::from(qbz_jellyfin::PAGE_SIZE)),
+        "a year-2000 delta returned a partial page"
+    );
 }
