@@ -100,8 +100,12 @@ Column {
         case "testing": return QbzSession.tr("Checking server…", QbzSession.trRev)
         case "authenticating": return QbzSession.tr("Signing in…", QbzSession.trRev)
         case "verifying": return QbzSession.tr("Checking library access…", QbzSession.trRev)
+        // A saved Jellyfin session stays valid after a Test: "Sign in to
+        // connect" read as if the server had been disconnected.
         case "reachable": return root.server === "jellyfin"
-            ? QbzSession.tr("Server reachable. Sign in to connect.", QbzSession.trRev)
+            ? (root.state.hasCredential === true
+                ? QbzSession.tr("Saved connection. Sync to check access.", QbzSession.trRev)
+                : QbzSession.tr("Server reachable. Sign in to connect.", QbzSession.trRev))
             : QbzSession.tr("Server reachable. Credentials have not been checked.", QbzSession.trRev)
         case "syncing": return QbzSession.tr("Connected. Syncing library…", QbzSession.trRev)
         case "ready": return QbzSession.tr("Connected. Library is up to date.", QbzSession.trRev)
