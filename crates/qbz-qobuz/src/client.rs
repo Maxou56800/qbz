@@ -2815,6 +2815,32 @@ impl QobuzClient {
         track_id: u64,
         preferred: Quality,
     ) -> Result<StreamUrl> {
+        self.get_stream_url_with_acquisition(track_id, preferred)
+            .await
+            .map(|(url, _)| url)
+    }
+
+    /// Also return the quality of the successful request. The response's
+    /// format_id describes the available file, not whether fallback occurred.
+    pub async fn get_stream_url_with_acquisition(
+        &self,
+        track_id: u64,
+        preferred: Quality,
+    ) -> Result<(StreamUrl, Quality)> {
+        Self::resolve_stream_url_with_fallback(track_id, preferred, |quality| {
+            self.get_stream_url(track_id, quality)
+        }).await
+    }
+
+    async fn resolve_stream_url_with_fallback<F, Fut>(
+        track_id: u64,
+        preferred: Quality,
+        mut fetch: F,
+    ) -> Result<(StreamUrl, Quality)>
+    where
+        F: FnMut(Quality) -> Fut,
+        Fut: std::future::Future<Output = Result<StreamUrl>>,
+    {
         log::info!(
             "Getting stream URL with fallback for track {}, preferred quality: {:?}",
             track_id,
@@ -2827,13 +2853,13 @@ impl QobuzClient {
 
         for quality in &qualities[start_idx..] {
             log::info!("Trying quality: {:?}", quality);
-            match self.get_stream_url(track_id, *quality).await {
+            match fetch(*quality).await {
                 Ok(url) if !url.has_restrictions() => {
                     log::info!(
                         "Got stream URL for requested quality format_id={}",
                         quality.id()
                     );
-                    return Ok(url);
+                    return Ok((url, *quality));
                 }
                 Ok(_) => {
                     log::info!("Quality {:?} has restrictions, trying next", quality);
@@ -3578,6 +3604,71 @@ impl Default for QobuzClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn available_master(format_id: u32) -> StreamUrl {
+        StreamUrl {
+            url: "https://cdn.example.test/audio".into(), format_id,
+            mime_type: "audio/flac".into(),
+            sampling_rate: if format_id == 6 { 44.1 } else { 96.0 },
+            bit_depth: Some(if format_id == 6 { 16 } else { 24 }),
+            track_id: 7, restrictions: Vec::new(), sample: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn successful_request_keeps_available_format_without_extra_attempts() {
+        for format_id in [6, 7] {
+            let mut attempts = Vec::new();
+            let (url, actual) = QobuzClient::resolve_stream_url_with_fallback(
+                7, Quality::UltraHiRes, |quality| {
+                    attempts.push(quality);
+                    std::future::ready(Ok(available_master(format_id)))
+                },
+            ).await.unwrap();
+            assert_eq!(attempts, vec![Quality::UltraHiRes]);
+            assert_eq!(actual, Quality::UltraHiRes);
+            assert_eq!(url.format_id, format_id);
+        }
+    }
+
+    #[tokio::test]
+    async fn successful_request_reports_actual_fallback_not_initial_preference() {
+        let mut attempts = Vec::new();
+        let (url, actual) = QobuzClient::resolve_stream_url_with_fallback(
+            7, Quality::UltraHiRes, |quality| {
+                attempts.push(quality);
+                let mut url = available_master(7);
+                if quality == Quality::UltraHiRes {
+                    url.restrictions.push(qbz_models::StreamRestriction {
+                        code: "FormatRestrictedByFormatAvailability".into(),
+                    });
+                }
+                std::future::ready(Ok(url))
+            },
+        ).await.unwrap();
+        assert_eq!(attempts, vec![Quality::UltraHiRes, Quality::HiRes]);
+        assert_eq!(actual, Quality::HiRes);
+        assert_eq!(url.format_id, 7);
+    }
+
+    #[tokio::test]
+    async fn successful_request_aborts_auth_failure_without_lower_quality_requests() {
+        for error in [ApiError::Forbidden("fixture".into()),
+            ApiError::ForbiddenCircuitOpen(30),
+            ApiError::AuthenticationError("fixture".into()), ApiError::InvalidAppSecret] {
+            let expected = std::mem::discriminant(&error);
+            let mut error = Some(error);
+            let mut attempts = Vec::new();
+            let result = QobuzClient::resolve_stream_url_with_fallback(
+                7, Quality::UltraHiRes, |quality| {
+                    attempts.push(quality);
+                    std::future::ready(Err(error.take().expect("must abort after first failure")))
+                },
+            ).await;
+            assert_eq!(std::mem::discriminant(&result.unwrap_err()), expected);
+            assert_eq!(attempts, vec![Quality::UltraHiRes]);
+        }
+    }
 
     #[test]
     fn remote_body_diagnostic_never_echoes_payload() {

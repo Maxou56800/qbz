@@ -87,7 +87,16 @@ n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list pl
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list promotion_keeps_24bit_192khz 2>/dev/null | grep -c ': test$' || true)
 [ "$n" -ge 1 ] || { say "FAIL: Hi-Res promotion regression missing"; exit 1; }
 
+say "gate: successful request versus available master and explicit quality fallback"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list successful_request_ 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 4 ] || { say "FAIL: cache acquisition/sidecar regressions missing ($n < 4)"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list successful_request_ 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 1 ] || { say "FAIL: available-master reuse regression missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-qobuz --lib -- --list successful_request_ 2>/dev/null | grep -c ': test$' || true)
+[ "$n" -ge 3 ] || { say "FAIL: request fallback/authentication regressions missing"; exit 1; }
+
 say "gate: bounded disk playback regressions"
+
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-cache --lib -- --list disk_reader_tests:: 2>/dev/null | grep -c ': test$' || true)
 [ "$n" -ge 3 ] || { say "FAIL: disk reader/atomic replacement regressions missing"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-player --lib -- --list disk_ 2>/dev/null | grep -c ': test$' || true)

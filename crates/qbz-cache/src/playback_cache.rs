@@ -187,7 +187,14 @@ impl PlaybackCache {
             let mut bytes = Vec::new();
             fs::File::open(self.quality_path(track_id)).ok()?.take(4096).read_to_end(&mut bytes).ok()?;
             let record: QualityRecord = serde_json::from_slice(&bytes).ok()?;
-            (record.version == 1 && record.file == identity).then_some(record.quality)
+            if record.file != identity { return None; }
+            match record.version {
+                // v1 did not record the successful request. Never infer it
+                // from the preference or from a response's available format.
+                1 => crate::CacheQuality::from_resolved(record.quality.requested, record.quality.resolved.id()),
+                2 => Some(record.quality),
+                _ => None,
+            }
         })();
         Some((file, quality))
     }
@@ -201,7 +208,7 @@ impl PlaybackCache {
         let published = (|| -> Option<()> {
             let quality = quality?;
             let file = fs::File::open(self.track_path(track_id)).ok()?;
-            let record = QualityRecord { version: 1, file: FileIdentity::read(&file)?, quality };
+            let record = QualityRecord { version: 2, file: FileIdentity::read(&file)?, quality };
             let bytes = serde_json::to_vec(&record).ok()?;
             let mut pending = tempfile::NamedTempFile::new_in(&self.cache_dir).ok()?;
             pending.write_all(&bytes).ok()?;
@@ -513,7 +520,7 @@ mod disk_reader_tests {
         use qbz_models::Quality;
         let temp = tempfile::tempdir().unwrap();
         let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
-        let quality = crate::CacheQuality::from_resolved(Quality::UltraHiRes, 27);
+        let quality = crate::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::UltraHiRes, 7);
         assert!(cache.insert_with_quality(7, b"first", quality));
         let record = fs::read(cache.quality_path(7)).unwrap();
         assert_eq!(cache.open_with_quality(7).unwrap().1, quality);
@@ -535,13 +542,36 @@ mod disk_reader_tests {
         let temp = tempfile::tempdir().unwrap();
         let disk = std::sync::Arc::new(PlaybackCache::with_path(temp.path().into(), 1024).unwrap());
         let memory = crate::AudioCache::with_playback_cache(5, disk.clone());
-        let quality = crate::CacheQuality::from_resolved(qbz_models::Quality::UltraHiRes, 27);
+        let quality = crate::CacheQuality::from_acquisition(qbz_models::Quality::UltraHiRes, qbz_models::Quality::UltraHiRes, 6);
         memory.insert_with_quality(1, b"first".to_vec(), quality);
         assert_eq!(memory.get(1).unwrap().quality, quality);
         memory.insert(2, b"other".to_vec());
         assert!(memory.get(1).is_none());
         assert_eq!(disk.open_with_quality(1).unwrap().1, quality);
         assert_eq!(disk.get(1).unwrap(), b"first");
+    }
+
+    #[test]
+    fn successful_request_sidecar_version_controls_trust() {
+        use qbz_models::Quality;
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        let quality = crate::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::UltraHiRes, 6);
+        assert!(cache.insert_with_quality(7, b"complete audio", quality));
+        let path = cache.quality_path(7);
+        let mut record: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(record["version"], 2);
+        assert!(cache.open_with_quality(7).unwrap().1.unwrap().satisfies(Quality::UltraHiRes));
+        // Even a stray new field in an old record cannot grant new trust.
+        record["version"] = 1.into();
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+        let old = cache.open_with_quality(7).unwrap().1.unwrap();
+        assert!(!old.satisfies(Quality::UltraHiRes));
+        assert!(old.satisfies(Quality::Lossless));
+        record["version"] = 99.into();
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, None);
+        assert_eq!(cache.get(7).unwrap(), b"complete audio");
     }
 
     #[test]

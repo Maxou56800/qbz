@@ -5690,7 +5690,7 @@ impl Player {
                 let content_key = cmaf_info.content_key;
                 let flac_header = cmaf_info.flac_header;
                 let n_segments = cmaf_info.n_segments;
-                let cache_quality = qbz_cache::CacheQuality::from_resolved(quality, cmaf_info.format_id);
+                let cache_quality = qbz_cache::CacheQuality::from_acquisition(quality, quality, cmaf_info.format_id);
                 let cache = self.audio_cache.clone();
                 let feeder_state = self.state.clone();
                 let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
@@ -5754,8 +5754,8 @@ impl Player {
 
         // Legacy fallback: get the stream URL
         log::info!("Player: Getting stream URL...");
-        let stream_url = client
-            .get_stream_url_with_fallback(track_id, quality)
+        let (stream_url, successful_request) = client
+            .get_stream_url_with_acquisition(track_id, quality)
             .await
             .map_err(|_| {
                 log::error!("Player: Failed to get stream URL (details omitted)");
@@ -5774,7 +5774,7 @@ impl Player {
         let (source, writer) = self.download_buffered(&stream_url.url).await?;
         if !self.is_current_play(gen) { return Ok(()); }
         if !skip_cache {
-            Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_resolved(quality, stream_url.format_id)).await?;
+            Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_acquisition(quality, successful_request, stream_url.format_id)).await?;
         }
         if !self.is_current_play(gen) { return Ok(()); }
         let (meta, duration) = disk_playback::source_metadata(&source)?;
@@ -5809,11 +5809,11 @@ impl Player {
             Ok(info) => info,
             Err(error) => {
                 log::warn!("[GAPLESS-STREAM] CMAF setup failed: {error}; trying buffered legacy source");
-                let url = client.get_stream_url_with_fallback(track_id, quality).await.map_err(|e| e.to_string())?;
+                let (url, successful_request) = client.get_stream_url_with_acquisition(track_id, quality).await.map_err(|e| e.to_string())?;
                 let (source, writer) = self.download_buffered(&url.url).await?;
                 if !self.is_current_play(gen) { return Err("gapless legacy fetch superseded".into()); }
                 let skip_cache = self.audio_settings.lock().map(|s| s.streaming_only).unwrap_or(false);
-                if !skip_cache { Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_resolved(quality, url.format_id)).await?; }
+                if !skip_cache { Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_acquisition(quality, successful_request, url.format_id)).await?; }
                 if !self.is_current_play(gen) { return Err("gapless legacy fetch superseded".into()); }
                 let (meta, duration_secs) = disk_playback::source_metadata(&source)?;
                 return self.tx.send(AudioCommand::PlayNextStreaming {
@@ -5877,7 +5877,7 @@ impl Player {
         let content_key = cmaf_info.content_key;
         let flac_header = cmaf_info.flac_header;
         let n_segments = cmaf_info.n_segments;
-        let cache_quality = qbz_cache::CacheQuality::from_resolved(quality, cmaf_info.format_id);
+        let cache_quality = qbz_cache::CacheQuality::from_acquisition(quality, quality, cmaf_info.format_id);
         let cache = self.audio_cache.clone();
         let skip_cache = self.audio_settings.lock().map(|settings| settings.streaming_only).unwrap_or(false);
         tokio::spawn(async move {
@@ -6015,7 +6015,7 @@ impl Player {
             let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
             Self::cmaf_stream_segments(&info.url_template, info.n_segments, info.content_key,
                 info.flac_header, writer, track_id, self.audio_cache.clone(),
-                qbz_cache::CacheQuality::from_resolved(quality, info.format_id), false, size, cancel_rx).await?;
+                qbz_cache::CacheQuality::from_acquisition(quality, quality, info.format_id), false, size, cancel_rx).await?;
             Ok::<(), String>(())
         }.await;
         let result = match cmaf_result {
@@ -6023,9 +6023,9 @@ impl Player {
             Err(error) => {
                 log::warn!("[PREFETCH] CMAF failed for {track_id}: {error}; trying legacy");
                 async {
-                    let url = client.get_stream_url_with_fallback(track_id, quality).await.map_err(|e| e.to_string())?;
+                    let (url, successful_request) = client.get_stream_url_with_acquisition(track_id, quality).await.map_err(|e| e.to_string())?;
                     let (_source, writer) = self.download_buffered(&url.url).await?;
-                    Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_resolved(quality, url.format_id)).await
+                    Self::persist_stream(self.audio_cache.clone(), writer, track_id, qbz_cache::CacheQuality::from_acquisition(quality, successful_request, url.format_id)).await
                 }.await
             }
         };
@@ -6196,12 +6196,12 @@ impl Player {
             self.ensure_loudness_row(client, track_id)
         );
         let downloaded = match downloaded {
-            Ok((data, resolved)) => Some((data, qbz_cache::CacheQuality::from_resolved(quality, resolved.format_id))),
+            Ok((data, resolved)) => Some((data, qbz_cache::CacheQuality::from_acquisition(quality, quality, resolved.format_id))),
             Err(e) => {
                 log::warn!("[GAPLESS] CMAF failed for track {track_id}: {e}, trying legacy");
-                match client.get_stream_url_with_fallback(track_id, quality).await {
-                    Ok(stream_url) => match self.download_audio(&stream_url.url).await {
-                        Ok(data) => Some((data, qbz_cache::CacheQuality::from_resolved(quality, stream_url.format_id))),
+                match client.get_stream_url_with_acquisition(track_id, quality).await {
+                    Ok((stream_url, successful_request)) => match self.download_audio(&stream_url.url).await {
+                        Ok(data) => Some((data, qbz_cache::CacheQuality::from_acquisition(quality, successful_request, stream_url.format_id))),
                         Err(e) => {
                             log::warn!("[GAPLESS] Legacy download failed for {track_id}: {e}");
                             None
@@ -6272,7 +6272,7 @@ impl Player {
         let content_key = cmaf_info.content_key;
         let flac_header = cmaf_info.flac_header;
         let n_segments = cmaf_info.n_segments;
-        let cache_quality = qbz_cache::CacheQuality::from_resolved(quality, cmaf_info.format_id);
+        let cache_quality = qbz_cache::CacheQuality::from_acquisition(quality, quality, cmaf_info.format_id);
         let cache = self.audio_cache.clone();
         tokio::spawn(async move {
             match Self::cmaf_stream_segments(
@@ -6361,7 +6361,7 @@ impl Player {
                     q.bit_depth
                 );
                 // Warm L1 so a subsequent local replay skips the network.
-                self.audio_cache.insert_with_quality(track_id, bytes.clone(), qbz_cache::CacheQuality::from_resolved(quality, q.format_id));
+                self.audio_cache.insert_with_quality(track_id, bytes.clone(), qbz_cache::CacheQuality::from_acquisition(quality, quality, q.format_id));
                 return Some(ExternalStreamAsset {
                     bytes,
                     content_type: "audio/flac".to_string(),
@@ -6377,8 +6377,8 @@ impl Player {
 
         // Fallback: legacy stream URL + plain HTTP download. Quality and MIME
         // come from the resolved StreamUrl (which carries the granted tier).
-        match client.get_stream_url_with_fallback(track_id, quality).await {
-            Ok(stream_url) => {
+        match client.get_stream_url_with_acquisition(track_id, quality).await {
+            Ok((stream_url, successful_request)) => {
                 let content_type =
                     external_content_type(&stream_url.mime_type, stream_url.format_id);
                 let q = StreamQualityInfo::from_raw(
@@ -6394,7 +6394,7 @@ impl Player {
                             q.format_id,
                             content_type
                         );
-                        self.audio_cache.insert_with_quality(track_id, bytes.clone(), qbz_cache::CacheQuality::from_resolved(quality, q.format_id));
+                        self.audio_cache.insert_with_quality(track_id, bytes.clone(), qbz_cache::CacheQuality::from_acquisition(quality, successful_request, q.format_id));
                         Some(ExternalStreamAsset {
                             bytes,
                             content_type,
@@ -7506,6 +7506,23 @@ mod tests {
         assert!(cached_metadata_below_requested(&meta, Quality::UltraHiRes, None));
         assert!(!cached_metadata_below_requested(&meta, Quality::HiRes, limited));
         assert!(cached_quality_below_requested(b"corrupt", Quality::UltraHiRes, highest));
+    }
+
+    #[test]
+    fn successful_request_reuses_lower_rate_master_but_not_explicit_fallback() {
+        for (rate, depth, format) in [(96_000, 24, 7), (44_100, 16, 6)] {
+            let meta = AudioMetadata { sample_rate: rate, channels: 2, bit_depth: Some(depth),
+                codec: symphonia::core::codecs::CODEC_TYPE_FLAC };
+            let acquired = qbz_cache::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::UltraHiRes, format);
+            assert!(!cached_metadata_below_requested(&meta, Quality::UltraHiRes, acquired));
+            let fallback = qbz_cache::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::from_id(format).unwrap(), format);
+            assert!(cached_metadata_below_requested(&meta, Quality::UltraHiRes, fallback));
+            let old = qbz_cache::CacheQuality::from_resolved(Quality::UltraHiRes, format);
+            assert!(cached_metadata_below_requested(&meta, Quality::UltraHiRes, old));
+            assert!(cached_quality_below_requested(b"corrupt", Quality::UltraHiRes, acquired));
+            let lossy = AudioMetadata { codec: symphonia::core::codecs::CODEC_TYPE_MP3, ..meta };
+            assert!(cached_metadata_below_requested(&lossy, Quality::UltraHiRes, acquired));
+        }
     }
 
     #[test]
