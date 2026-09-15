@@ -362,7 +362,12 @@ impl LibraryService {
     /// Blocking join. Never call this from an event/UI thread.
     pub fn shutdown(&self) {
         self.close();
-        if let Some(worker) = self.worker.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        // Take the handle in its own statement so the slot's guard is released
+        // BEFORE the join: an `if let` scrutinee keeps it alive through the
+        // block, and a concurrent `scan` then waited for the whole running
+        // scan instead of answering "closed".
+        let worker = self.worker.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(worker) = worker {
             let _ = worker.join();
         }
     }
@@ -888,5 +893,55 @@ mod tests {
         assert_eq!(snapshot.revision, 1);
         assert_eq!(snapshot.queued, 0);
         assert_eq!(snapshot.last_scan.unwrap().outcome, ScanOutcome::Cancelled);
+    }
+
+    /// `shutdown` joins the running worker; it must not hold the worker slot
+    /// while it waits. It did (an `if let` scrutinee's guard lives through the
+    /// block), so a `scan` issued meanwhile — from the UI, or from the test
+    /// above in an unlucky interleaving — blocked until the scan finished
+    /// instead of answering "closed" at once.
+    #[test]
+    fn a_scan_during_shutdown_does_not_wait_for_the_worker() {
+        use std::sync::mpsc;
+        let tmp = tempfile::tempdir().unwrap();
+        let service = Arc::new(host(&tmp.path().join("old")));
+        let music = tmp.path().join("music");
+        std::fs::create_dir_all(&music).unwrap();
+        service
+            .store()
+            .write(|db| {
+                db.register_or_refresh_folder(&music);
+                Ok(())
+            })
+            .unwrap();
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::sync_channel(1);
+        let release_rx = Mutex::new(release_rx);
+        *service.shared.observer.lock().unwrap() = Some(Box::new(move |event| {
+            if matches!(event, ScanEvent::Started) {
+                entered_tx.send(()).unwrap();
+                release_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap();
+            }
+        }));
+        service.scan(None).unwrap();
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let joining = service.clone();
+        let join = std::thread::spawn(move || joining.shutdown());
+        // Let shutdown close the service and start joining the blocked worker.
+        std::thread::sleep(Duration::from_millis(200));
+        let (done_tx, done_rx) = mpsc::channel();
+        let scanner = service.clone();
+        let probe = std::thread::spawn(move || {
+            let _ = done_tx.send(scanner.scan(Some(1)).unwrap());
+        });
+        let answered = done_rx.recv_timeout(Duration::from_secs(2));
+        release_tx.send(()).unwrap();
+        join.join().unwrap();
+        probe.join().unwrap();
+        assert_eq!(answered, Ok(false), "scan waited for the shutdown join");
     }
 }
