@@ -19,8 +19,16 @@
 // to that origin (0 = the header's top edge) before the change and restored
 // once it is laid out. A swap that replaces the page calls `scrollToTop()`.
 //
-// Probe that measured both behaviours against Qt 6.11.2:
+// Probe that measured both behaviours against Qt 6.11.2, and that must also
+// pass on the 6.8 LTS the x86_64 Linux release builds with:
 // scripts/qml-tests/tst_array_model.qml.
+//
+// `model` is ASSIGNED in onRowsChanged, never bound to `rows` with an
+// `onModelChanged` reaction: DelegateModel.model has no change signal on Qt
+// 6.8/6.9, so that handler made the whole component fail to load there
+// ("Cannot assign to non-existent property") — AlbumView and the kiosk lists
+// with it. Reacting to our own `rows` also captures the viewport before the
+// swap by construction instead of by binding order.
 
 import QtQuick
 import QtQml.Models
@@ -33,8 +41,6 @@ DelegateModel {
     /// The ListView (or GridView) this model feeds — needed for the restore.
     property Item view: null
 
-    model: rows
-
     property bool _live: false
     property int _rowsBefore: 0
     property real _offset: 0
@@ -42,23 +48,27 @@ DelegateModel {
     property bool _toTop: false
 
     Component.onCompleted: {
+        swap.model = swap.rows
         swap._live = true
         swap._rowsBefore = swap.count
     }
 
-    onModelChanged: {
-        if (!swap._live || !swap.view)
+    onRowsChanged: {
+        // Before completion the first array is assigned by onCompleted.
+        if (!swap._live)
             return
         var had = swap._rowsBefore
-        swap._rowsBefore = swap.count
         // Nothing to keep: the page had no rows (first document, or the
         // empty document a detail publishes while the next one loads), or a
         // page replacement already asked for the top.
-        if (had === 0 || swap._toTop)
+        var keep = swap.view !== null && had !== 0 && !swap._toTop
+        // Before the swap: how far the viewport sits below the content origin.
+        if (keep)
+            swap._offset = swap.view.contentY - swap.view.originY
+        swap.model = swap.rows
+        swap._rowsBefore = swap.count
+        if (!keep)
             return
-        // Before the pending remove+insert is laid out: how far the viewport
-        // sits below the content origin.
-        swap._offset = swap.view.contentY - swap.view.originY
         var epoch = ++swap._epoch
         Qt.callLater(function () {
             if (epoch !== swap._epoch || !swap.view)
