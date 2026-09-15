@@ -35,7 +35,7 @@
 #   1. the five static QML audits (scripts/qml-audits)
 #   2. the shader bake gate with the qsb on PATH (CI: the pinned aqt qsb)
 #   3. the Slint-free dep-graph gate for qbz-qt
-#   4. cargo test -p qbz-qt (debug)
+#   4. cargo test -p qbz-qt (debug), including QConnect volume handoff coverage
 #   5. offscreen boots of BOTH debug and release: zero QML complaints,
 #      QbzCore initialized, and process still alive at the deadline.
 #      Native Qt SDK content participates in the C++ dependency cache.
@@ -181,7 +181,7 @@ say "gate: QConnect controller smoke and consecutive-log regressions present and
 # manual skip fixtures cover shuffle/loop/position/autoplay boundaries.
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list controller_smoke:: 2>/dev/null \
     | grep -c ': test$' || true)
-(( n >= 13 )) || { echo "QConnect controller smoke suite has $n tests (expected >= 13)"; exit 1; }
+(( n >= 14 )) || { echo "QConnect controller smoke suite has $n tests (expected >= 14)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list controller_takeover:: 2>/dev/null \
     | grep -c ': test$' || true)
 (( n >= 5 )) || { echo "QConnect takeover suite has $n tests (expected >= 5)"; exit 1; }
@@ -190,7 +190,7 @@ n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list
 (( n >= 6 )) || { echo "QConnect manual skip suite has $n tests (expected >= 6)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- --list decoder::tests::controller_ 2>/dev/null \
     | grep -c ': test$' || true)
-(( n >= 3 )) || { echo "QConnect controller wire suite has $n tests (expected >= 3)"; exit 1; }
+(( n >= 4 )) || { echo "QConnect controller wire suite has $n tests (expected >= 4)"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- --list repeat::tests:: 2>/dev/null \
     | grep -c ': test$' || true)
 (( n >= 8 )) || { echo "consecutive log suite has $n tests (expected >= 8)"; exit 1; }
@@ -199,6 +199,14 @@ cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- controller
 cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- queue_resolution::tests::manual_skip
 cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- decoder::tests::controller_
 cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- repeat::tests::
+
+say "gate: renderer capability wire shape and rejected volume commands"
+# The workspace run executes both tests; require their presence so a renamed
+# module or cfg change cannot silently drop this renderer-side regression.
+n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- --list device_info_update_matches_official_nested_wire_shape 2>/dev/null | grep -c ': test$' || true)
+(( n >= 1 )) || { echo "renderer capability wire regression missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list locked_renderer_ignores_volume_and_mute_before_execution_or_reporting 2>/dev/null | grep -c ': test$' || true)
+(( n >= 1 )) || { echo "locked renderer command regression missing"; exit 1; }
 
 say "gate: handoff execution, PCM progress, and bounded CMAF assembly regressions"
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list handoff_ 2>/dev/null | grep -c ': test$' || true)

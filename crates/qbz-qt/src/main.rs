@@ -2646,6 +2646,9 @@ pub(crate) fn ab_loop_clear() {
 }
 
 pub(crate) fn transport_set_volume(volume: f32) {
+    if now_playing::remote_volume_locked() {
+        return;
+    }
     // Local model first (instant UI), then the engine.
     now_playing::set_volume(volume);
     let runtime = app();
@@ -2653,6 +2656,9 @@ pub(crate) fn transport_set_volume(volume: f32) {
 }
 
 pub(crate) fn transport_toggle_mute() {
+    if now_playing::remote_volume_locked() {
+        return;
+    }
     let runtime = app();
     spawn(async move { playback_qt::toggle_mute(&runtime).await });
 }

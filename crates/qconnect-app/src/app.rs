@@ -245,6 +245,26 @@ where
         &self,
         command: QueueCommand,
     ) -> Result<String, QconnectAppError> {
+        // Enforce advertised restrictions at the shared send boundary too:
+        // queued UI callbacks and non-Qt callers must not bypass the lock or
+        // occupy a pending slot with a command the renderer cannot execute.
+        if matches!(
+            command.command_type,
+            QueueCommandType::CtrlSrvrSetVolume | QueueCommandType::CtrlSrvrMuteVolume
+        ) {
+            let sync = self.sync.lock().await;
+            let renderer_id = command
+                .payload
+                .get("renderer_id")
+                .and_then(Value::as_i64)
+                .and_then(|id| i32::try_from(id).ok())
+                .or(sync.session.active_renderer_id);
+            if sync.session.renderers.iter().any(|info| {
+                Some(info.renderer_id) == renderer_id && !crate::renderer_allows_remote_volume(info)
+            }) {
+                return Err(QconnectAppError::RemoteVolumeRestricted);
+            }
+        }
         let action_uuid = command.action_uuid.clone();
         let is_set_active_renderer_action = matches!(
             command.command_type,
@@ -776,6 +796,13 @@ where
         let Some(mut renderer_command) = map_renderer_server_command(&command) else {
             return Ok(());
         };
+
+        if matches!(renderer_command, RendererCommand::SetVolume { .. } | RendererCommand::MuteVolume { .. })
+            && !self.sink.allows_remote_volume()
+        {
+            log::debug!("[QConnect] Ignoring remote volume command: local output volume is locked");
+            return Ok(());
+        }
 
         // Authority fencing belongs before the app's renderer reducer. The Qt
         // sink also guards the audio engine, but by then a stale command has
@@ -2971,6 +2998,7 @@ mod tests {
         events: Arc<Mutex<Vec<QconnectAppEvent>>>,
         observed: Arc<std::sync::Mutex<Option<qbz_player::player::PlaybackEvent>>>,
         fail_execution: Arc<std::sync::atomic::AtomicBool>,
+        volume_locked: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl TestSink {
@@ -2981,6 +3009,10 @@ mod tests {
 
     #[async_trait]
     impl QconnectEventSink for TestSink {
+        fn allows_remote_volume(&self) -> bool {
+            !self.volume_locked.load(Ordering::SeqCst)
+        }
+
         fn playback_event(&self) -> Option<qbz_player::player::PlaybackEvent> {
             self.observed.lock().unwrap().clone()
         }
@@ -3854,6 +3886,102 @@ mod tests {
 
     mod controller_smoke {
         use super::*;
+
+        #[tokio::test]
+        async fn renderer_volume_capabilities_survive_wire_add_and_update() {
+            use prost::Message;
+            use qconnect_protocol::{decode_queue_server_events, QConnectMessage, QConnectMessages};
+            let (app, _sink, transport, _events_rx) = build_connected_app().await;
+            app.trigger_queue_state_resync().await;
+            let query_uuid = app
+                .state
+                .lock()
+                .await
+                .pending
+                .current()
+                .unwrap()
+                .uuid
+                .clone();
+            // Schema-shaped protobuf frames, not already-decoded JSON: the
+            // decoder used to drop capabilities before the session saw them.
+            for (update, capability, expected) in [
+                (false, Some(1u8), 1),
+                (true, Some(2), 2),
+                (true, Some(1), 1),
+                (true, None, 1),
+            ] {
+                let mut info = vec![0x12, 5, b'p', b'h', b'o', b'n', b'e'];
+                if let Some(value) = capability {
+                    info.extend_from_slice(&[0x3a, 2, 0x18, value]);
+                }
+                let mut payload = vec![0x08, 2, 0x12, info.len() as u8];
+                payload.extend(info);
+                let mut frame = vec![
+                    0x08,
+                    if update { 84 } else { 83 },
+                    if update { 0xa2 } else { 0x9a },
+                    0x05,
+                    payload.len() as u8,
+                ];
+                frame.extend(payload);
+                let batch = QConnectMessages {
+                    messages: vec![QConnectMessage::decode(frame.as_slice()).unwrap()],
+                    ..Default::default()
+                };
+                for event in decode_queue_server_events(&batch.encode_to_vec()).unwrap() {
+                    app.apply_session_management_event(
+                        event.event_type.as_message_type(),
+                        &event.payload,
+                        &local_identity("local-uuid"),
+                    )
+                    .await;
+                }
+                let state = app.sync.lock().await;
+                let peer = state
+                    .session
+                    .renderers
+                    .iter()
+                    .find(|r| r.renderer_id == 2)
+                    .unwrap();
+                assert_eq!(peer.volume_remote_control, Some(expected));
+                assert_eq!(crate::renderer_allows_remote_volume(peer), expected == 2);
+                drop(state);
+                // Exercise the transport boundary, not just its policy helper.
+                // Repeated forbidden volume/mute requests emit no frames and
+                // preserve an outstanding queue read. Permission updates take
+                // effect immediately for both controls.
+                for command_type in [
+                    QueueCommandType::CtrlSrvrSetVolume,
+                    QueueCommandType::CtrlSrvrMuteVolume,
+                ] {
+                    for volume in [20, 40, 60] {
+                        let before = transport.sent_messages().await.len();
+                        let command = app
+                            .build_queue_command(
+                                command_type,
+                                json!({"renderer_id": 2, "volume": volume, "value": true}),
+                            )
+                            .await;
+                        let result = app.send_queue_command(command).await;
+                        if expected == 2 {
+                            assert!(result.is_ok(), "{result:?}");
+                            assert_eq!(transport.sent_messages().await.len(), before + 1);
+                        } else {
+                            assert!(matches!(
+                                result,
+                                Err(QconnectAppError::RemoteVolumeRestricted)
+                            ));
+                            assert_eq!(transport.sent_messages().await.len(), before);
+                        }
+                        assert_eq!(
+                            app.state.lock().await.pending.current().unwrap().uuid,
+                            query_uuid
+                        );
+                    }
+                }
+            }
+            app.disconnect().await.unwrap();
+        }
 
         #[tokio::test]
         async fn foreign_queue_delta_does_not_replace_the_pending_read() {
@@ -5056,6 +5184,42 @@ mod tests {
         assert_eq!(report.payload["current_position"], 67000);
         assert_eq!(report.payload["buffer_state"], 2);
         assert_eq!(report.payload["playing_state"], 2);
+    }
+
+    #[tokio::test]
+    async fn locked_renderer_ignores_volume_and_mute_before_execution_or_reporting() {
+        let (app, sink, transport, _events_rx) = build_connected_app().await;
+        {
+            let mut state = app.state.lock().await;
+            state.renderer.volume = Some(100);
+            state.renderer.muted = Some(false);
+        }
+        let before = app.renderer_state_snapshot().await;
+        let sent = transport.sent_messages().await.len();
+        let events = sink.snapshot().await.len();
+        sink.volume_locked.store(true, Ordering::SeqCst);
+        for (command_type, payload) in [
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume": 20})),
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume_delta": -5})),
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume_delta": 5})),
+            (RendererCommandType::SrvrRndrMuteVolume, json!({"value": true})),
+            (RendererCommandType::SrvrRndrMuteVolume, json!({"value": false})),
+        ] {
+            app.apply_renderer_server_command(RendererServerCommand { command_type, payload })
+                .await.expect("unsupported volume is ignored without a renderer error");
+            assert_eq!(app.renderer_state_snapshot().await, before);
+            assert_eq!(transport.sent_messages().await.len(), sent);
+            assert_eq!(sink.snapshot().await.len(), events);
+        }
+        // The policy is live: unlocking the same renderer admits the next command.
+        sink.volume_locked.store(false, Ordering::SeqCst);
+        app.apply_renderer_server_command(RendererServerCommand {
+            command_type: RendererCommandType::SrvrRndrSetVolume,
+            payload: json!({"volume": 42}),
+        }).await.unwrap();
+        assert_eq!(app.renderer_state_snapshot().await.volume, Some(42));
+        assert_eq!(transport.sent_messages().await.len(), sent + 1);
+        assert!(sink.snapshot().await.len() > events);
     }
 
     #[tokio::test]

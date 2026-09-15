@@ -12,6 +12,7 @@ bash scripts/test-updates-qml.sh
 bash scripts/test-playback-cache-qml.sh
 bash scripts/test-text-edit-menu-qml.sh
 bash scripts/test-compact-seek-qml.sh
+bash scripts/test-remote-volume-qml.sh
 bash scripts/test-library-folders-qml.sh
 bash scripts/test-array-model-qml.sh
 bash scripts/test-keyed-model-qml.sh
@@ -27,6 +28,10 @@ node scripts/test_qt_kiosk_art.mjs
 node scripts/test_qt_kiosk_navigation.mjs
 node scripts/test_qt_kiosk_feedback.mjs
 node scripts/test_qt_exclusive_gate.mjs
+# Volume handoff must retain coverage for unknown levels, capabilities and
+# peer-to-peer switches. The full suite below executes these tests once.
+volume_tests=$(python3 scripts/qt-cargo.py test --manifest-path crates/Cargo.toml -p qbz-qt -- --list 2>/dev/null | grep -c '::peer_volume_.*: test$' || true)
+(( volume_tests >= 4 )) || { printf 'Missing QConnect volume regressions: %s/4\n' "$volume_tests"; exit 1; }
 python3 scripts/qt-cargo.py test --manifest-path crates/Cargo.toml -p qbz-qt --no-fail-fast
 target_dir="$CARGO_TARGET_DIR"
 logs="$(mktemp -d "${TMPDIR:-/tmp}/qbz-qt-gate-XXXXXX")"

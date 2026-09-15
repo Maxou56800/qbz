@@ -268,9 +268,8 @@ Item {
         GhostBtn {
             x: bar.width - 156
             y: 22
-            // Under lock the fill pins to 100%, so the icon must NOT show
-            // the muted/zero glyph (Tauri VolumeSlider: Volume2 when locked).
-            icon: (!root.volLocked && (QbzPlayer.npMuted || QbzPlayer.npVolume === 0))
+            // A read-only renderer still reports its actual level and mute.
+            icon: (QbzPlayer.npMuted || QbzPlayer.npVolume === 0)
                 ? "volume-x" : "volume-2"
             btnEnabled: !root.volLocked
             onClicked: QbzPlayer.toggleMute()

@@ -138,6 +138,14 @@ pub struct DeviceInfoMessage {
     pub software_version: Option<String>,
 }
 
+/// Renderer.DeviceInfoUpdatedMessage wraps Common.DeviceInfo at field 1.
+/// It is not wire-compatible with DeviceInfo itself (whose field 1 is a UUID).
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RendererDeviceInfoUpdatedMessage {
+    #[prost(message, optional, tag = "1")]
+    pub device_info: Option<DeviceInfoMessage>,
+}
+
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct JoinSessionMessage {
     #[prost(bytes = "vec", optional, tag = "1")]
@@ -908,7 +916,7 @@ pub struct QConnectMessage {
     #[prost(message, optional, tag = "21")]
     pub rndr_srvr_join_session: Option<JoinSessionMessage>,
     #[prost(message, optional, tag = "22")]
-    pub rndr_srvr_device_info_updated: Option<DeviceInfoMessage>,
+    pub rndr_srvr_device_info_updated: Option<RendererDeviceInfoUpdatedMessage>,
     #[prost(message, optional, tag = "23")]
     pub rndr_srvr_state_updated: Option<RendererStateUpdatedMessage>,
     #[prost(message, optional, tag = "25")]

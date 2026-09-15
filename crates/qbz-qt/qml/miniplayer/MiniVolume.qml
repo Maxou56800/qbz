@@ -43,6 +43,7 @@ import "../theme"
 Rectangle {
     id: root
 
+    readonly property bool volLocked: (QbzPlayer.npVolumeLocked && !QbzPlayer.npIsRemote) || QbzPlayer.npRemoteVolumeLocked
     property int btn: 30
     /// The TRIGGER's glyph size — the SEVENTH per-mode value, cached by the
     /// footer beside the other six (contract §4.3.2).
@@ -113,10 +114,14 @@ Rectangle {
                 iconSize: 14
                 btn: 20
                 anchors.verticalCenter: parent.verticalCenter
+                objectName: "miniVolumeMute"
+                btnEnabled: !root.volLocked
                 onClicked: QbzPlayer.toggleMute()
             }
 
             QbzSlider {
+                objectName: "miniVolumeSlider"
+                enabled: !root.volLocked
                 width: 96
                 anchors.verticalCenter: parent.verticalCenter
                 minimum: 0

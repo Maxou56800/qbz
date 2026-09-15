@@ -45,6 +45,8 @@ impl QconnectOwnerFailure {
 
 #[derive(Debug, Error)]
 pub enum QconnectAppError {
+    #[error("renderer does not allow remote volume control")]
+    RemoteVolumeRestricted,
     #[error("renderer command could not be applied")]
     RendererExecution,
     #[error(transparent)]

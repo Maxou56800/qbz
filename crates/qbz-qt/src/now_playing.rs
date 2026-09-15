@@ -84,6 +84,7 @@ pub struct NowPlayingModel {
     /// OUT of the settings-derived `np_volume_locked` — that one is
     /// republished on every settings/track edge and would clobber this.
     pub remote_volume_locked: bool,
+    pub remote_volume_pending: bool,
     /// Active renderer / cast target name; empty when local.
     pub cast_target: String,
     /// A Chromecast/DLNA session is connected.
@@ -182,6 +183,8 @@ fn publish(m: &NowPlayingModel) {
         b.as_mut().set_np_is_remote(m.is_remote);
         b.as_mut()
             .set_np_remote_volume_locked(m.remote_volume_locked);
+        b.as_mut()
+            .set_np_remote_volume_pending(m.remote_volume_pending);
         b.as_mut()
             .set_np_cast_target(QString::from(m.cast_target.as_str()));
         b.as_mut().set_np_cast_active(m.cast_active);
@@ -464,6 +467,7 @@ pub fn clear_track() {
             seekable_max: 1.0,
             is_remote: m.is_remote,
             remote_volume_locked: m.remote_volume_locked,
+            remote_volume_pending: m.remote_volume_pending,
             cast_target: m.cast_target.clone(),
             cast_active: m.cast_active,
             cast_protocol: m.cast_protocol.clone(),
@@ -556,7 +560,31 @@ pub(crate) fn remote_volume_locked() -> bool {
 /// disconnect tail — publish onto `QbzPlayer.np_remote_volume_locked` (never
 /// folded into the settings-derived `np_volume_locked`).
 pub fn set_remote_volume_locked(locked: bool) {
-    mutate(|m| m.remote_volume_locked = locked);
+    mutate(|m| {
+        m.remote_volume_locked = locked;
+        if !locked {
+            m.remote_volume_pending = false;
+        }
+    });
+}
+
+/// Publish ownership, level and lock together so controls never briefly use
+/// the previous device's level during a handoff.
+pub fn set_remote_volume_state(
+    target: &str,
+    volume: f32,
+    muted: bool,
+    locked: bool,
+    pending: bool,
+) {
+    mutate(|m| {
+        m.is_remote = true;
+        m.cast_target = target.to_string();
+        m.volume = volume.clamp(0.0, 1.0);
+        m.muted = muted;
+        m.remote_volume_locked = locked;
+        m.remote_volume_pending = pending;
+    });
 }
 
 /// The DELIVERED quality measured by a cast session, which the local poll

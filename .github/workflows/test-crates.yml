@@ -36,6 +36,8 @@
 # pre-release
 # integration so regressions land before a release cut.
 
+# Shared cargo-test.sh requires the renderer capability wire fixture and
+# volume/mute rejection before renderer execution or reporting.
 # Shared cargo-test.sh also gates signed updater verification, version selection
 # and preference preservation; qt-runtime-gate.sh covers the update UI.
 # Shared cargo-test.sh also gates Orbit HTTP host isolation, library profiles
@@ -90,6 +92,7 @@ on:
       - "scripts/test-keyed-model-qml.sh"
       - "scripts/test-multi-select-qml.sh"
       - "scripts/test-settings-fieldset-qml.sh"
+      - "scripts/test-remote-volume-qml.sh"
       - "scripts/test-wallpaper-field-qml.sh"
       - "scripts/test-card-menu-qml.sh"
       - "scripts/test-orbit-daemon.py"
@@ -124,6 +127,7 @@ on:
       - "scripts/test-keyed-model-qml.sh"
       - "scripts/test-multi-select-qml.sh"
       - "scripts/test-settings-fieldset-qml.sh"
+      - "scripts/test-remote-volume-qml.sh"
       - "scripts/test-wallpaper-field-qml.sh"
       - "scripts/test-card-menu-qml.sh"
       - "scripts/test-orbit-daemon.py"
@@ -276,8 +280,8 @@ jobs:
       # The exact QT=1 half of scripts/cargo-test.sh, minus its `test` job
       # (already run above) and its shader gate (the shader-gate job, so qsb
       # is never on PATH while cargo runs here): dep-graph gate, cargo test
-      # -p qbz-qt, Local Library/Kiosk artwork/navigation and federated-search
-      # view/activation regressions, debug/release
+      # -p qbz-qt, QConnect volume handoff, Local Library/Kiosk artwork/navigation
+      # and federated-search view/activation regressions, debug/release
       # offscreen boot. One shared runtime script.
       - name: qt gates (scripts/cargo-test.sh QT=1, without the workspace test)
         env:

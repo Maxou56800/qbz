@@ -277,7 +277,7 @@ pub struct QconnectRendererInfo {
     pub brand: Option<String>,
     pub model: Option<String>,
     pub device_type: Option<i32>,
-    /// capabilities.volume_remote_control. 1 == ALLOWED. None == not advertised
+    /// capabilities.volume_remote_control. 1 == NOT_ALLOWED, 2 == ALLOWED. None == not advertised
     /// (treated as allowed to avoid regressing renderers that omit it).
     #[serde(default)]
     pub volume_remote_control: Option<i32>,
@@ -311,7 +311,7 @@ pub struct QconnectFileAudioQualitySnapshot {
 /// Whether the active renderer permits remote volume control. Absent capability
 /// (None) defaults to allowed; only an explicit non-ALLOWED value disables.
 pub fn renderer_allows_remote_volume(info: &QconnectRendererInfo) -> bool {
-    matches!(info.volume_remote_control, None | Some(1))
+    matches!(info.volume_remote_control, None | Some(2))
 }
 
 /// Resolve the local renderer id within the session by matching the injected
@@ -523,6 +523,27 @@ pub fn build_effective_renderer_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_volume_capability_matches_official_wire_values() {
+        for (wire, allowed) in [
+            (None, true),
+            (Some(0), false),
+            (Some(1), false),
+            (Some(2), true),
+            (Some(3), false),
+        ] {
+            let info: QconnectRendererInfo = serde_json::from_value(serde_json::json!({
+                "renderer_id": 7, "volume_remote_control": wire
+            }))
+            .unwrap();
+            assert_eq!(
+                renderer_allows_remote_volume(&info),
+                allowed,
+                "wire={wire:?}"
+            );
+        }
+    }
 
     #[test]
     fn seconds_convert_to_qconnect_milliseconds_once() {

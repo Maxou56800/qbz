@@ -1,7 +1,7 @@
 // VolumeBar — the immersive volume micro-slider (ImmersiveView.slint:153-238),
 // immersive-local per divergence D5 (QbzSlider is integer-step and has no lock
 // states). Thin white-on-glass track, hover-revealed thumb, drag-time percent
-// bubble, and a LOCKED state that pins the fill to 100% and dims/no-ops
+// bubble, and a LOCKED state that preserves the reported fill and dims/no-ops
 // (bit-perfect ALSA-Direct or a QConnect peer that disallows remote volume).
 //
 // Lock FORMULA lives in the host (ImmersivePlayerBar), verbatim from
@@ -20,8 +20,8 @@ Item {
     signal changed(real v)          // emits 0..1 — live (every drag tick)
     signal released(real v)         // emits 0..1 — drag-end only (persist)
 
-    // The visual fill fraction: pinned to 100% when locked (matches Tauri).
-    readonly property real shown: root.locked ? 1.0 : Math.max(0.0, Math.min(1.0, root.value))
+    // Locked peers still display their reported volume.
+    readonly property real shown: Math.max(0.0, Math.min(1.0, root.value))
 
     function clamp01(v) {
         return Math.max(0.0, Math.min(1.0, v))
