@@ -122,6 +122,22 @@ Item {
         color: (root.zebra && root.number % 2 === 0) ? "#07ffffff" : "transparent"
     }
 
+    // The trailing gutter this wrapper draws OUTSIDE the shared row (source
+    // glyph + ⋯ cell) is row body too: without it a double click there — or a
+    // select-mode click — landed on nothing (#790). Covers ONLY the gutter,
+    // never the shared row, so it cannot receive the clicks the shared row's
+    // body area propagates. Declared before the ⋯ button so that stays on top.
+    MouseArea {
+        x: sharedRow.width
+        width: root.width - sharedRow.width
+        height: root.height
+        onClicked: function (mouse) {
+            if (root.selectMode) root.toggleSelect(mouse.modifiers)
+            else sharedRow.bodyClicked()
+        }
+        onDoubleClicked: sharedRow.bodyDoubleClicked()
+    }
+
     TrackRow { kioskHost: root.kioskHost;
         id: sharedRow
         // 26px source-glyph gutter + the 46px (32 cell + 14 gap) the shared

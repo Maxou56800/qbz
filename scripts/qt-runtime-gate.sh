@@ -17,6 +17,7 @@ bash scripts/test-library-folders-qml.sh
 bash scripts/test-array-model-qml.sh
 bash scripts/test-keyed-model-qml.sh
 bash scripts/test-multi-select-qml.sh
+bash scripts/test-track-row-click-qml.sh
 bash scripts/test-settings-fieldset-qml.sh
 bash scripts/test-wallpaper-field-qml.sh
 bash scripts/test-card-menu-qml.sh

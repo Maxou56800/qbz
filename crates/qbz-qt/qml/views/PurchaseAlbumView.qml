@@ -1198,10 +1198,9 @@ Rectangle {
                                     // cache state are different features that
                                     // must not overwrite each other (§G.4).
                                     draggable: false
-                                    // Click-to-play only where the catalog
-                                    // says the track is streamable. It defaults
-                                    // FALSE on this screen; do not invert it.
-                                    clickPlays: trackRow.streamable
+                                    // Double-click / play disc play only where
+                                    // the catalog says the track is streamable;
+                                    // the guard is here, not on the row.
                                     onPlayRequested: {
                                         if (trackRow.streamable)
                                             QbzPlayer.playAlbumFrom(root.doc.id || "",

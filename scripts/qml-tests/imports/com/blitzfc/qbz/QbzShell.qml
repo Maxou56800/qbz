@@ -10,4 +10,9 @@ QtObject {
  property string themeJson: ""; property int ambientMode: 0
  property string wallpaperWindowsJson: "[]"
  property int trackRequests: 0
- function trackWindowPosition() { trackRequests++ } }
+ function trackWindowPosition() { trackRequests++ }
+ property int dragStarts: 0
+ function dragStart(id, title, subtitle, x, y, inline) { dragStarts++ }
+ function dragStartLocal(id, title, subtitle, x, y, inline) { dragStarts++ }
+ function dragMove(x, y) {}
+ function dragEnd() {} }

@@ -1893,7 +1893,6 @@ Rectangle {
                         item: trackCell.modelData.track
                         number: trackCell.modelData.trackNumber
                         zebra: true
-                        clickPlays: false
                         artistLink: true
                         qualityStyle: "text"
                         showDownload: true
