@@ -12,6 +12,7 @@ log = "0.4"
 
 # Serialization (for stats)
 serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
 
 # File system utilities
 dirs = "6"

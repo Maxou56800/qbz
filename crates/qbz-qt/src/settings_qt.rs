@@ -98,6 +98,14 @@ pub fn audio_settings() -> qbz_audio::settings::AudioSettings {
     with_audio(|s| s.get_settings()).unwrap_or_default()
 }
 
+/// Remote control cannot assume a software mixer when settings are unavailable.
+/// Keep this policy shared by capability advertisement and inbound execution.
+pub fn allows_remote_volume() -> bool {
+    with_audio(|store| store.get_settings())
+        .map(|settings| !crate::output_labels::volume_locked(&settings))
+        .unwrap_or(false)
+}
+
 /// Re-probe the local output device and refresh the #638 fix-3 cap cache.
 ///
 /// **ORDERING — persist → refresh → publish, and Qt has a hazard Slint does
@@ -3262,6 +3270,13 @@ fn apply_audio_with_owner(runtime: &Arc<AppRuntime<LoggingAdapter>>, apply: Appl
         }
     }
     log::info!("[qbz-qt] audio settings applied to player (reinit={reinit})");
+    if let Some(service) = crate::qconnect_qt::service() {
+        crate::spawn(async move {
+            if let Err(error) = service.report_device_info().await {
+                log::warn!("[QConnect] output capabilities update failed: {error}");
+            }
+        });
+    }
     // Republish the document. Without this a change made from the now-playing
     // bars' audio flyout persisted and took effect but NEVER reached the QML,
     // so the flyout's own switch snapped back to the stale value the next time

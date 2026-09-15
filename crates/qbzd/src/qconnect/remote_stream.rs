@@ -68,6 +68,7 @@ pub async fn stream_remote_track_into_player(
     track_id: u64,
     duration_secs: u64,
     start_position_secs: u64,
+    playing: bool,
     url: &str,
     log_tag: &str,
     authority_check: impl FnOnce() -> Result<(), String>,
@@ -86,7 +87,7 @@ pub async fn stream_remote_track_into_player(
     );
 
     let writer = player
-        .play_streaming_dynamic(
+        .play_streaming_dynamic_with_state(
             track_id,
             stream_info.sample_rate,
             stream_info.channels,
@@ -95,6 +96,7 @@ pub async fn stream_remote_track_into_player(
             stream_info.speed_mbps,
             duration_secs,
             start_position_secs,
+            playing,
         )
         .map_err(|err| format!("start streaming remote track {track_id}: {err}"))?;
 

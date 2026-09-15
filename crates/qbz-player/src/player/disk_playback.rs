@@ -51,16 +51,17 @@ impl Player {
         cache: Arc<qbz_cache::AudioCache>,
         writer: BufferWriter,
         track_id: u64,
+        quality: Option<qbz_cache::CacheQuality>,
     ) -> Result<(), String> {
         tokio::task::spawn_blocking(move || -> Result<(), String> {
             let size = writer.buffer_size();
             let admission = if let Some(data) = writer.complete_data_shared() {
-                cache.insert_shared(track_id, data)
+                cache.insert_shared_with_quality(track_id, data, quality)
             } else {
                 // The spool is copied in bounded chunks; never materialize an
                 // oversized file just to pass it to the L2 writer.
                 let saved = cache.get_playback_cache().is_some_and(|disk| {
-                    disk.insert_from(track_id, size as u64, |file| writer.write_buffered_to(file))
+                    disk.insert_from_with_quality(track_id, size as u64, quality, |file| writer.write_buffered_to(file))
                 });
                 if saved {
                     qbz_cache::CacheAdmission::Disk
@@ -75,25 +76,39 @@ impl Player {
         .map_err(|error| format!("Playback cache task failed: {error}"))?
     }
 
+    pub(super) fn cached_data_for_quality(&self, track_id: u64, quality: Quality)
+        -> Option<(Vec<u8>, Option<qbz_cache::CacheQuality>)> {
+        if let Some(cached) = self.audio_cache.get(track_id) {
+            if !cached_quality_below_requested(&cached.data, quality, cached.quality) {
+                return Some((cached.data, cached.quality));
+            }
+        }
+        let (mut file, acquisition) = self.audio_cache.get_playback_cache()?.open_with_quality(track_id)?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).ok()?;
+        if cached_quality_below_requested(&bytes, quality, acquisition) { return None; }
+        self.audio_cache.promote_from_disk_with_quality(track_id, bytes.clone(), acquisition);
+        Some((bytes, acquisition))
+    }
+
     pub(super) fn cached_disk_source(
         &self,
         track_id: u64,
         quality: Quality,
     ) -> Result<Option<(Arc<BufferedMediaSource>, AudioMetadata, u64)>, String> {
-        let Some(file) = self
+        let Some((file, acquisition)) = self
             .audio_cache
             .get_playback_cache()
-            .and_then(|cache| cache.open(track_id))
+            .and_then(|cache| cache.open_with_quality(track_id))
         else {
             return Ok(None);
         };
         let source = Arc::new(BufferedMediaSource::from_file(file).map_err(|e| e.to_string())?);
-        let (meta, duration) = source_metadata(&source)?;
-        let below = match quality {
-            Quality::UltraHiRes => meta.bit_depth.unwrap_or(16) < 24 || meta.sample_rate <= 96_000,
-            Quality::HiRes => meta.bit_depth.unwrap_or(16) < 24,
-            _ => false,
+        let (meta, duration) = match source_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(_) => return Ok(None),
         };
+        let below = cached_metadata_below_requested(&meta, quality, acquisition);
         if below {
             log::info!("[CACHE] Disk track {track_id} below requested {quality:?}; re-fetching");
             return Ok(None);
@@ -113,8 +128,9 @@ impl Player {
         duration_secs: u64,
         track_id: u64,
         start_position_secs: u64,
+        play_gen: u64,
     ) -> Result<(), String> {
-        let play_gen = self.state.current_play_generation();
+        if !self.is_current_play(play_gen) { return Err("cached source superseded before preparation".into()); }
         self.state
             .set_stream_quality(meta.sample_rate, meta.bit_depth.unwrap_or(16));
         self.state.begin_buffering(track_id, play_gen);

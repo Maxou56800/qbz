@@ -131,6 +131,7 @@ pub mod qbz_player {
         // both. Written by `now_playing::set_remote_volume_locked` from the
         // qconnect sink's badge refresh + the facade's disconnect tail.
         #[qproperty(bool, np_remote_volume_locked)]
+        #[qproperty(bool, np_remote_volume_pending)]
         // Now-playing track id (playing-row indicator in track lists).
         #[qproperty(QString, np_track_id)]
         // The SAME row's `library.db` id, for OFFLINE rows only, and it is an
@@ -353,6 +354,7 @@ pub struct QbzPlayerRust {
     np_cast_active: bool,
     np_cast_protocol: QString,
     np_remote_volume_locked: bool,
+    np_remote_volume_pending: bool,
     np_track_id: QString,
     np_local_track_id: QString,
     np_album: QString,
@@ -418,6 +420,7 @@ impl Default for QbzPlayerRust {
             np_cast_active: false,
             np_cast_protocol: QString::default(),
             np_remote_volume_locked: false,
+            np_remote_volume_pending: false,
             np_track_id: QString::default(),
             np_local_track_id: QString::default(),
             np_album: QString::default(),
@@ -503,6 +506,9 @@ impl qbz_player::QbzPlayer {
     }
 
     pub fn persist_volume(self: Pin<&mut Self>, fraction: f32) {
+        if *self.np_is_remote() {
+            return;
+        }
         crate::settings_qt::save_pref("volume", serde_json::json!(fraction.clamp(0.0, 1.0)));
     }
 

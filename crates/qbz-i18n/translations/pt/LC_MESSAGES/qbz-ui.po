@@ -7729,3 +7729,12 @@ msgstr "Desfoque do papel de parede"
 #: crates/qbz-qt/qml/settings/AppearanceSettings.qml
 msgid "How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur."
 msgstr "Quanto o papel de parede atrás da janela fica desfocado: 0% o mantém nítido, 100% é o desfoque máximo."
+
+msgid "This renderer does not allow remote volume control."
+msgstr "Este renderer não permite controlar o volume remotamente."
+
+msgid "Waiting for the renderer's volume…"
+msgstr "Aguardando o volume do renderer…"
+
+msgid "This audio output does not support volume control."
+msgstr "Esta saída de áudio não permite controlar o volume."

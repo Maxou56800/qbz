@@ -429,8 +429,7 @@ pub struct RemoteNowPlaying {
     pub updated_at_ms: u64,
     pub playing: bool,
     /// Peer renderer's reported volume (0..=100). `None` when the peer hasn't
-    /// reported a volume yet — the bar then clamps to a safe 50% instead of
-    /// reflecting QBZ's local 100, so a drag never nukes the AVR.
+    /// reported a volume yet — controls stay locked until it does.
     pub volume: Option<i32>,
     /// Peer mute state; independent of the owner's saved local mute toggle.
     pub muted: bool,
@@ -463,6 +462,22 @@ fn peer_seek_position_ms(
     }
     let position_ms = (fraction.clamp(0.0, 1.0) as f64 * duration_secs as f64 * 1000.0).round();
     (position_ms <= i32::MAX as f64).then_some(position_ms as i64)
+}
+
+/// Unknown remote volume is a disabled zero placeholder, never a guessed level.
+pub(crate) fn peer_volume_fraction(volume: Option<i32>) -> f32 {
+    volume
+        .map(|v| (v as f32 / 100.0).clamp(0.0, 1.0))
+        .unwrap_or(0.0)
+}
+
+pub(crate) fn peer_volume_locked(volume: Option<i32>, session: &QconnectSessionState) -> bool {
+    volume.is_none()
+        || session
+            .renderers
+            .iter()
+            .find(|r| Some(r.renderer_id) == session.active_renderer_id)
+            .is_none_or(|r| !renderer_allows_remote_volume(r))
 }
 
 fn project_peer_seek(
@@ -2010,6 +2025,39 @@ impl QtQconnectService {
                 }
             }
         }
+    }
+
+    /// Refresh our advertised capabilities after an output settings change.
+    pub async fn report_device_info(&self) -> Result<(), String> {
+        let Some(_action) = self.begin_runtime_action_if_running()? else {
+            return Ok(());
+        };
+        let (app, sync_state) = {
+            let guard = lock_inner(&self.inner);
+            let Some(runtime) = guard.runtime.as_ref() else {
+                return Ok(());
+            };
+            (Arc::clone(&runtime.app), Arc::clone(&runtime.sync_state))
+        };
+        if sync_state.lock().await.session.local_renderer_id.is_none() {
+            return Ok(());
+        }
+        let mut info = default_qconnect_device_info();
+        if let Some(capabilities) = info.capabilities.as_mut() {
+            capabilities.max_audio_quality = Some(qconnect_max_audio_quality_wire());
+        }
+        log::info!("[QConnect] Reporting output capabilities: volume_remote_control={:?}",
+            info.capabilities.as_ref().and_then(|caps| caps.volume_remote_control));
+        let queue = app.queue_state_snapshot().await;
+        let report = RendererReport::new(
+            RendererReportType::RndrSrvrDeviceInfoUpdated,
+            Uuid::new_v4().to_string(),
+            queue.version,
+            serde_json::to_value(info).map_err(|e| e.to_string())?,
+        );
+        app.send_renderer_report_command(report)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Establish the QConnect session. Gated on an initialized API client (the
@@ -4130,26 +4178,13 @@ impl QtQconnectService {
             return Ok(false);
         };
         let remote_context = self.effective_remote_renderer_snapshot().await?;
-        let Some((_renderer, _queue, session)) = remote_context else {
+        let Some((renderer, _queue, session)) = remote_context else {
             return Ok(false);
         };
 
-        if let Some(active_id) = session.active_renderer_id {
-            if let Some(info) = session
-                .renderers
-                .iter()
-                .find(|r| r.renderer_id == active_id)
-            {
-                if !renderer_allows_remote_volume(info) {
-                    log::info!(
-                        "[QConnect] set_volume_if_remote short-circuited: renderer {active_id} disallows remote volume"
-                    );
-                    dev_push_event(
-                        "controller volume: renderer disallows remote volume (no-op)".to_string(),
-                    );
-                    return Ok(true);
-                }
-            }
+        // Guard every caller, including controls outside the player bar.
+        if peer_volume_locked(renderer.volume, &session) {
+            return Ok(true);
         }
 
         let payload = serde_json::to_value(QconnectSetVolumeRequest {
@@ -4180,6 +4215,9 @@ impl QtQconnectService {
         let Some((renderer, _queue, session)) = remote_context else {
             return Ok(false);
         };
+        if peer_volume_locked(renderer.volume, &session) {
+            return Ok(true);
+        }
         let value = !renderer.muted.unwrap_or(false);
 
         let payload = serde_json::to_value(QconnectMuteVolumeRequest {
@@ -5095,14 +5133,63 @@ async fn deferred_renderer_join(
 mod tests {
     use super::{
         active_renderer_projection, is_qconnect_queue_track, local_upcoming_matches_remote,
-        peer_seek_position_ms, project_peer_mute, project_peer_seek, remote_upcoming_selection,
-        resolvable_queue_projection, resolvable_track_ids,
+        peer_seek_position_ms, peer_volume_fraction, peer_volume_locked, project_peer_mute,
+        project_peer_seek, remote_upcoming_selection, resolvable_queue_projection,
+        resolvable_track_ids,
     };
     use qbz_models::QueueTrack;
     use qconnect_app::{
         ensure_session_renderer_state, QConnectQueueState, QConnectRendererState,
         QconnectRemoteSyncState,
     };
+
+    #[test]
+    fn peer_volume_controls_follow_capability_and_wait_for_a_reported_level() {
+        let mut session = peer_sync().session;
+        session.renderers.clear();
+        assert!(peer_volume_locked(Some(20), &session), "wait for renderer metadata");
+        for capability in [None, Some(0), Some(1), Some(2)] {
+            session.renderers = vec![serde_json::from_value(serde_json::json!({
+                "renderer_id": 2, "volume_remote_control": capability
+            }))
+            .unwrap()];
+            assert!(peer_volume_locked(None, &session));
+            assert_eq!(
+                peer_volume_locked(Some(20), &session),
+                !matches!(capability, None | Some(2))
+            );
+            assert_eq!(peer_volume_fraction(Some(20)), 0.2);
+        }
+    }
+
+    #[test]
+    fn peer_volume_projection_uses_renderer_level_including_read_only_peers() {
+        let queue = QConnectQueueState::default();
+        let local = QConnectRendererState {
+            volume: Some(100),
+            ..Default::default()
+        };
+        let mut sync = peer_sync();
+        assert_eq!(
+            peer_volume_fraction(active_renderer_projection(&queue, &local, &sync).volume),
+            0.0
+        );
+        ensure_session_renderer_state(&mut sync, 2).volume = Some(20);
+        assert_eq!(
+            peer_volume_fraction(active_renderer_projection(&queue, &local, &sync).volume),
+            0.2
+        );
+        sync.session.active_renderer_id = Some(3);
+        assert_eq!(
+            active_renderer_projection(&queue, &local, &sync).volume,
+            None
+        );
+        sync.session.active_renderer_id = Some(1);
+        assert_eq!(
+            active_renderer_projection(&queue, &local, &sync).volume,
+            Some(100)
+        );
+    }
 
     #[test]
     fn active_peer_never_inherits_a_stale_local_renderer_snapshot() {

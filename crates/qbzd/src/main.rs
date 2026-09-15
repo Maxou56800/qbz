@@ -253,7 +253,7 @@ enum SettingsCmd {
     Show { #[arg(long)] json: bool },
     /// List canonical ALSA playback-volume controls for the selected route
     MixerControls { #[arg(long)] json: bool },
-    Set  { key: String, value: String },
+    Set  { key: String, #[arg(allow_negative_numbers = true)] value: String },
 }
 
 #[derive(Subcommand)]
@@ -610,4 +610,24 @@ fn login_roots() -> paths::ProfileRoots {
         .ok()
         .and_then(|(c, _)| c.data_root);
     paths::ProfileRoots::resolve(None, data_root.as_deref().map(std::path::Path::new))
+}
+
+#[cfg(test)]
+mod command_line_tests {
+    use super::*;
+
+    #[test]
+    fn settings_accepts_negative_numbers_without_swallowing_options() {
+        for value in ["-14", "-14.5", "0", "true"] {
+            let cli = Cli::try_parse_from([
+                "qbzd", "settings", "set", "audio.normalization_target_lufs", value,
+            ]).unwrap();
+            assert!(matches!(cli.cmd, Cmd::Settings {
+                cmd: SettingsCmd::Set { value: parsed, .. }
+            } if parsed == value));
+        }
+        assert!(Cli::try_parse_from([
+            "qbzd", "settings", "set", "audio.normalization_target_lufs", "--typo",
+        ]).is_err());
+    }
 }

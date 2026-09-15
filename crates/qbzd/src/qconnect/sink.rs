@@ -355,22 +355,32 @@ impl DaemonEventSink {
     }
 }
 
-fn renderer_command_name(command: &RendererCommand) -> &'static str {
-    match command {
-        RendererCommand::SetState { .. } => "set_state",
-        RendererCommand::SetVolume { .. } => "set_volume",
-        RendererCommand::SetActive { .. } => "set_active",
-        RendererCommand::SetMaxAudioQuality { .. } => "set_max_audio_quality",
-        RendererCommand::SetLoopMode { .. } => "set_loop_mode",
-        RendererCommand::SetShuffleMode { .. } => "set_shuffle_mode",
-        RendererCommand::MuteVolume { .. } => "mute_volume",
-    }
-}
-
 #[async_trait]
 impl QconnectEventSink for DaemonEventSink {
     fn playback_event(&self) -> Option<qbz_player::player::PlaybackEvent> {
         self.is_current().then(|| self.engine.playback_event())
+    }
+
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &qconnect_core::QConnectRendererState,
+    ) -> Result<(), String> {
+        if !self.is_current() {
+            return Err("renderer authority retired".into());
+        }
+        if remote_renderer_commands_are_fenced(&*self.sync_state.lock().await) {
+            return Err("renderer command fenced by local authority".into());
+        }
+        qconnect_app::renderer::apply_renderer_command(
+            &self.engine, &self.sync_state, command, state,
+        ).await?;
+        if !self.is_current() {
+            return Err("renderer authority retired during execution".into());
+        }
+        if matches!(command, RendererCommand::SetActive { active: true }) && self.engine.has_loaded_audio() {
+            self.report_active_renderer_ready().await;
+        }
+        if !self.is_current() { return Err("renderer authority retired".into()); }
+        Ok(())
     }
 
     async fn on_event(&self, event: QconnectAppEvent) {
@@ -451,41 +461,7 @@ impl QconnectEventSink for DaemonEventSink {
                     log::warn!("[QConnect] Failed to materialize remote queue: {err}");
                 }
             }
-            QconnectAppEvent::RendererCommandApplied { command, state } => {
-                let fenced = {
-                    let sync_state = self.sync_state.lock().await;
-                    remote_renderer_commands_are_fenced(&sync_state)
-                };
-                if fenced {
-                    log::info!(
-                        "[QConnect] Ignoring stale renderer command while local queue authority settles"
-                    );
-                    return;
-                }
-                log::info!(
-                    "[QConnect] Renderer command applied: {}",
-                    renderer_command_name(command)
-                );
-                let became_active = matches!(command, RendererCommand::SetActive { active: true });
-                if !self.is_current() {
-                    return;
-                }
-                if let Err(err) = qconnect_app::renderer::apply_renderer_command(
-                    &self.engine,
-                    &self.sync_state,
-                    command,
-                    state,
-                )
-                .await
-                {
-                    if !self.is_current() {
-                        return;
-                    }
-                    log::warn!("[QConnect] Failed to apply renderer command: {err}");
-                } else if became_active {
-                    self.report_active_renderer_ready().await;
-                }
-            }
+            QconnectAppEvent::RendererCommandApplied { .. } => {}
             QconnectAppEvent::RendererUnreachable { renderer_id } => {
                 // Slint copy surfaced a toast here — daemon logs it (§1.4).
                 log::warn!("[QConnect] Renderer {renderer_id} unreachable");

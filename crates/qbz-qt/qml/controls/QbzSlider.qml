@@ -108,18 +108,19 @@ Item {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onPressed: {
+        onPressed: function (mouse) {
             root.forceActiveFocus()
             root.dragging = true
             root.dragFraction = Math.max(0, Math.min(1, (mouse.x - root.thumbSize / 2) / root.travel))
             root.commit(root.dragFraction)
         }
-        onPositionChanged: {
+        onPositionChanged: function (mouse) {
             if (pressed) {
                 root.dragFraction = Math.max(0, Math.min(1, (mouse.x - root.thumbSize / 2) / root.travel))
                 root.commit(root.dragFraction)
             }
         }
+        onCanceled: root.dragging = false
         onReleased: {
             root.dragging = false
             root.released(root.value)

@@ -403,6 +403,7 @@ impl DaemonRendererEngine {
         track_id: u64,
         quality: Quality,
         start_position_secs: u64,
+        playing: bool,
     ) -> Result<(), String> {
         let _permit = self.action_permit()?;
         if self.authority_origin() != RendererAuthorityOrigin::Owner {
@@ -412,7 +413,7 @@ impl DaemonRendererEngine {
         }
         let playback_result = self
             .core()
-            .play_track_resolved(track_id, quality, None, None, start_position_secs)
+            .play_track_resolved_with_state(track_id, quality, None, None, start_position_secs, playing)
             .await;
         self.ensure_current()?;
         playback_result.map_err(|error| {
@@ -479,6 +480,11 @@ impl QconnectRendererEngine for DaemonRendererEngine {
             PlaybackState::default()
         }
     }
+    fn loading_state(&self) -> Option<(u64, qbz_player::player::PlaybackBufferState)> {
+        let event = self.playback_event();
+        Some((event.buffer_track_id, event.buffer_state))
+    }
+
     fn has_loaded_audio(&self) -> bool {
         self.is_current() && self.core().player().has_loaded_audio()
     }
@@ -562,6 +568,17 @@ impl QconnectRendererEngine for DaemonRendererEngine {
         duration_secs: u64,
         start_position_secs: u64,
     ) -> Result<(), String> {
+        self.start_track_stream_with_state(track_id, requested_quality, duration_secs, start_position_secs, true).await
+    }
+
+    async fn start_track_stream_with_state(
+        &self,
+        track_id: u64,
+        requested_quality: Quality,
+        duration_secs: u64,
+        start_position_secs: u64,
+        playing: bool,
+    ) -> Result<(), String> {
         self.cancel_active_feeder();
         let _permit = self.action_permit()?;
         let quality = self.effective_quality(requested_quality);
@@ -585,6 +602,7 @@ impl QconnectRendererEngine for DaemonRendererEngine {
             track_id,
             duration_secs,
             start_position_secs,
+            playing,
             &stream_url.url,
             "QConnect",
             || self.ensure_current(),
@@ -612,7 +630,7 @@ impl QconnectRendererEngine for DaemonRendererEngine {
                     "[QConnect] Owner raw-URL streaming hit the CDN header limit for track {track_id}: {stream_err}. Skipping full download; last resort: CMAF."
                 );
                 return self
-                    .play_via_owner_cmaf(track_id, quality, start_position_secs)
+                    .play_via_owner_cmaf(track_id, quality, start_position_secs, playing)
                     .await;
             }
             StreamRecoveryAction::FailClosed => {
@@ -634,7 +652,7 @@ impl QconnectRendererEngine for DaemonRendererEngine {
         match download_remote_audio(&stream_url.url).await {
             Ok(audio_data) => {
                 self.ensure_current()?;
-                let playback_result = self.core().player().play_data(audio_data, track_id);
+                let playback_result = self.core().player().play_data_at(audio_data, track_id, start_position_secs, playing);
                 self.ensure_current()?;
                 playback_result.map_err(|err| format!("play remote track {track_id}: {err}"))?;
                 Ok(())
@@ -648,7 +666,7 @@ impl QconnectRendererEngine for DaemonRendererEngine {
                 log::warn!(
                     "[QConnect] Full download hit the CDN header flood for track {track_id}: {download_err}. Last resort: CMAF."
                 );
-                self.play_via_owner_cmaf(track_id, quality, start_position_secs)
+                self.play_via_owner_cmaf(track_id, quality, start_position_secs, playing)
                     .await
             }
             Err(download_err) => Err(download_err),

@@ -612,3 +612,21 @@ fn device_pick_names_the_backend() {
     assert_eq!(pick.wanted, "hw:9,9");
     cleanup(&p);
 }
+
+#[test]
+fn audio_writer_rejects_an_unimplemented_key() {
+    let paths = scratch("unsupported-audio-writer");
+    let value = json!(true);
+    assert!(apply_audio_writes(&paths.data_root, &[("not_implemented", &value)]).is_err());
+    cleanup(&paths);
+}
+
+#[test]
+fn negative_normalization_target_reaches_persistent_storage() {
+    let paths = scratch("negative-normalization");
+    let value = json!(-18.5);
+    apply_audio_writes(&paths.data_root, &[("normalization_target_lufs", &value)]).unwrap();
+    let store = AudioSettingsStore::new_at(&paths.data_root).unwrap();
+    assert_eq!(store.get_settings().unwrap().normalization_target_lufs, -18.5);
+    cleanup(&paths);
+}

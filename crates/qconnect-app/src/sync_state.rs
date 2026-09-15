@@ -36,6 +36,10 @@ pub struct PendingLocalQueueTakeover {
 
 #[derive(Debug, Default)]
 pub struct QconnectRemoteSyncState {
+    /// Invalidates renderer transport intent when session ownership is lost.
+    pub renderer_generation: u64,
+    /// Explicit occurrence received before its transport state was known.
+    pub pending_transport_target: Option<(u64, qconnect_core::QueueItem)>,
     pub last_renderer_queue_item_id: Option<u64>,
     pub last_renderer_next_queue_item_id: Option<u64>,
     pub last_renderer_track_id: Option<u64>,
@@ -175,6 +179,8 @@ pub fn set_local_playback_conflict_pending(state: &mut QconnectRemoteSyncState, 
 
 /// Clear takeover protection on disconnect/retirement.
 pub fn clear_local_queue_takeover(state: &mut QconnectRemoteSyncState) {
+    state.renderer_generation = state.renderer_generation.wrapping_add(1);
+    state.last_load_attempt = None;
     state.pending_local_queue_takeover = None;
     state.local_playback_state_assertion_pending = false;
 }

@@ -74,14 +74,9 @@ pub struct QtQconnectEventSink {
     /// is_active=true after SetActive(true)) and to drive the session-apply +
     /// freeze/watchdog without an ownership cycle.
     app: Arc<OnceLock<Weak<QtQconnectApp>>>,
-    /// FIX #13: previous "a peer is the active renderer" state, tracked across
-    /// `apply_session_management_event` calls. On a false->true transition (QBZ
-    /// becomes a CONTROLLER) we fire one `ask_for_active_renderer_state` to fetch
-    /// the peer's full state (incl. `current_queue_item_id`), so the bar/queue
-    /// resolve the peer's CURRENT track immediately instead of staying stale
-    /// until the peer changes track. Edge-detected to avoid spamming on every
-    /// periodic state-update frame.
-    last_peer_active: std::sync::atomic::AtomicBool,
+    /// Last queried peer identity; peer-to-peer switches need a fresh query.
+    last_queried_peer: Mutex<Option<i32>>,
+    notified_volume_lock: Mutex<Option<i32>>,
 }
 
 impl QtQconnectEventSink {
@@ -101,7 +96,8 @@ impl QtQconnectEventSink {
             stamp,
             projection,
             app: Arc::new(OnceLock::new()),
-            last_peer_active: std::sync::atomic::AtomicBool::new(false),
+            last_queried_peer: Mutex::new(None),
+            notified_volume_lock: Mutex::new(None),
         }
     }
 
@@ -259,7 +255,7 @@ impl QtQconnectEventSink {
             }
             None => false,
         };
-        let (is_remote, cast_target, volume_locked) = {
+        let (is_remote, cast_target, volume_locked, volume, muted, denied_peer) = {
             let st = self.sync_state.lock().await;
             if !self.is_current() {
                 return;
@@ -280,21 +276,50 @@ impl QtQconnectEventSink {
             } else {
                 String::new()
             };
-            let volume_locked = is_remote
-                && active_info
-                    .map(|r| !renderer_allows_remote_volume(r))
-                    .unwrap_or(false);
-            (is_remote, cast_target, volume_locked)
+            let renderer = active.and_then(|id| st.session_renderer_states.get(&id));
+            let volume = renderer.and_then(|r| r.volume);
+            let muted = renderer.and_then(|r| r.muted).unwrap_or(false);
+            let denied = active_info
+                .map(|r| !renderer_allows_remote_volume(r))
+                .unwrap_or(false);
+            let volume_locked =
+                is_remote && super::qconnect_qt::peer_volume_locked(volume, session);
+            (
+                is_remote,
+                cast_target,
+                volume_locked,
+                volume,
+                muted,
+                active.filter(|_| is_remote && denied),
+            )
         };
 
         if !self.is_current() {
             return;
         }
-        crate::now_playing::set_remote(is_remote, &cast_target);
+        // Ownership and volume become visible together, including idle peers.
+        if is_remote {
+            crate::now_playing::set_remote_volume_state(
+                &cast_target,
+                super::qconnect_qt::peer_volume_fraction(volume),
+                muted,
+                volume_locked,
+                volume_locked && denied_peer.is_none(),
+            );
+        } else {
+            crate::now_playing::set_remote(false, "");
+            crate::now_playing::set_remote_volume_locked(false);
+        }
+        let mut notified = self.notified_volume_lock.lock().await;
         if !self.is_current() {
             return;
         }
-        crate::now_playing::set_remote_volume_locked(volume_locked);
+        if denied_peer.is_some() && *notified != denied_peer {
+            crate::toast_qt::info(qbz_i18n::t(
+                "This renderer does not allow remote volume control.",
+            ));
+        }
+        *notified = denied_peer;
     }
 
     /// Refresh the Qt now-playing card + queue panel from the current core
@@ -484,29 +509,24 @@ impl QtQconnectEventSink {
         // projection does not have to wait for its next periodic update. An
         // omitted scalar current_queue_item_id INSIDE player_state means 0
         // (proto3), not "position-only"; the protocol decoder restores it.
-        let peer_active_now = {
+        let peer_to_query = {
             let state = self.sync_state.lock().await;
             if !self.is_current() {
                 return;
             }
-            is_peer_renderer_active(&state.session)
+            let mut last = self.last_queried_peer.lock().await;
+            peer_state_query_target(&mut last, &state)
         };
-        if !self.is_current() {
-            return;
-        }
-        let was_peer_active = self
-            .last_peer_active
-            .swap(peer_active_now, std::sync::atomic::Ordering::Relaxed);
-        let conflict_pending = {
-            let state = self.sync_state.lock().await;
-            state.local_playback_conflict_pending
-        };
-        if peer_active_now && !was_peer_active && !conflict_pending {
+        if let Some(peer_id) = peer_to_query {
             let result = app.ask_for_active_renderer_state().await;
             if !self.is_current() {
                 return;
             }
             if let Err(err) = result {
+                let mut last = self.last_queried_peer.lock().await;
+                if *last == Some(peer_id) {
+                    *last = None;
+                }
                 log::warn!(
                     "[QConnect] controller entry: ask_for_active_renderer_state failed: {err}"
                 );
@@ -619,8 +639,49 @@ impl QtQconnectEventSink {
 
 #[async_trait]
 impl QconnectEventSink for QtQconnectEventSink {
+    fn allows_remote_volume(&self) -> bool {
+        self.is_current() && crate::settings_qt::allows_remote_volume()
+    }
+
     fn playback_event(&self) -> Option<qbz_player::player::PlaybackEvent> {
         self.is_current().then(|| self.engine.playback_event())
+    }
+
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &qconnect_app::QConnectRendererState,
+    ) -> Result<(), String> {
+        if !self.is_current() {
+            return Err("renderer authority retired".into());
+        }
+        // Recheck after the app's await points: a route change must not publish
+        // a successful volume report for a newly locked output.
+        if matches!(command, RendererCommand::SetVolume { .. } | RendererCommand::MuteVolume { .. })
+            && !self.allows_remote_volume()
+        {
+            return Err("local output volume became locked".into());
+        }
+        if remote_renderer_commands_are_fenced(&*self.sync_state.lock().await) {
+            return Err("renderer command fenced by local authority".into());
+        }
+        qconnect_app::renderer::apply_renderer_command(
+            &self.engine, &self.sync_state, command, state,
+        ).await?;
+        if !self.is_current() {
+            return Err("renderer authority retired during execution".into());
+        }
+        if matches!(command, RendererCommand::SetActive { active: true }) && self.engine.has_loaded_audio() {
+            self.report_active_renderer_ready().await;
+        }
+        let (volume, muted) = local_volume_ui_projection(command, state);
+        if let Some(volume) = volume { crate::now_playing::set_volume(volume); }
+        if let Some(muted) = muted { crate::now_playing::set_muted(muted); }
+        if matches!(command, RendererCommand::SetState { .. }) {
+            self.refresh_local_ui().await;
+        } else if matches!(command, RendererCommand::SetShuffleMode { .. } | RendererCommand::SetLoopMode { .. }) {
+            self.refresh_transport_modes().await;
+        }
+        if !self.is_current() { return Err("renderer authority retired".into()); }
+        Ok(())
     }
 
     async fn on_event(&self, event: QconnectAppEvent) {
@@ -643,7 +704,9 @@ impl QconnectEventSink for QtQconnectEventSink {
                     // This allowlisted scalar makes an actual mode transition
                     // break the consecutive-log run; never print the payload.
                     let loop_mode = payload.get("loop_mode").and_then(Value::as_i64);
-                    log::info!("[QConnect] Session management: {message_type} loop_mode={loop_mode:?}");
+                    log::info!(
+                        "[QConnect] Session management: {message_type} loop_mode={loop_mode:?}"
+                    );
                 } else {
                     log::info!("[QConnect] Session management: {message_type}");
                 }
@@ -727,82 +790,7 @@ impl QconnectEventSink for QtQconnectEventSink {
                     return;
                 }
             }
-            QconnectAppEvent::RendererCommandApplied { command, state } => {
-                let fenced = {
-                    let sync_state = self.sync_state.lock().await;
-                    remote_renderer_commands_are_fenced(&sync_state)
-                };
-                if fenced {
-                    log::info!(
-                        "[QConnect] Ignoring stale renderer command while local queue authority settles"
-                    );
-                    return;
-                }
-                // SetState is the routine playback/position command and may be
-                // republished. Lifecycle commands remain visible at info.
-                if matches!(command, RendererCommand::SetState { .. }) {
-                    log::debug!(
-                        "[QConnect] Renderer command applied: {}",
-                        renderer_command_label(command)
-                    );
-                } else {
-                    log::info!(
-                        "[QConnect] Renderer command applied: {}",
-                        renderer_command_label(command)
-                    );
-                }
-                let became_active = matches!(command, RendererCommand::SetActive { active: true });
-                let result = qconnect_app::renderer::apply_renderer_command(
-                    &self.engine,
-                    &self.sync_state,
-                    command,
-                    state,
-                )
-                .await;
-                if !self.is_current() {
-                    return;
-                }
-                let applied = if let Err(err) = result {
-                    log::warn!("[QConnect] Failed to apply renderer command: {err}");
-                    false
-                } else if became_active {
-                    self.report_active_renderer_ready().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                    true
-                } else {
-                    true
-                };
-                if applied {
-                    let (volume, muted) = local_volume_ui_projection(command, state);
-                    if let Some(volume) = volume {
-                        crate::now_playing::set_volume(volume);
-                    }
-                    if let Some(muted) = muted {
-                        crate::now_playing::set_muted(muted);
-                    }
-                }
-                // A SetState changes the current track / play-state — reflect it
-                // in the QBZ now-playing card + queue cursor highlight. A
-                // standalone SetShuffleMode / SetLoopMode does NOT move the track,
-                // so only refresh the lightweight shuffle/repeat button state (a
-                // full refresh would reset the now-playing card position/art).
-                if matches!(command, RendererCommand::SetState { .. }) {
-                    self.refresh_local_ui().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                } else if matches!(
-                    command,
-                    RendererCommand::SetShuffleMode { .. } | RendererCommand::SetLoopMode { .. }
-                ) {
-                    self.refresh_transport_modes().await;
-                    if !self.is_current() {
-                        return;
-                    }
-                }
-            }
+            QconnectAppEvent::RendererCommandApplied { .. } => {}
             QconnectAppEvent::RendererUnreachable { renderer_id } => {
                 log::warn!("[QConnect] Renderer {renderer_id} unreachable");
                 crate::toast_qt::error(qbz_i18n::t("Qobuz Connect renderer unreachable"));
@@ -859,6 +847,23 @@ impl QconnectEventSink for QtQconnectEventSink {
         }
         self.refresh_now_playing_remote_state().await;
     }
+}
+
+/// A pending ownership decision must not consume the peer's query edge.
+fn peer_state_query_target(last: &mut Option<i32>, state: &QconnectRemoteSyncState) -> Option<i32> {
+    let peer = state
+        .session
+        .active_renderer_id
+        .filter(|_| is_peer_renderer_active(&state.session));
+    if peer.is_none() {
+        *last = None;
+        return None;
+    }
+    if state.local_playback_conflict_pending || *last == peer {
+        return None;
+    }
+    *last = peer;
+    peer
 }
 
 /// Map a renderer's `device_type` (+ a name heuristic for web players) to a
@@ -975,6 +980,25 @@ fn dev_event_line(event: &QconnectAppEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peer_volume_state_is_requested_on_entry_switch_and_after_conflict() {
+        let mut state = QconnectRemoteSyncState::default();
+        state.session.local_renderer_id = Some(1);
+        state.session.active_renderer_id = Some(2);
+        let mut last = None;
+        state.local_playback_conflict_pending = true;
+        assert_eq!(peer_state_query_target(&mut last, &state), None);
+        state.local_playback_conflict_pending = false;
+        assert_eq!(peer_state_query_target(&mut last, &state), Some(2));
+        assert_eq!(peer_state_query_target(&mut last, &state), None);
+        state.session.active_renderer_id = Some(3);
+        assert_eq!(peer_state_query_target(&mut last, &state), Some(3));
+        state.session.active_renderer_id = Some(1);
+        assert_eq!(peer_state_query_target(&mut last, &state), None);
+        state.session.active_renderer_id = Some(3);
+        assert_eq!(peer_state_query_target(&mut last, &state), Some(3));
+    }
 
     #[test]
     fn only_ctrl_session_state_events_carry_a_lan_session_projection() {

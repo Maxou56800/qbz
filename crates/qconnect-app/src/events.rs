@@ -77,6 +77,23 @@ pub trait QconnectEventSink: Send + Sync {
         None
     }
 
+    /// Current host policy, checked before reducing a volume/mute command.
+    /// Ignoring an unsupported command must not publish a fictitious new level.
+    fn allows_remote_volume(&self) -> bool {
+        true
+    }
+
+    /// Command execution has an acknowledgement distinct from observations.
+    /// Hosts override this to propagate engine/authority failures to reporting.
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &QConnectRendererState,
+    ) -> Result<(), String> {
+        self.on_event(QconnectAppEvent::RendererCommandApplied {
+            command: command.clone(), state: state.clone(),
+        }).await;
+        Ok(())
+    }
+
     async fn on_event(&self, event: QconnectAppEvent);
 }
 

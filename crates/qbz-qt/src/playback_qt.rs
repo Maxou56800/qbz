@@ -4433,14 +4433,8 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                 // ms → s at the publish boundary (see UNITS above).
                 let position_secs = position_ms / 1000;
                 let playing = remote.playing;
-                // Reflect the PEER's actual volume on the bar so a drag starts
-                // from a safe level (never QBZ's local 100). When the peer
-                // hasn't reported a volume, clamp to 50% — the AVR-nuke
-                // safety default (playback.rs:5174-5180, §12.13).
-                let remote_volume = remote
-                    .volume
-                    .map(|v| (v as f32 / 100.0).clamp(0.0, 1.0))
-                    .unwrap_or(0.5);
+                // The event sink unlocks controls once the peer reports volume.
+                let remote_volume = crate::qconnect_qt::peer_volume_fraction(remote.volume);
                 // Reflect the PEER's shuffle/repeat state on the bar buttons.
                 // Pure UI reflection of the cloud's reported state — no local
                 // order is generated (WS-authoritative for shuffle order).
@@ -4552,6 +4546,7 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                 if let Some(_owner_action) = begin_owner_action() {
                     // The peer's mute was UI-only; returning to local restores
                     // the owner's retained toggle without changing its volume.
+                    crate::now_playing::set_volume(runtime.core().get_playback_state().volume);
                     crate::now_playing::set_muted(MUTED.load(Ordering::Relaxed));
                 }
             }

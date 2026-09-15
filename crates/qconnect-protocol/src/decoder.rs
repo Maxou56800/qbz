@@ -837,7 +837,13 @@ fn map_add_renderer(payload: CtrlAddRendererMessage) -> Result<QueueServerEvent,
             "friendly_name": di.friendly_name,
             "brand": di.brand,
             "model": di.model,
-            "device_type": di.device_type
+            "device_type": di.device_type,
+            // Controllers must retain the renderer's explicit restrictions.
+            "capabilities": di.capabilities.map(|capabilities| json!({
+                "min_audio_quality": capabilities.min_audio_quality,
+                "max_audio_quality": capabilities.max_audio_quality,
+                "volume_remote_control": capabilities.volume_remote_control,
+            }))
         })
     });
 
@@ -860,7 +866,13 @@ fn map_update_renderer(
             "friendly_name": di.friendly_name,
             "brand": di.brand,
             "model": di.model,
-            "device_type": di.device_type
+            "device_type": di.device_type,
+            // Controllers must retain the renderer's explicit restrictions.
+            "capabilities": di.capabilities.map(|capabilities| json!({
+                "min_audio_quality": capabilities.min_audio_quality,
+                "max_audio_quality": capabilities.max_audio_quality,
+                "volume_remote_control": capabilities.volume_remote_control,
+            }))
         })
     });
 
@@ -1106,6 +1118,51 @@ mod tests {
     use super::{
         decode_playback_error, decode_queue_server_events, decode_renderer_server_commands,
     };
+
+    #[test]
+    fn controller_renderer_capabilities_survive_add_and_update_frames() {
+        use crate::queue_command_proto::{
+            CtrlAddRendererMessage, CtrlUpdateRendererMessage, DeviceCapabilitiesMessage,
+            DeviceInfoMessage,
+        };
+        for volume in [None, Some(0), Some(1), Some(2)] {
+            for update in [false, true] {
+                let info = DeviceInfoMessage {
+                    friendly_name: Some("renderer".into()),
+                    capabilities: Some(DeviceCapabilitiesMessage {
+                        min_audio_quality: Some(1),
+                        max_audio_quality: Some(4),
+                        volume_remote_control: volume,
+                    }),
+                    ..Default::default()
+                };
+                let mut message = QConnectMessage::default();
+                if update {
+                    message.srvr_ctrl_update_renderer = Some(CtrlUpdateRendererMessage {
+                        renderer_id: Some(2),
+                        device_info: Some(info),
+                    });
+                } else {
+                    message.srvr_ctrl_add_renderer = Some(CtrlAddRendererMessage {
+                        renderer_id: Some(2),
+                        device_info: Some(info),
+                    });
+                }
+                let batch = QConnectMessages {
+                    messages: vec![message],
+                    ..Default::default()
+                };
+                let events = decode_queue_server_events(&batch.encode_to_vec()).unwrap();
+                assert_eq!(
+                    events[0].payload["device_info"]["capabilities"],
+                    serde_json::json!({
+                        "min_audio_quality": 1, "max_audio_quality": 4, "volume_remote_control": volume,
+                    }),
+                    "update={update}, volume={volume:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn controller_state_proto3_zero_cursor_and_position_are_not_missing() {

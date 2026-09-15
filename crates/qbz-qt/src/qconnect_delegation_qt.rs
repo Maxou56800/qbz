@@ -1087,6 +1087,7 @@ async fn publish_restored_owner_ui(
     }
     crate::now_playing::set_remote(false, "");
     crate::now_playing::set_remote_volume_locked(false);
+    crate::now_playing::set_volume(runtime.core().get_playback_state().volume);
     crate::playback_qt::refresh_now_playing(runtime).await;
     if !authority_matches(authority, stamp) {
         return;

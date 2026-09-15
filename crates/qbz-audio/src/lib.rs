@@ -29,6 +29,8 @@
 #[cfg(target_os = "linux")]
 pub mod alsa_backend;
 pub mod alsa_direct;
+#[cfg(target_os = "linux")]
+mod pcm_write;
 pub mod alsa_hardware_volume;
 pub mod wasapi_direct;
 /// Endpoint capabilities: the exclusive-mode rate sweep and the hotplug watch.
@@ -125,3 +127,6 @@ pub fn device_supports_sample_rate(_device_id: &str, _sample_rate: u32) -> Optio
 pub fn get_device_supported_rates(_device_id: &str) -> Option<Vec<u32>> {
     None
 }
+
+#[cfg(target_os = "linux")]
+mod pcm_sample;

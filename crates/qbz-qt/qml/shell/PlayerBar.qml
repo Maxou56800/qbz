@@ -826,18 +826,42 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: QbzPlayer.toggleMute()
                     }
-                    QbzSlider {
-                        enabled: !root.volLocked
+                    Item {
+                        id: volumeIndicator
                         width: 81
+                        height: 22
                         anchors.verticalCenter: parent.verticalCenter
-                        minimum: 0
-                        // 0..1000: whole steps on a 0..100 scale quantize the
-                        // volume to 1%; 0.1% steps drag fluidly.
-                        maximum: 1000
-                        value: Math.round(QbzPlayer.npVolume * 1000)
-                        onChanged: function (v) { QbzPlayer.setVolume(v / 1000.0) }
-                        // Persist only the settled value (PlayerBar.slint:864-866).
-                        onReleased: function (v) { QbzPlayer.persistVolume(v / 1000.0) }
+                        readonly property string hint: QbzPlayer.npRemoteVolumePending
+                            ? QbzSession.tr("Waiting for the renderer's volume…", QbzSession.trRev)
+                            : QbzPlayer.npRemoteVolumeLocked
+                                ? QbzSession.tr("This renderer does not allow remote volume control.", QbzSession.trRev)
+                                : root.volLocked
+                                    ? QbzSession.tr("This audio output does not support volume control.", QbzSession.trRev)
+                                    : Math.round(QbzPlayer.npVolume * 100) + "%"
+                        function updateHint() {
+                            if (!root.tooltip) return
+                            if (volumeHover.hovered)
+                                root.tooltip.showAbove(volumeIndicator, "renderer-volume", hint)
+                            else
+                                root.tooltip.hide("renderer-volume")
+                        }
+                        onHintChanged: updateHint()
+                        HoverHandler {
+                            id: volumeHover
+                            onHoveredChanged: volumeIndicator.updateHint()
+                        }
+                        QbzSlider {
+                            enabled: !root.volLocked
+                            anchors.fill: parent
+                            minimum: 0
+                            // 0..1000: whole steps on a 0..100 scale quantize the
+                            // volume to 1%; 0.1% steps drag fluidly.
+                            maximum: 1000
+                            value: Math.round(QbzPlayer.npVolume * 1000)
+                            onChanged: function (v) { QbzPlayer.setVolume(v / 1000.0) }
+                            // Persist only the settled value (PlayerBar.slint:864-866).
+                            onReleased: function (v) { QbzPlayer.persistVolume(v / 1000.0) }
+                        }
                     }
                     QbzIconButton {
                         visible: root.showVolumeSteppers

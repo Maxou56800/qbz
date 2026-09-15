@@ -4006,6 +4006,7 @@ dependencies = [
  "qbz-models",
  "rusqlite",
  "serde",
+ "serde_json",
  "tempfile",
  "windows 0.61.3",
 ]
