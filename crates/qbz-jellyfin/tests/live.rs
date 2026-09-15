@@ -67,7 +67,7 @@ async fn session(url: &str, user: &str, pass: &str) -> &'static qbz_jellyfin::Se
 /// The authenticated client every live test shares.
 async fn client(url: &str, user: &str, pass: &str) -> qbz_jellyfin::JellyfinClient {
     let s = session(url, user, pass).await;
-    qbz_jellyfin::JellyfinClient::new(url, &s.access_token, &s.user_id).unwrap()
+    qbz_jellyfin::JellyfinClient::new(url, &s.access_token, &s.user_id, "qbz-live-test").unwrap()
 }
 
 macro_rules! skip_without_server {

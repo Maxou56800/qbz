@@ -7,6 +7,21 @@
 //! Everything below was MEASURED against Jellyfin 10.11.11 on 2026-08-20; the
 //! numbers and the field shapes live in
 //! `qbz-nix-docs/qt-frontend/2026-08-20-jellyfin-subsonic/01-research.md`.
+//! The request shapes were re-verified against 12.1.0 on 2026-09-15 (#502).
+//!
+//! # Authorization: one header, every version
+//!
+//! Jellyfin 12.0 disabled "legacy authorization" by default, and its migration
+//! turns it off on upgraded servers too (server PR #15559). With it off the
+//! server no longer reads `X-Emby-Token`, `X-MediaBrowser-Token`,
+//! `X-Emby-Authorization` or the `api_key` query parameter. Sign-in still
+//! succeeds (it carries no token), and then EVERY following request answers
+//! 401 — exactly the "Signed in, but library access failed" users reported.
+//!
+//! The only forms read with legacy authorization off are the `Authorization:
+//! MediaBrowser …, Token="…"` header and the `ApiKey` query parameter. Both
+//! are also read by every server back to at least 10.8 (checked in the
+//! server's `AuthorizationContext`), so this crate uses nothing else.
 //!
 //! # The three facts that shape this file
 //!
@@ -447,6 +462,10 @@ pub struct JellyfinClient {
     base: String,
     token: String,
     user_id: String,
+    /// The install's persisted DeviceId (see [`auth_header`]). Sent with the
+    /// token so the server keeps attributing requests to the session that
+    /// owns it instead of rewriting that device's record.
+    device_id: String,
 }
 
 /// Normalise a user-typed address: strip a trailing slash, default the scheme
@@ -487,17 +506,34 @@ pub fn normalize_base_url(input: &str) -> String {
 ///    whichever finishes first holding a dead one. This is not hypothetical:
 ///    it is what five parallel live tests did to each other before they were
 ///    made to share a session.
+///
+/// Values are percent-encoded: the server URL-decodes every value it parses
+/// (`AuthorizationContext.GetParts`), so a raw `+`, `%`, `"` or `,` would
+/// otherwise arrive altered or split the header.
 fn auth_header(device_id: &str, token: Option<&str>) -> String {
     let mut h = format!(
         r#"MediaBrowser Client="QBZ", Device="{}", DeviceId="{}", Version="{}""#,
-        std::env::consts::OS,
-        device_id,
-        env!("CARGO_PKG_VERSION"),
+        header_value(std::env::consts::OS),
+        header_value(device_id),
+        header_value(env!("CARGO_PKG_VERSION")),
     );
     if let Some(t) = token {
-        h.push_str(&format!(r#", Token="{t}""#));
+        h.push_str(&format!(r#", Token="{}""#, header_value(t)));
     }
     h
+}
+
+/// Percent-encode everything outside RFC 3986's unreserved set.
+fn header_value(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for byte in raw.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
 }
 
 fn client() -> Result<reqwest::Client> {
@@ -717,12 +753,16 @@ fn quick_connect_check(status: reqwest::StatusCode) -> Result<()> {
 
 impl JellyfinClient {
     /// Build a client over an EXISTING token (the stored-credentials path).
-    pub fn new(base_url: &str, token: &str, user_id: &str) -> Result<Self> {
+    ///
+    /// `device_id` must be the one the token was issued under — the install's
+    /// persisted id, never a fresh one (see [`auth_header`]).
+    pub fn new(base_url: &str, token: &str, user_id: &str, device_id: &str) -> Result<Self> {
         Ok(Self {
             http: client()?,
             base: normalize_base_url(base_url),
             token: token.to_string(),
             user_id: user_id.to_string(),
+            device_id: device_id.to_string(),
         })
     }
 
@@ -730,18 +770,23 @@ impl JellyfinClient {
         &self.base
     }
 
-    async fn get_json<T: for<'de> Deserialize<'de>>(&self, path_and_query: &str) -> Result<T> {
-        let resp = self
-            .http
+    async fn get(&self, path_and_query: &str) -> Result<reqwest::Response> {
+        self.http
             .get(format!("{}{}", self.base, path_and_query))
-            .header("X-Emby-Token", &self.token)
+            // THE header, never `X-Emby-Token`: see the module docs.
+            .header(
+                "Authorization",
+                auth_header(&self.device_id, Some(&self.token)),
+            )
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(|e| transport_error(&e))
+    }
+
+    async fn get_json<T: for<'de> Deserialize<'de>>(&self, path_and_query: &str) -> Result<T> {
+        let resp = self.get(path_and_query).await?;
         check(resp.status())?;
-        resp.json::<T>()
-            .await
-            .map_err(|e| JellyfinError::Decode(e.to_string()))
+        decode(resp).await
     }
 
     /// The user's MUSIC libraries (`CollectionType == "music"`).
@@ -749,10 +794,21 @@ impl JellyfinClient {
     /// A server also exposes a `playlists` view; it is filtered out here rather
     /// than by the caller, because "which of these is music" is a question
     /// about Jellyfin, and this crate is where Jellyfin's vocabulary lives.
+    ///
+    /// `GET /UserViews?userId=` is the current route (10.9+). The older
+    /// `/Users/{id}/Views` is marked obsolete in 12 and liable for removal, so
+    /// it is only asked when the current route does not exist (10.8).
     pub async fn music_libraries(&self) -> Result<Vec<MusicLibrary>> {
-        let env: ItemsEnvelope<ViewDto> = self
-            .get_json(&format!("/Users/{}/Views", self.user_id))
+        let resp = self
+            .get(&format!("/UserViews?userId={}", self.user_id))
             .await?;
+        let resp = if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            self.get(&format!("/Users/{}/Views", self.user_id)).await?
+        } else {
+            resp
+        };
+        check(resp.status())?;
+        let env: ItemsEnvelope<ViewDto> = decode(resp).await?;
         Ok(env
             .items
             .into_iter()
@@ -878,6 +934,12 @@ impl JellyfinClient {
     }
 }
 
+async fn decode<T: for<'de> Deserialize<'de>>(resp: reqwest::Response) -> Result<T> {
+    resp.json::<T>()
+        .await
+        .map_err(|e| JellyfinError::Decode(e.to_string()))
+}
+
 fn tracks_page_path(
     user_id: &str,
     library_id: Option<&str>,
@@ -928,14 +990,17 @@ fn tracks_page_path(
 /// `audioBitRate` on this endpoint are exactly how a bit-perfect path becomes a
 /// resampled one.
 ///
-/// The token rides in the query string because the feeder takes a URL, not a
-/// request builder. That makes this a SECRET-BEARING string: never log it whole.
+/// The token rides in the query string because the url is handed to consumers
+/// that cannot add headers (a DLNA / Chromecast renderer fetches it itself).
+/// `ApiKey`, never `api_key`: the lowercase form is legacy authorization, which
+/// Jellyfin 12 no longer reads (module docs). That makes this a SECRET-BEARING
+/// string: never log it whole.
 pub fn stream_url(base_url: &str, token: &str, item_id: &str) -> String {
     format!(
-        "{}/Audio/{}/stream?static=true&api_key={}",
+        "{}/Audio/{}/stream?static=true&ApiKey={}",
         normalize_base_url(base_url),
         item_id,
-        token
+        header_value(token)
     )
 }
 
@@ -996,6 +1061,18 @@ mod tests {
         assert!(without.contains(r#"DeviceId="qbz-abc""#));
         assert!(!without.contains("Token="));
         assert!(auth_header("qbz-abc", Some("sekrit")).contains(r#"Token="sekrit""#));
+    }
+
+    /// The server URL-decodes each value, so anything outside the unreserved
+    /// set must be encoded or it arrives changed (`+` becomes a space) or ends
+    /// the value early (`"`, `,`).
+    #[test]
+    fn auth_header_values_survive_the_servers_url_decoding() {
+        let h = auth_header("id+with,odd\"chars", Some("a+b%c"));
+        assert!(h.starts_with("MediaBrowser "));
+        assert!(h.contains(r#"DeviceId="id%2Bwith%2Codd%22chars""#), "{h}");
+        assert!(h.contains(r#"Token="a%2Bb%25c""#), "{h}");
+        assert_eq!(header_value("qbz-0f3A_9.~"), "qbz-0f3A_9.~");
     }
 
     /// A chunked response with no `Content-Length` is the server transcoding.
@@ -1231,8 +1308,9 @@ mod tests {
         let u = stream_url("http://h:8096/", "tok", "item42");
         assert_eq!(
             u,
-            "http://h:8096/Audio/item42/stream?static=true&api_key=tok"
+            "http://h:8096/Audio/item42/stream?static=true&ApiKey=tok"
         );
+        assert!(!u.contains("api_key"), "api_key is legacy authorization");
         assert!(
             !u.contains("audioCodec"),
             "a codec parameter IS a transcode"

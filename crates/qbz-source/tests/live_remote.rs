@@ -136,7 +136,7 @@ async fn jellyfin_walks_from_a_sweep_to_real_audio() {
         .await
         .expect("authenticate");
     let client =
-        qbz_jellyfin::JellyfinClient::new(&url, &session.access_token, &session.user_id).unwrap();
+        qbz_jellyfin::JellyfinClient::new(&url, &session.access_token, &session.user_id, "qbz-e2e").unwrap();
     let libs = client.music_libraries().await.expect("libraries");
     let (page, total) = client
         .tracks_page(Some(&libs[0].id), 0, None)
