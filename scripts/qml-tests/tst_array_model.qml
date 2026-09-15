@@ -26,12 +26,15 @@ Item {
         reuseItems: true
         currentIndex: -1
         cacheBuffer: 800
-        model: QbzArrayModel { id: rowsModel; view: view; rows: root.cells }
+        // The delegate rides on the model, as in every host: Qt 6.8/6.9 do not
+        // hand a view's delegate to an external DelegateModel.
+        model: QbzArrayModel { id: rowsModel; view: view; rows: root.cells; delegate: chooser }
         header: Item {
             width: 600; height: 300
             TextInput { objectName: "field"; width: 200; height: 30; y: 250; text: "x" }
         }
-        delegate: DelegateChooser {
+        DelegateChooser {
+            id: chooser
             role: "kind"
             DelegateChoice { roleValue: "gap"; delegate: Item { width: 600; height: 10 } }
             DelegateChoice {

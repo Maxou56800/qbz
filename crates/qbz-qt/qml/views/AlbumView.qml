@@ -852,6 +852,7 @@ Rectangle {
             id: cellsModel
             view: pageFlick
             rows: root.listCells
+            delegate: cellsDelegate
         }
         reuseItems: true
         currentIndex: -1
@@ -1782,7 +1783,10 @@ Rectangle {
         // The child paints over the inert cells reserved by buildTrackCells().
         // cacheBuffer keeps the root alive until the overflowing child is well
         // outside the viewport, and creates the next heavy row asynchronously.
-        delegate: DelegateChooser {
+        // Handed to cellsModel: Qt 6.8/6.9 ignore a view's delegate when the
+        // model is an external DelegateModel, and rendered zero rows.
+        DelegateChooser {
+            id: cellsDelegate
             role: "kind"
 
             DelegateChoice {
