@@ -67,6 +67,7 @@ fn ensure_bound() {
         .join("users")
         .join(uid.to_string());
     STATE.init_at(&dir);
+    register_log_secrets();
     *bound = Some(uid);
     log::info!("[qbz-qt] media server settings bound to user {uid}");
 }
@@ -83,6 +84,16 @@ pub fn init_for_user(base_dir: &std::path::Path) {
     // DeviceId minted per connection attempt revokes the previous token, and a
     // salt minted per request re-downloads every cover.
     ensure_identities();
+    register_log_secrets();
+}
+
+/// Hand the stored Jellyfin token to the log redactor's literal layer, so it
+/// is scrubbed even where no labeled key (`ApiKey=`, `Token="`) precedes it.
+fn register_log_secrets() {
+    let jf = STATE.get(MediaServerKind::Jellyfin);
+    if !jf.token.is_empty() {
+        qbz_log::register_secret(jf.token);
+    }
 }
 
 pub fn reset() {
@@ -109,6 +120,7 @@ pub fn get(kind: MediaServerKind) -> MediaServerSettings {
 pub fn put(kind: MediaServerKind, s: &MediaServerSettings) {
     STATE.put(kind, s);
     invalidate_cache();
+    register_log_secrets();
 }
 
 pub fn disconnect(kind: MediaServerKind) {
