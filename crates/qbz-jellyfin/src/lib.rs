@@ -950,8 +950,14 @@ fn tracks_page_path(
     let scope = library_id
         .map(|id| format!("&parentId={id}"))
         .unwrap_or_default();
+    // BOTH parameters, same value. Every server version filters them
+    // identically (item `DateLastSaved`), but 10.8–10.10 build the
+    // `minDateLastSaved` clause against the `@MinDateLastSavedForUser` SQL
+    // parameter: sent alone, 10.9/10.10 answer 500 and 10.8 evaluates NULL and
+    // returns nothing. Supplying the second binds what the clause names;
+    // 10.11+ simply applies the same filter twice.
     let delta = min_date_last_saved
-        .map(|date| format!("&minDateLastSaved={date}"))
+        .map(|date| format!("&minDateLastSaved={date}&minDateLastSavedForUser={date}"))
         .unwrap_or_default();
     // ProviderIds on both: a handful of bytes per item, and it is the only
     // cross-source identity a media server can hand us.
@@ -1146,6 +1152,10 @@ mod tests {
         assert!(essential.contains("Limit=250&StartIndex=250"));
         assert!(essential.contains("parentId=library"));
         assert!(essential.contains("minDateLastSaved=2026-08-23T00:00:00Z"));
+        assert!(
+            essential.contains("minDateLastSavedForUser=2026-08-23T00:00:00Z"),
+            "10.8-10.10 need both delta parameters bound"
+        );
         assert!(!essential.contains("MediaSources"));
         assert!(!essential.contains("Path"));
 
