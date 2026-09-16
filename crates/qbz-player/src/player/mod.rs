@@ -1404,6 +1404,8 @@ pub struct PlaybackEvent {
 /// Shared state between main thread and audio thread
 #[derive(Clone)]
 pub struct SharedState {
+    /// Terminal fence: late transport/reinit commands cannot reopen a closing player.
+    shutting_down: Arc<AtomicBool>,
     /// Is currently playing
     is_playing: Arc<AtomicBool>,
     /// Current position in seconds
@@ -1508,6 +1510,7 @@ impl Default for SharedState {
 impl SharedState {
     pub fn new() -> Self {
         Self {
+            shutting_down: Arc::new(AtomicBool::new(false)),
             is_playing: Arc::new(AtomicBool::new(false)),
             position: Arc::new(AtomicU64::new(0)),
             duration: Arc::new(AtomicU64::new(0)),
@@ -1623,7 +1626,7 @@ impl SharedState {
 
     fn apply_playing_intent(&self, engine: &PlaybackEngine, generation: u64, playing: bool) -> bool {
         let intent = self.play_intent.lock().unwrap();
-        if *intent != (generation, playing) { return false; }
+        if self.shutting_down.load(Ordering::SeqCst) || *intent != (generation, playing) { return false; }
         if playing {
             engine.play();
             self.resume_playback_timer();
@@ -1639,7 +1642,7 @@ impl SharedState {
         generation: u64, position: u64) -> Result<(), String>
     where S: Source<Item = f32> + Send + 'static {
         let intent = self.play_intent.lock().unwrap();
-        if intent.0 != generation {
+        if self.shutting_down.load(Ordering::SeqCst) || intent.0 != generation {
             return Err("source installation superseded".into());
         }
         engine.append_with_state(source, intent.1)?;
@@ -1664,7 +1667,7 @@ impl SharedState {
     /// True while `gen` is still the newest play intent. The audio thread
     /// uses this to abandon buffer waits for superseded plays (#591).
     pub(crate) fn is_current_play(&self, gen: u64) -> bool {
-        self.current_play_generation() == gen
+        !self.shutting_down.load(Ordering::SeqCst) && self.current_play_generation() == gen
     }
 
     fn begin_buffering(&self, track_id: u64, play_generation: u64) {
@@ -2508,6 +2511,11 @@ impl Player {
                  current_gain_atomic: &mut Option<Arc<AtomicU32>>,
                  gapless_pending: &mut Option<GaplessPending>,
                  gapless_request_armed: &mut bool| {
+                    if thread_state.shutting_down.load(Ordering::SeqCst)
+                        && !matches!(&command, AudioCommand::ReleaseDevice { .. } | AudioCommand::Stop { .. })
+                    {
+                        return;
+                    }
                     match command {
                         AudioCommand::Play {
                             data,
@@ -5057,7 +5065,8 @@ impl Player {
                 // were actually playing.
                 if let Some(reason) = qbz_audio::stream_health::take_wedged() {
                     let now = Instant::now();
-                    let was_playing = thread_state.is_playing.load(Ordering::SeqCst);
+                    let was_playing = thread_state.is_playing.load(Ordering::SeqCst)
+                        && !thread_state.shutting_down.load(Ordering::SeqCst);
                     let resume_at = thread_state.current_position();
                     if let Some(engine) = current_engine.take() {
                         engine.stop();
@@ -7390,6 +7399,14 @@ impl Player {
             .map_err(|e| format!("Failed to send reinit command: {}", e))
     }
 
+    /// Close admission before asynchronous frontend teardown starts. Permanent
+    /// for this player instance; unlike pause/reset, exit cannot reopen audio.
+    pub fn begin_shutdown(&self) {
+        self.state.shutting_down.store(true, Ordering::SeqCst);
+        let _ = self.begin_play_with_state(false);
+        self.state.seal_stream_feeder();
+    }
+
     /// Release the output device without reopening it. Drops the active
     /// stream — freeing an exclusive ALSA `hw:` grab and its D-Bus
     /// reservation — and un-suspends / un-forces anything QBZ parked, so
@@ -7627,6 +7644,17 @@ mod tests {
         assert_eq!(*state.play_intent.lock().unwrap(), (second, false));
         assert_eq!(state.request_playing(true), second);
         assert_eq!(*state.play_intent.lock().unwrap(), (second, true));
+    }
+
+    #[test]
+    fn shutdown_fences_existing_and_late_play_generations() {
+        let state = SharedState::new();
+        let first = state.begin_play();
+        assert!(state.is_current_play(first));
+        state.shutting_down.store(true, Ordering::SeqCst);
+        assert!(!state.is_current_play(first));
+        let late = state.begin_play();
+        assert!(!state.is_current_play(late));
     }
 
     #[test]

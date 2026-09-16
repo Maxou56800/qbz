@@ -2597,6 +2597,11 @@ impl QtQconnectService {
         self.disconnect_safely().await.map(|_| ())
     }
 
+    /// Process exit restores ownership bookkeeping, never audible playback.
+    pub async fn disconnect_for_shutdown(&self) -> Result<(), String> {
+        self.disconnect_with_owner_policy(false).await.map(|_| ())
+    }
+
     pub async fn disconnect_safely(&self) -> Result<QconnectDisconnectOutcome, String> {
         self.disconnect_with_owner_policy(true).await
     }

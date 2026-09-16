@@ -51,7 +51,7 @@ type Runtime = Arc<AppRuntime<LoggingAdapter>>;
 pub type QtDelegationCoordinator = DelegationCoordinator<QtDelegationHost>;
 
 const SHUTDOWN_RESTORE_OWNER: u8 = 0;
-const SHUTDOWN_DISCARD_OWNER: u8 = 1;
+const SHUTDOWN_RESTORE_QUEUE_ONLY: u8 = 1;
 
 #[derive(Clone)]
 struct OwnerSnapshot {
@@ -277,7 +277,7 @@ impl QtDelegationHost {
             if restore {
                 SHUTDOWN_RESTORE_OWNER
             } else {
-                SHUTDOWN_DISCARD_OWNER
+                SHUTDOWN_RESTORE_QUEUE_ONLY
             },
             Ordering::Release,
         );
@@ -874,8 +874,10 @@ impl DelegationHost for QtDelegationHost {
         {
             self.restore_owner_snapshot().await
         } else if was_delegated || has_owner_snapshot {
+            // Process exit still restores the owner's queue for persistence,
+            // but must never schedule audible playback or reopen the DAC.
             let _ = self.runtime.core().stop();
-            recover_lock(&self.owner_snapshot).take();
+            let _ = self.restore_owner_snapshot().await;
             None
         } else {
             // A pending candidate may have captured a snapshot, but disabling an
