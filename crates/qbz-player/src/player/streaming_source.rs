@@ -268,6 +268,8 @@ pub struct BufferedMediaSource {
     config: StreamingConfig,
     /// Each reader has its own read position
     read_pos: std::sync::atomic::AtomicU64,
+    reader_generation: Arc<std::sync::atomic::AtomicU64>,
+    generation: u64,
 }
 
 impl BufferedMediaSource {
@@ -361,6 +363,8 @@ impl BufferedMediaSource {
             state: Arc::clone(&state),
             config: config.clone(),
             read_pos: std::sync::atomic::AtomicU64::new(0),
+            reader_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            generation: 0,
         };
 
         let writer = BufferWriter {
@@ -378,7 +382,18 @@ impl BufferedMediaSource {
             state: Arc::clone(&self.state),
             config: self.config.clone(),
             read_pos: std::sync::atomic::AtomicU64::new(0),
+            reader_generation: self.reader_generation.clone(),
+            generation: self.reader_generation.load(std::sync::atomic::Ordering::SeqCst),
         }
+    }
+
+    /// Wake decoders being dropped without truncating/cancelling the download.
+    /// A fresh reader used by Resume belongs to the next generation.
+    pub(super) fn interrupt_readers(&self) {
+        let (lock, cvar) = &*self.state;
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.reader_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        cvar.notify_all();
     }
 
     /// Wait until initial buffer is filled or download completes.
@@ -540,12 +555,16 @@ impl Read for BufferedMediaSource {
 
         // Wait for data if we're ahead of buffer
         while read_pos >= state.len() && !state.download_complete && state.download_error.is_none()
+            && self.reader_generation.load(Ordering::SeqCst) == self.generation
         {
             state = cvar
                 .wait(state)
                 .map_err(|_| IoError::new(ErrorKind::Other, "Condition variable wait failed"))?;
         }
 
+        if self.reader_generation.load(Ordering::SeqCst) != self.generation {
+            return Ok(0);
+        }
         // Check for errors
         if let Some(ref err) = state.download_error {
             return Err(IoError::new(ErrorKind::Other, err.clone()));
@@ -1473,6 +1492,24 @@ mod tests {
         let mut copied = Vec::new();
         assert_eq!(writer.write_buffered_to(&mut copied).unwrap(), size);
         assert!(copied.iter().all(|byte| *byte == 73));
+    }
+
+    #[test]
+    fn release_interrupts_a_waiting_reader_without_sealing_download() {
+        let (source, writer) = BufferedMediaSource::new(StreamingConfig::fast_start(), None);
+        let source = Arc::new(source);
+        let mut reader = source.create_reader();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let worker = thread::spawn(move || { done_tx.send(reader.read(&mut [0; 8])).unwrap(); });
+        source.interrupt_readers();
+        assert_eq!(done_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), 0);
+        worker.join().unwrap();
+        assert!(!source.is_complete());
+        writer.push_chunk(b"resume").unwrap();
+        let mut resumed = source.create_reader();
+        let mut bytes = [0; 6];
+        resumed.read_exact(&mut bytes).unwrap();
+        assert_eq!(&bytes, b"resume");
     }
 
     #[test]

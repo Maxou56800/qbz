@@ -87,6 +87,31 @@ pub fn resolve_report_queue_items(
     )
 }
 
+/// Queue ids for the report that ACKNOWLEDGES a renderer command.
+///
+/// They were omitted outright (40a2fa618: the server rejected ids it could not
+/// match after a QBZ-initiated queue load), but an omitted scalar is 0 on the
+/// wire and 0 is the FIRST queue item, so every command-driven track change
+/// bounced the controller to the head of the queue until the next periodic
+/// report corrected it. Resolving against the synchronized queue — the same
+/// resolution the periodic report uses — keeps that protection: an occurrence
+/// that does not resolve is still reported as absent.
+pub fn acknowledged_queue_item_ids(
+    queue: &crate::QConnectQueueState,
+    renderer: &crate::QConnectRendererState,
+) -> (Option<u64>, Option<u64>) {
+    let Some(track) = renderer.current_track.as_ref() else {
+        return (None, None);
+    };
+    let (current, next, _) = resolve_report_queue_items(
+        queue,
+        track.track_id,
+        Some(track.queue_item_id),
+        renderer.next_track.as_ref().map(|item| item.queue_item_id),
+    );
+    (current, next)
+}
+
 /// One real-state projection for regular reports, activation and reconnect.
 pub fn playback_snapshot_from_event(
     event: &PlaybackEvent,
@@ -212,6 +237,42 @@ mod tests {
             (Some(101), Some(102), Some(10))
         );
     }
+    /// The acknowledgement report must name the occurrence the command asked
+    /// for. Omitting it reads as queue item 0 — the head of the queue — and the
+    /// controller visibly jumps there on every track change.
+    #[test]
+    fn acknowledgement_names_the_requested_occurrence_or_stays_absent() {
+        let q = queue();
+        let item = |track_id: u64, queue_item_id: u64| qconnect_core::QueueItem {
+            track_context_uuid: String::new(),
+            track_id,
+            queue_item_id,
+        };
+
+        let renderer = crate::QConnectRendererState {
+            current_track: Some(item(10, 102)),
+            next_track: Some(item(30, 103)),
+            ..Default::default()
+        };
+        assert_eq!(
+            acknowledged_queue_item_ids(&q, &renderer),
+            (Some(102), Some(103))
+        );
+
+        // An occurrence absent from the synchronized queue is never invented.
+        let unknown = crate::QConnectRendererState {
+            current_track: Some(item(99, 999)),
+            ..Default::default()
+        };
+        assert_eq!(acknowledged_queue_item_ids(&q, &unknown), (None, None));
+
+        // A state-only command carries no track: nothing to name.
+        assert_eq!(
+            acknowledged_queue_item_ids(&q, &crate::QConnectRendererState::default()),
+            (None, None)
+        );
+    }
+
     #[test]
     fn reporting_uses_shuffle_successor() {
         let mut q = queue();
