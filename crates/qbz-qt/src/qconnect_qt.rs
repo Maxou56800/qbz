@@ -1972,6 +1972,14 @@ impl QtQconnectService {
             }
         }
 
+        // What the controller's row selection is built from. Without it the
+        // periodic report is the only one whose ids never reach the log, and a
+        // wrong id here reads on the controller as "already on that track".
+        log::debug!(
+            "[QConnect] periodic report: track={track_id} current_qid={current_qid:?} next_qid={next_qid:?} playing={playing_state} pos={position_ms} qv={}.{}",
+            queue_version.major,
+            queue_version.minor,
+        );
         let report = build_renderer_playback_report(
             Uuid::new_v4().to_string(),
             queue_version,
