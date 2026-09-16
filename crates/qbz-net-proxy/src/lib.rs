@@ -35,6 +35,9 @@ use std::fmt;
 use reqwest::ClientBuilder;
 use url::Url;
 
+mod current;
+pub use current::{apply_current, current_generation, set_current, Generation};
+
 /// Which proxy protocol the user selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProxyKind {
