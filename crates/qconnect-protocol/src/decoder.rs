@@ -408,17 +408,29 @@ fn resolve_renderer_message_type(message: &QConnectMessage) -> Option<i32> {
     })
 }
 
+/// A renderer occurrence whose `queue_item_id` is negative is the official
+/// "there is no such item" marker: the server sends `-1` for `next_track` when
+/// the cursor it commands sits on the LAST queue row (wire-captured
+/// 2026-09-15). Treating it as a decode error rejected the whole batch, so a
+/// controller tap on the last row reached the renderer as nothing at all, over
+/// and over, while every other row worked.
+fn optional_renderer_occurrence(
+    track: Option<QueueTrackWithContext>,
+) -> Result<Option<Value>, ProtocolError> {
+    let Some(track) = track else {
+        return Ok(None);
+    };
+    if track.queue_item_id.is_some_and(|id| id < 0) {
+        return Ok(None);
+    }
+    queue_track_with_context_to_json(track).map(Some)
+}
+
 fn map_srvr_rndr_set_state(
     payload: RendererSetStateMessage,
 ) -> Result<RendererServerCommand, ProtocolError> {
-    let current_track = payload
-        .current_track
-        .map(queue_track_with_context_to_json)
-        .transpose()?;
-    let next_track = payload
-        .next_track
-        .map(queue_track_with_context_to_json)
-        .transpose()?;
+    let current_track = optional_renderer_occurrence(payload.current_track)?;
+    let next_track = optional_renderer_occurrence(payload.next_track)?;
     let queue_version = queue_version_opt(payload.queue_version)?;
 
     Ok(RendererServerCommand {
@@ -1319,6 +1331,51 @@ mod tests {
             events[0].message_type(),
             "MESSAGE_TYPE_SRVR_CTRL_QUEUE_TRACKS_ADDED"
         );
+    }
+
+    /// Wire-captured 2026-09-15: commanding the LAST queue row carries
+    /// `next_track.queue_item_id = -1`. The batch must still decode — rejecting
+    /// it made the last row of every queue unreachable from a controller.
+    #[test]
+    fn decodes_set_state_whose_next_occurrence_is_the_absent_marker() {
+        let message = QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeSrvrRndrSetState as i32),
+            srvr_rndr_set_state: Some(RendererSetStateMessage {
+                playing_state: Some(2),
+                current_position: Some(0),
+                queue_version: Some(QueueVersionRef {
+                    major: Some(41),
+                    minor: Some(1),
+                }),
+                current_track: Some(QueueTrackWithContext {
+                    queue_item_id: Some(8),
+                    track_id: Some(386_331_733),
+                    context_uuid: None,
+                }),
+                next_track: Some(QueueTrackWithContext {
+                    queue_item_id: Some(-1),
+                    track_id: Some(0),
+                    context_uuid: None,
+                }),
+            }),
+            ..Default::default()
+        };
+        let batch = QConnectMessages {
+            messages_time: Some(1),
+            messages_id: Some(2),
+            messages: vec![message],
+        };
+
+        let commands =
+            decode_renderer_server_commands(&batch.encode_to_vec()).expect("decode renderer batch");
+        assert_eq!(commands.len(), 1);
+        assert_eq!(
+            commands[0].payload["current_track"]["queue_item_id"]
+                .as_u64()
+                .expect("current occurrence"),
+            8
+        );
+        assert!(commands[0].payload["next_track"].is_null());
     }
 
     #[test]
