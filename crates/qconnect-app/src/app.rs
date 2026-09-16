@@ -718,6 +718,18 @@ where
             snapshot = state.queue.clone();
         }
 
+        // The takeover's own QueueLoadTracks is confirmed by the uuid the server
+        // echoes back, NOT by the single pending-action slot: local authority
+        // sends AskForQueueState, SetActiveRenderer and QueueLoadTracks in one
+        // burst, so the slot is already occupied and that action is never
+        // correlated. Without this the takeover echo stayed unconfirmed, the
+        // fence never retired and every renderer command was discarded until an
+        // unrelated local action republished the queue.
+        if let Some(action_uuid) = event.action_uuid.as_deref() {
+            let mut sync = self.sync.lock().await;
+            crate::confirm_local_queue_takeover_action(&mut sync, action_uuid);
+        }
+
         if let Some(uuid) = completed_uuid {
             {
                 let mut sync = self.sync.lock().await;
@@ -2528,8 +2540,9 @@ where
                         }
                         TransportEvent::InboundQueueServerEvent(evt) => {
                             log::debug!(
-                                "[QConnect] <-- Inbound queue event: {} tracks={} autoplay_tracks={}",
+                                "[QConnect] <-- Inbound queue event: {} action_uuid={:?} tracks={} autoplay_tracks={}",
                                 evt.message_type(),
+                                evt.action_uuid,
                                 evt.payload.get("tracks").and_then(|value| value.as_array()).map_or(0, Vec::len),
                                 evt.payload.get("autoplay_tracks").and_then(|value| value.as_array()).map_or(0, Vec::len),
                             );
@@ -3433,6 +3446,48 @@ mod tests {
                 .and_then(|renderer| renderer.playing_state),
             Some(PLAYING_STATE_PLAYING)
         );
+    }
+
+    /// Local authority sends AskForQueueState + SetActiveRenderer +
+    /// QueueLoadTracks in one burst, so its QueueLoadTracks never owns the
+    /// single pending slot. The echo must still confirm the takeover by its own
+    /// action uuid: otherwise the fence never retires and every renderer
+    /// command is discarded until an unrelated local action republishes.
+    #[tokio::test]
+    async fn takeover_echo_confirms_by_action_uuid_while_the_pending_slot_is_busy() {
+        let (app, _sink, _transport, _rx) = build_connected_app().await;
+        app.trigger_queue_state_resync().await;
+        assert!(app.state_handle().lock().await.pending.current().is_some());
+
+        let takeover_uuid = "load-takeover-1".to_string();
+        {
+            let handle = app.sync_handle();
+            let mut state = handle.lock().await;
+            crate::arm_local_queue_takeover(&mut state, vec![101, 102], takeover_uuid.clone());
+        }
+
+        app.apply_server_event(QueueServerEvent {
+            event_type: QueueEventType::SrvrCtrlQueueTracksLoaded,
+            action_uuid: Some(takeover_uuid),
+            queue_version: Some(QueueVersion::new(2, 1)),
+            payload: json!({
+                "tracks": [
+                    {"track_id": 101, "queue_item_id": 1, "track_context_uuid": "ctx"},
+                    {"track_id": 102, "queue_item_id": 2, "track_context_uuid": "ctx"}
+                ],
+                "queue_position": 0
+            }),
+        })
+        .await
+        .unwrap();
+
+        // The host sink retires the fence when it applies that same snapshot.
+        let snapshot = app.queue_state_snapshot().await;
+        let handle = app.sync_handle();
+        let mut state = handle.lock().await;
+        assert!(!crate::should_materialize_remote_queue(&mut state, &snapshot));
+        assert!(state.pending_local_queue_takeover.is_none());
+        assert!(state.local_playback_state_assertion_pending);
     }
 
     #[tokio::test]
