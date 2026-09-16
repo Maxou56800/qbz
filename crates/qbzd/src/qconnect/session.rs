@@ -36,7 +36,7 @@ use super::engine::VolumeMode; // T10 (OD4): join-time volume report honors the 
 use super::lan::DaemonLanProjectionSlot;
 use super::sink::{DaemonEventSink, DaemonQconnectApp};
 use super::transport::{
-    default_qconnect_device_info, default_qconnect_device_info_with_name, load_persisted_device_name,
+    device_info_with_volume_mode, load_persisted_device_name,
     resolve_transport_config, QconnectJoinSessionRequest, AUDIO_QUALITY_HIRES_LEVEL2,
 };
 use super::{update_lifecycle_state_if_running, DaemonQconnectInner};
@@ -155,9 +155,9 @@ impl SessionLoopHost for DaemonSessionLoopHost {
         // the default name would break the renderer self-match after reconnect.
         let device_name = load_persisted_device_name();
         log::info!("[QConnect] reconnect: announcing device name {device_name:?}");
-        if let Err(err) =
-            bootstrap_remote_presence(&self.app, device_name, &self.authority, self.stamp).await
-        {
+        if let Err(err) = bootstrap_remote_presence(
+            &self.app, device_name, self.volume_mode, &self.authority, self.stamp,
+        ).await {
             if !self.authority.is_current(self.stamp) {
                 return;
             }
@@ -256,11 +256,13 @@ impl SessionLoopHost for DaemonSessionLoopHost {
 pub async fn bootstrap_remote_presence(
     app: &Arc<DaemonQconnectApp>,
     custom_device_name: Option<String>,
+    volume_mode: VolumeMode,
     authority: &AuthorityCell,
     stamp: AuthorityStamp,
 ) -> Result<(), String> {
-    bootstrap_remote_presence_with_gate(app, custom_device_name, || authority.is_current(stamp))
-        .await
+    bootstrap_remote_presence_with_gate(app, custom_device_name, volume_mode, || {
+        authority.is_current(stamp)
+    }).await
 }
 
 /// Complete the owner bootstrap on an isolated, authenticated/subscribed QWS
@@ -269,13 +271,15 @@ pub async fn bootstrap_remote_presence(
 pub(crate) async fn bootstrap_prepared_owner_presence(
     app: &Arc<DaemonQconnectApp>,
     custom_device_name: Option<String>,
+    volume_mode: VolumeMode,
 ) -> Result<(), String> {
-    bootstrap_remote_presence_with_gate(app, custom_device_name, || true).await
+    bootstrap_remote_presence_with_gate(app, custom_device_name, volume_mode, || true).await
 }
 
 async fn bootstrap_remote_presence_with_gate<F>(
     app: &Arc<DaemonQconnectApp>,
     custom_device_name: Option<String>,
+    volume_mode: VolumeMode,
     is_current: F,
 ) -> Result<(), String>
 where
@@ -284,7 +288,7 @@ where
     if !is_current() {
         return Ok(());
     }
-    let device_info = default_qconnect_device_info_with_name(custom_device_name.as_deref());
+    let device_info = device_info_with_volume_mode(custom_device_name.as_deref(), volume_mode);
 
     let join_payload = serde_json::to_value(QconnectJoinSessionRequest {
         session_uuid: None,
@@ -375,7 +379,9 @@ pub async fn deferred_renderer_join(
         return;
     }
 
-    let device_info = default_qconnect_device_info();
+    let device_info = device_info_with_volume_mode(
+        load_persisted_device_name().as_deref(), volume_mode,
+    );
     if !authority.is_current(stamp) {
         return;
     }

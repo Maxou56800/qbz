@@ -37,8 +37,7 @@ use super::authority::{AuthorityActionPermit, AuthorityCell, AuthorityOrigin, Au
 
 const RETIRED_AUTHORITY_ERROR: &str = "qconnect renderer authority is retired";
 
-// T10 (OD4, §7.4): daemon-only volume policy. The desktop has no equivalent —
-// it always applies remote volume. The mode is read from the daemon-root
+// T10 (OD4, §7.4): daemon volume policy. The mode is read from the daemon-root
 // `qconnect_settings.db` `volume_mode` KV key (transport::load_volume_mode_at)
 // at connect time and injected into the engine + session host.
 /// How the daemon treats a controller's remote volume command (01 §7.4).
@@ -49,8 +48,8 @@ pub enum VolumeMode {
     #[default]
     Software,
     /// Bit-perfect purist. The player stays at 100 % (no software attenuation);
-    /// remote `SetVolume` is acknowledged-but-ignored (logged at info) and 100
-    /// is reported. For DACs feeding power amps where software gain is unwanted.
+    /// remote volume/mute commands are ignored before state changes or reports.
+    /// The session reports 100. For DACs where software gain is unwanted.
     Locked,
 }
 
@@ -256,6 +255,10 @@ pub struct DaemonRendererEngine {
 }
 
 impl DaemonRendererEngine {
+    pub fn volume_mode(&self) -> VolumeMode {
+        self.volume_mode
+    }
+
     pub fn playback_event(&self) -> qbz_player::player::PlaybackEvent {
         self.runtime.core().player().get_playback_event()
     }

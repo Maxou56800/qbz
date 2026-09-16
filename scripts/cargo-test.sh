@@ -210,12 +210,16 @@ cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- decod
 cargo test --manifest-path crates/Cargo.toml -p qbz-log --lib -- repeat::tests::
 
 say "gate: renderer capability wire shape and rejected volume commands"
-# The workspace run executes both tests; require their presence so a renamed
+# The workspace run executes these tests; require their presence so a renamed
 # module or cfg change cannot silently drop this renderer-side regression.
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-protocol --lib -- --list device_info_update_matches_official_nested_wire_shape 2>/dev/null | grep -c ': test$' || true)
 (( n >= 1 )) || { echo "renderer capability wire regression missing"; exit 1; }
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list locked_renderer_ignores_volume_and_mute_before_execution_or_reporting 2>/dev/null | grep -c ': test$' || true)
 (( n >= 1 )) || { echo "locked renderer command regression missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbzd --bin qbzd -- --list qconnect::sink::volume_tests:: 2>/dev/null | grep -c ': test$' || true)
+(( n >= 2 )) || { echo "daemon locked/software volume regressions missing"; exit 1; }
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbzd --bin qbzd -- --list device_advertisement_matches_captured_volume_mode 2>/dev/null | grep -c ': test$' || true)
+(( n >= 1 )) || { echo "daemon volume capability regression missing"; exit 1; }
 
 say "gate: handoff execution, PCM progress, and bounded CMAF assembly regressions"
 n=$(cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- --list handoff_ 2>/dev/null | grep -c ': test$' || true)

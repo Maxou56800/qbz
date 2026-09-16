@@ -38,6 +38,8 @@
 
 # Shared cargo-test.sh requires the renderer capability wire fixture and
 # volume/mute rejection before renderer execution or reporting.
+# It also requires qbzd's actual sink/engine locked and software volume tests
+# and the matching daemon capability advertisement (D5-qbzd).
 # Shared cargo-test.sh also gates signed updater verification, version selection
 # and preference preservation; qt-runtime-gate.sh covers the update UI.
 # Shared cargo-test.sh also gates Orbit HTTP host isolation, library profiles
