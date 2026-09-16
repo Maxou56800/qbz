@@ -42,6 +42,134 @@ fn playback_period_frames(rate: u32, exclusive: bool, bounds: &SupportedBufferSi
 /// system stuck on a suspended sink after exclusive playback.
 static SUSPENDED_SINK: Mutex<Option<String>> = Mutex::new(None);
 
+// ReserveDevice1 can make WirePlumber vacate a sink without our pactl busy
+// fallback ever running. Remember that sink before the reservation hides it.
+static EXCLUSIVE_SINKS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn sinks_for_pcm(device: &str, inventory: &serde_json::Value) -> Vec<String> {
+    let Some((_, args)) = device.split_once(':') else {
+        return Vec::new();
+    };
+    let parts: Vec<_> = args.split(',').collect();
+    let card = parts
+        .iter()
+        .find_map(|p| p.strip_prefix("CARD="))
+        .or_else(|| parts.first().copied().filter(|p| !p.contains('=')));
+    let pcm = parts
+        .iter()
+        .find_map(|p| p.strip_prefix("DEV="))
+        .or_else(|| parts.get(1).copied().filter(|p| !p.contains('=')))
+        .unwrap_or("0");
+    let (Some(card), Ok(pcm)) = (card, pcm.parse::<u32>()) else {
+        return Vec::new();
+    };
+    let Some(sinks) = inventory.as_array() else {
+        return Vec::new();
+    };
+    sinks
+        .iter()
+        .filter_map(|sink| {
+            let props = sink.get("properties")?;
+            let card_matches = if let Ok(index) = card.parse::<u32>() {
+                property_number(&props["alsa.card"]) == Some(index)
+            } else {
+                props["alsa.id"].as_str() == Some(card)
+            };
+            (card_matches && property_number(&props["alsa.device"]) == Some(pcm))
+                .then(|| sink["name"].as_str().map(str::to_owned))
+                .flatten()
+        })
+        .collect()
+}
+
+fn property_number(value: &serde_json::Value) -> Option<u32> {
+    value
+        .as_str()
+        .and_then(|s| s.parse().ok())
+        .or_else(|| value.as_u64().and_then(|n| n.try_into().ok()))
+}
+
+/// Capture the actual DAC, never the default output, before ReserveDevice1
+/// can remove its sink. Failed PCM opens must not wake another owner's sink.
+pub(crate) fn with_sink_recovery<T>(
+    device: &str,
+    open: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let targets = pactl_output(&["--format=json", "list", "sinks"])
+        .map_err(|error| {
+            log::warn!("[ALSA Backend] Cannot capture recovery target for '{device}': {error}")
+        })
+        .ok()
+        .and_then(|output| serde_json::from_slice(&output).ok())
+        .map(|inventory| sinks_for_pcm(device, &inventory))
+        .unwrap_or_default();
+    open_with_recovery(targets, open, |targets| {
+        if let Ok(mut pending) = EXCLUSIVE_SINKS.lock() {
+            for sink in targets {
+                if !pending.contains(&sink) {
+                    log::info!("[ALSA Backend] Recording sink '{sink}' for recovery after exclusive playback");
+                    pending.push(sink);
+                }
+            }
+        }
+    })
+}
+
+fn open_with_recovery<T>(
+    targets: Vec<String>,
+    open: impl FnOnce() -> Result<T, String>,
+    record: impl FnOnce(Vec<String>),
+) -> Result<T, String> {
+    let stream = open()?;
+    record(targets);
+    Ok(stream)
+}
+
+// Bound each daemon interaction so recovery can finish inside the shutdown
+// watchdog. Drain stdout concurrently: sink inventories can exceed pipe capacity.
+fn pactl_output(args: &[&str]) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let mut child = Command::new("pactl")
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stdout.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let deadline = Instant::now() + Duration::from_millis(500);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(match result {
+                    Err(error) => error.to_string(),
+                    _ => "pactl timed out after 500ms".into(),
+                });
+            }
+        }
+    };
+    let bytes = reader
+        .join()
+        .map_err(|_| "pactl output reader panicked".to_string())?
+        .map_err(|error| error.to_string())?;
+    let status = status?;
+    if status.success() {
+        Ok(bytes)
+    } else {
+        Err(format!("pactl {args:?}: {status}"))
+    }
+}
+
 /// Suspend the current default PipeWire sink so an exclusive ALSA device open
 /// can grab the hardware, recording the resolved sink name for later resume.
 /// Falls back to the `@DEFAULT_SINK@` alias if the name can't be resolved.
@@ -77,36 +205,52 @@ fn suspend_default_sink_for_exclusive() {
 }
 
 /// Resume the PipeWire sink QBZ suspended for exclusive access (issue #263 leak
-/// fix). No-op if QBZ did not suspend one — so it is safe to call on every
-/// stop/teardown. Call it once the exclusive device has actually been released
+/// fix), including sinks vacated through ReserveDevice1. Safe on every
+/// stop/teardown when no recovery is pending. Call it once the exclusive device has actually been released
 /// so the rest of the system can use the sink again.
 pub fn resume_suspended_sink() -> Result<(), String> {
-    let target = match SUSPENDED_SINK.lock() {
-        Ok(guard) => guard.clone(),
-        Err(_) => None,
-    };
-    let Some(sink) = target else {
-        return Ok(());
-    };
-
-    resume_sink_with(&sink, |target| {
-        let output = std::process::Command::new("pactl")
-            .args(["suspend-sink", target, "0"])
-            .output()
-            .map_err(|error| error.to_string())?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-        }
-    })?;
-    if let Ok(mut guard) = SUSPENDED_SINK.lock() {
-        if guard.as_deref() == Some(sink.as_str()) {
-            *guard = None;
+    let mut targets = EXCLUSIVE_SINKS
+        .lock()
+        .map_err(|_| "sink recovery lock poisoned".to_string())?
+        .clone();
+    if let Some(sink) = SUSPENDED_SINK
+        .lock()
+        .map_err(|_| "suspended sink lock poisoned".to_string())?
+        .clone()
+    {
+        if !targets.contains(&sink) {
+            targets.push(sink);
         }
     }
-    log::info!("[ALSA Backend] Resumed PipeWire sink '{sink}'");
-    Ok(())
+    if targets.is_empty() {
+        log::info!("[ALSA Backend] No recorded PipeWire sinks to recover");
+        return Ok(());
+    }
+    let mut failures = Vec::new();
+    for sink in targets {
+        let result = resume_sink_with(&sink, |target| {
+            pactl_output(&["suspend-sink", target, "0"]).map(|_| ())
+        });
+        match result {
+            Ok(()) => {
+                if let Ok(mut pending) = EXCLUSIVE_SINKS.lock() {
+                    pending.retain(|target| target != &sink);
+                }
+                if let Ok(mut pending) = SUSPENDED_SINK.lock() {
+                    if pending.as_deref() == Some(sink.as_str()) {
+                        *pending = None;
+                    }
+                }
+                log::info!("[ALSA Backend] PipeWire accepted recovery of sink '{sink}'");
+            }
+            Err(error) => failures.push(error),
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
 }
 
 fn resume_sink_with(
@@ -132,7 +276,53 @@ fn resume_sink_with(
 
 #[cfg(test)]
 mod sink_recovery_tests {
-    use super::resume_sink_with;
+    use super::{open_with_recovery, resume_sink_with, sinks_for_pcm};
+
+    fn inventory() -> serde_json::Value {
+        serde_json::json!([
+            {"name":"laptop", "properties":{"alsa.card":"0", "alsa.id":"PCH", "alsa.device":"0"}},
+            {"name":"dac", "properties":{"alsa.card":"1", "alsa.id":"ZH3", "alsa.device":"0"}},
+            {"name":"dac-other-pcm", "properties":{"alsa.card":1, "alsa.id":"ZH3", "alsa.device":1}}
+        ])
+    }
+
+    #[test]
+    fn captures_the_dac_by_card_and_pcm_not_the_laptop_output() {
+        for device in ["hw:CARD=ZH3,DEV=0", "plughw:1,0", "hw:DEV=0,CARD=ZH3"] {
+            assert_eq!(sinks_for_pcm(device, &inventory()), vec!["dac"]);
+        }
+        assert_eq!(sinks_for_pcm("hw:1,1", &inventory()), vec!["dac-other-pcm"]);
+    }
+
+    #[test]
+    fn missing_identity_never_falls_back_to_an_unrelated_sink() {
+        for device in ["default", "pulse", "hw:CARD=ABSENT,DEV=0", "hw:1,99"] {
+            assert!(sinks_for_pcm(device, &inventory()).is_empty());
+        }
+        assert!(sinks_for_pcm("hw:1,0", &serde_json::json!([{"name":"unknown"}])).is_empty());
+    }
+
+    #[test]
+    fn successful_first_open_records_recovery_without_a_busy_retry() {
+        let mut recorded = Vec::new();
+        let result = open_with_recovery(
+            sinks_for_pcm("hw:1,0", &inventory()),
+            || Ok("pcm"),
+            |targets| recorded = targets,
+        );
+        assert_eq!(result.unwrap(), "pcm");
+        assert_eq!(recorded, vec!["dac"]);
+    }
+
+    #[test]
+    fn refused_open_does_not_schedule_recovery_of_another_owners_device() {
+        let result: Result<(), String> = open_with_recovery(
+            vec!["dac".into()],
+            || Err("higher priority owner".into()),
+            |_| panic!("must not record a failed open"),
+        );
+        assert!(result.is_err());
+    }
 
     #[test]
     fn another_default_sink_cannot_acknowledge_dac_recovery() {

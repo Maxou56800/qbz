@@ -232,6 +232,11 @@ cargo test --manifest-path crates/Cargo.toml -p qconnect-app --lib -- handoff_
 cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- pcm_write::tests::
 cargo test --manifest-path crates/Cargo.toml -p qbz-qobuz --lib -- incremental_
 
+say "gate: ALSA sink recovery with and without a busy retry"
+n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list sink_recovery_tests:: 2>/dev/null | grep -c ': test$' || true)
+(( n >= 6 )) || { echo "ALSA sink recovery suite has $n tests (expected >= 6)"; exit 1; }
+cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- sink_recovery_tests::
+
 say "gate: exact integer PCM encoding and real decoder byte round trips"
 n=$(cargo test --manifest-path crates/Cargo.toml -p qbz-audio --lib -- --list pcm_sample::tests:: 2>/dev/null | grep -c ': test$' || true)
 (( n >= 3 )) || { echo "PCM encoding suite has $n tests (expected >= 3)"; exit 1; }

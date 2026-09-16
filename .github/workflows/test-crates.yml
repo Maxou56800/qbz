@@ -184,6 +184,7 @@ jobs:
 
       # The shared script also gates handoff execution, PCM partial progress,
       # cache acquisition provenance and bounded CMAF assembly regressions.
+      # Requires ALSA sink recovery coverage for first-open and EBUSY paths.
       # Includes successful-request vs available-master reuse, explicit lower
       # quality fallback and conservative v1 playback sidecars.
       - name: cargo test (scripts/cargo-test.sh — the local mirror)

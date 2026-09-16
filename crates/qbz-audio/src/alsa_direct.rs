@@ -166,6 +166,12 @@ const PIPEWIRE_VACATE_MARGIN: std::time::Duration = std::time::Duration::from_mi
 impl AlsaDirectStream {
     /// Create new ALSA direct stream
     pub fn new(device_id: &str, sample_rate: u32, channels: u16) -> Result<Self, String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_inner(device_id, sample_rate, channels)
+        })
+    }
+
+    fn new_inner(device_id: &str, sample_rate: u32, channels: u16) -> Result<Self, String> {
         log::info!(
             "[ALSA Direct] Opening device: {} ({}Hz, {}ch)",
             device_id,
@@ -307,6 +313,12 @@ impl AlsaDirectStream {
     /// the carrier rate the caller falls back to DSD→PCM conversion.
     /// Mirrors `new()` for reservation / buffer sizing / field order.
     pub fn new_dop(device_id: &str, carrier_rate: u32, channels: u16) -> Result<Self, String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_dop_inner(device_id, carrier_rate, channels)
+        })
+    }
+
+    fn new_dop_inner(device_id: &str, carrier_rate: u32, channels: u16) -> Result<Self, String> {
         log::info!(
             "[ALSA Direct] Opening device for DoP: {} ({}Hz carrier, {}ch, S32_LE)",
             device_id,
@@ -380,6 +392,16 @@ impl AlsaDirectStream {
     /// hasn't granted the device a DSD format (no quirk) — the caller falls
     /// back to DoP/conversion.
     pub fn new_native_dsd(
+        device_id: &str,
+        dsd_rate: u32,
+        channels: u16,
+    ) -> Result<(Self, bool), String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_native_dsd_inner(device_id, dsd_rate, channels)
+        })
+    }
+
+    fn new_native_dsd_inner(
         device_id: &str,
         dsd_rate: u32,
         channels: u16,
