@@ -3395,3 +3395,9 @@ msgstr "Waiting for the renderer’s volume…"
 
 msgid "This audio output does not support volume control."
 msgstr "This audio output does not support volume control."
+
+msgid "Hide Dock icon when closed to menu bar"
+msgstr "Hide Dock icon when closed to menu bar"
+
+msgid "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"
+msgstr "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"

@@ -866,6 +866,8 @@ ApplicationWindow {
         }
     }
     function showFromTray() {
+        // Restore Regular activation policy before showing/focusing on macOS.
+        QbzTray.setWindowShown(true)
         if (window.trayRestoreValid) {
             window.x = window.trayRestoreX
             window.y = window.trayRestoreY
@@ -888,7 +890,6 @@ ApplicationWindow {
         window.requestActivate()
         if (window.trayRestoreValid)
             trayRestoreTimer.restart()
-        QbzTray.setWindowShown(true)
     }
 
     // THE ONE close choreography (A-26, §5.7). Five exits reach it: this
@@ -897,12 +898,10 @@ ApplicationWindow {
     // shell/KioskShell.qml, and the miniplayer's closeApp through the
     // QbzMini.closeAppRequested handler below.
     //
-    // The predicate is BOTH conditions, ported verbatim from
-    // crates/qbz/src/main.rs:23253 — `tray_settings::get().close_to_tray &&
-    // tray::handle().is_some()`. TRAY OFF => CLOSE QUITS: `handle()` is None
-    // when the tray is disabled, suppressed under gamescope or failed to
-    // initialise, and gating on the setting alone would strand the process with
-    // no window and no way back on a desktop with no SNI host (§15 trap 22).
+    // On macOS Close hides and Dock/Finder reopen restores the current window,
+    // even without a menu-bar item. On other desktops BOTH a live tray and
+    // close-to-tray are required, so hiding cannot strand an unreachable app.
+    // Quit remains a separate command on every platform.
     //
     // `closeEvent` is the QQuickCloseEvent on the one path that carries one and
     // null on the other four.
@@ -911,7 +910,8 @@ ApplicationWindow {
             closeEvent.accepted = false
         if (quitConfirmation.opened)
             return
-        var hide = QbzTray.trayLive && (QbzShell.isMacos || QbzTray.closeToTray)
+        // macOS always has the Dock/Finder reopen path, even without a tray.
+        var hide = QbzShell.isMacos || (QbzTray.trayLive && QbzTray.closeToTray)
         // The evidence line (2026-08-04): logged RUST-side so it lands in
         // qbz.log — console.log only reaches stderr, which owner reports
         // never carry. It prints both operands and the arm taken, which is
@@ -1006,6 +1006,8 @@ ApplicationWindow {
         target: QbzTray
         function onCloseRequested() { window.closeOrHide(null) }
         function onWindowShowRequested() {
+            if (window.quitAccepted)
+                return
             console.log("[qml] tray -> showFromTray")
             window.showFromTray()
         }
@@ -1018,9 +1020,13 @@ ApplicationWindow {
         // beside it. No setWindowShown — the mini is not the main window, and
         // the flag still honestly says the main one is hidden.
         function onMiniPresentRequested() {
+            if (window.quitAccepted)
+                return
             var mini = window.ensureMiniWindow()
             if (mini !== null) {
                 mini.show()
+                if (mini.visibility === Window.Minimized)
+                    mini.showNormal()
                 mini.raise()
                 mini.requestActivate()
             }

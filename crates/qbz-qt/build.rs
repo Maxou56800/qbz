@@ -417,6 +417,8 @@ fn build_rhi_items() {
     // not for a cross one.
     let macos = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
     if macos {
+        println!("cargo:rerun-if-changed=cxx/macos_reopen.mm");
+        cc.file("cxx/macos_reopen.mm");
         // FRAMEWORK search path. Without it every `#include <QtCore/...>` in
         // cxx/ fails: the `-I .../QtCore.framework/Headers` that
         // `include_paths()` produces cannot resolve a module-qualified include,
@@ -661,6 +663,7 @@ fn main() {
                 "qml/settings/OrbitSettings.qml",
                 "qml/settings/OrbitSettingsPanel.qml",
                 "qml/shell/AmbientField.qml",
+                "qml/shell/AppBackground.qml",
                 "qml/shell/WallpaperField.qml",
                 "qml/shell/AppShell.qml",
                 "qml/shell/OrbitBanner.qml",

@@ -239,9 +239,8 @@ pub(crate) fn handle() -> Option<&'static TrayHandle> {
 /// on, while a plain minimize still goes to the Dock like any app. Only the
 /// close path calls this; minimize is untouched by design.
 ///
-/// **Main thread only.** Its one caller is `QbzTray::set_window_shown`, a
-/// `#[qinvokable]` — those run on the Qt GUI thread, which on macOS IS the
-/// AppKit main thread, so `MainThreadMarker::new()` succeeds there. It returns
+/// **Main thread only.** Visibility and preference changes reach this through
+/// `refresh_mac_dock_policy` on the Qt GUI/AppKit thread. The marker returns
 /// `None` and no-ops anywhere else rather than panicking.
 ///
 /// Port of `crates/qbz/src/tray/macos.rs:320-331`, reached through the
@@ -269,11 +268,6 @@ pub(crate) fn set_mac_dock_hidden(hidden: bool) {
         "[tray] dock icon {}",
         if hidden { "hidden" } else { "shown" }
     );
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn set_mac_dock_hidden(hidden: bool) {
-    let _ = hidden;
 }
 
 /// The close-to-tray predicate, ported verbatim from the reference's
@@ -645,6 +639,38 @@ pub(crate) fn present() {
 /// what keeps the toggle honest (D18). 1:1 with `tray/mod.rs:281-283`.
 pub(crate) fn set_window_shown(shown: bool) {
     WINDOW_SHOWN.store(shown, Ordering::Relaxed);
+}
+
+pub(crate) fn refresh_mac_dock_policy(tray_live: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let hide_dock = crate::settings_qt::tray()
+            .get()
+            .map(|settings| settings.mac_hide_dock)
+            .unwrap_or(false);
+        set_mac_dock_hidden(mac_dock_should_hide(
+            WINDOW_SHOWN.load(Ordering::Relaxed),
+            crate::mini_bridge::is_open(),
+            tray_live,
+            hide_dock,
+        ));
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = tray_live;
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn mac_dock_should_hide(main_shown: bool, mini_open: bool, tray_live: bool, opt_in: bool) -> bool {
+    opt_in && tray_live && !main_shown && !mini_open
+}
+
+#[test]
+fn mac_dock_remains_a_recovery_path_unless_menu_bar_only_is_selected() {
+    assert!(!mac_dock_should_hide(false, false, true, false));
+    assert!(mac_dock_should_hide(false, false, true, true));
+    assert!(!mac_dock_should_hide(false, false, false, true));
+    assert!(!mac_dock_should_hide(true, false, true, true));
+    assert!(!mac_dock_should_hide(false, true, true, true));
 }
 
 /// Quit the whole app from a tray action (any thread) → `Main.qml`'s

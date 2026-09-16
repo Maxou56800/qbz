@@ -3892,7 +3892,12 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "tray-mac-hide-dock" => tray()
             .set_mac_hide_dock(value)
             .map_err(|e| e.to_string())
-            .map(|_| Apply::None),
+            .map(|_| {
+                crate::tray_bridge::ui(|t| {
+                    crate::tray_qt::refresh_mac_dock_policy(*t.as_ref().tray_live());
+                });
+                Apply::None
+            }),
         // --- Integrations (phase 19) --------------------------------------
         "show-recommendations" => {
             crate::integrations_qt::set_show_recommendations(value).map(|_| Apply::None)

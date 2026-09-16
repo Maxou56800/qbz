@@ -22,12 +22,18 @@ import "../theme"
 
 Item {
     id: root
+    objectName: "miniMetadata"
 
     QbzTheme { id: theme }
 
     /// Handed down by MiniShell (see MiniCompactSurface for why it is a
     /// property and not a `parent` read).
     property bool npExplicit: false
+    property bool backdropActive: false
+    // AlbumView header foregrounds on the dark ambient backdrop.
+    readonly property bool lightText: backdropActive && theme.isDark
+    readonly property color headerStrong: lightText ? "#ffffff" : theme.textPrimary
+    readonly property color headerBody: lightText ? "#e0ffffff" : theme.textSecondary
 
     // Max 320, 1:1, shrinking with the resizable window: the card is 40 px
     // wider than the cover at the padding, so this is 320 at the 368 px card
@@ -82,7 +88,7 @@ Item {
                     text: QbzPlayer.npHasTrack
                           ? QbzPlayer.npTitle
                           : QbzSession.tr("No track playing", QbzSession.trRev)
-                    color: theme.textPrimary
+                    color: root.headerStrong
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
@@ -104,7 +110,7 @@ Item {
                 width: parent.width
                 visible: QbzPlayer.npArtist !== ""
                 text: QbzPlayer.npArtist
-                color: theme.textMuted
+                color: root.headerBody
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
@@ -116,7 +122,7 @@ Item {
                 width: parent.width
                 visible: QbzPlayer.npAlbum !== ""
                 text: QbzPlayer.npAlbum
-                color: theme.alphaTier(55)
+                color: root.headerBody
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
