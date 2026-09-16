@@ -638,6 +638,17 @@ Column {
         }
     }
 
+    SettingRow { kioskHost: root.kioskHost;
+        visible: root.doc.isMacos === true
+        enabled: root.doc.trayEnable === true
+        label: QbzSession.tr("Hide Dock icon when closed to menu bar", QbzSession.trRev)
+        description: QbzSession.tr("Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.doc.trayMacHideDock === true
+            onToggled: function (v) { QbzBridge.settingsBool("tray-mac-hide-dock", v) }
+        }
+    }
+
     // The group's own separator is gated too, or the panel ends on a divider
     // with nothing under it (the reference gates its three spacer/divider
     // elements the same way, AppearanceSettings.slint:1015-1017).

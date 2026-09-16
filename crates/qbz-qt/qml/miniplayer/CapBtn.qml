@@ -32,6 +32,7 @@ Rectangle {
     property string name: ""
     property int iconSize: 13
     property bool active: false
+    property real idleOpacity: 0.65
     /// The close button: red hover fill, white glyph on it.
     property bool danger: false
     /// `a-move` only — the grab cursor that says "this drags the window".
@@ -65,7 +66,7 @@ Rectangle {
         tintName: root.active
                   ? "accent"
                   : ((ta.containsMouse && root.danger) ? "white" : "textPrimary")
-        opacity: (root.active || ta.containsMouse) ? 1.0 : 0.65
+        opacity: (root.active || ta.containsMouse) ? 1.0 : root.idleOpacity
     }
 
     MouseArea {

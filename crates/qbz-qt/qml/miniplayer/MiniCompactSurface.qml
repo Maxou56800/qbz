@@ -17,6 +17,7 @@ import "../theme"
 
 Item {
     id: root
+    objectName: "miniMetadata"
 
     QbzTheme { id: theme }
 
@@ -24,6 +25,11 @@ Item {
     /// document — QbzPlayer publishes no np_explicit (§8 rule 1: an explicit
     /// property, never a `parent` read).
     property bool npExplicit: false
+    property bool backdropActive: false
+    // AlbumView header foregrounds on the dark ambient backdrop.
+    readonly property bool lightText: backdropActive && theme.isDark
+    readonly property color headerStrong: lightText ? "#ffffff" : theme.textPrimary
+    readonly property color headerBody: lightText ? "#e0ffffff" : theme.textSecondary
 
     // The cover is square: the surface height minus the 12 px padding on both
     // sides, floored at 40 (MiniCompactSurface.slint:11) -> 78 px at the 102 px
@@ -72,7 +78,7 @@ Item {
                 text: QbzPlayer.npHasTrack
                       ? QbzPlayer.npTitle
                       : QbzSession.tr("No track playing", QbzSession.trRev)
-                color: theme.textPrimary
+                color: root.headerStrong
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
@@ -93,7 +99,7 @@ Item {
         Text {
             width: meta.width
             text: QbzPlayer.npArtist !== "" ? QbzPlayer.npArtist : "—"
-            color: theme.textMuted
+            color: root.headerBody
             font.pixelSize: 11
             elide: Text.ElideRight
         }

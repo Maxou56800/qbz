@@ -96,6 +96,8 @@ on:
       - "scripts/test-track-row-click-qml.sh"
       - "scripts/test-settings-fieldset-qml.sh"
       - "scripts/test-remote-volume-qml.sh"
+      - "scripts/test-miniplayer-qml.sh"
+      - "scripts/test_qt_window_lifecycle.mjs"
       - "scripts/test-wallpaper-field-qml.sh"
       - "scripts/test-card-menu-qml.sh"
       - "scripts/test-orbit-daemon.py"
@@ -132,6 +134,8 @@ on:
       - "scripts/test-track-row-click-qml.sh"
       - "scripts/test-settings-fieldset-qml.sh"
       - "scripts/test-remote-volume-qml.sh"
+      - "scripts/test-miniplayer-qml.sh"
+      - "scripts/test_qt_window_lifecycle.mjs"
       - "scripts/test-wallpaper-field-qml.sh"
       - "scripts/test-card-menu-qml.sh"
       - "scripts/test-orbit-daemon.py"
@@ -184,6 +188,7 @@ jobs:
 
       # The shared script also gates handoff execution, PCM partial progress,
       # cache acquisition provenance and bounded CMAF assembly regressions.
+      # Requires ALSA sink recovery coverage for first-open and EBUSY paths.
       # Includes successful-request vs available-master reuse, explicit lower
       # quality fallback and conservative v1 playback sidecars.
       - name: cargo test (scripts/cargo-test.sh — the local mirror)

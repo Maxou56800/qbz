@@ -2,6 +2,16 @@ pragma Singleton
 import QtQuick
 QtObject {
  signal trackCacheStatusChanged(string trackId, int status, real progress)
+ property bool isWindows: false
+ property real ambientDim: 0.35
+ property color ambientPrimary: "#c08030"
+ property color ambientSecondary: "#306080"
+ property color ambientAccent: "#803060"
+ property real pulseMs: 0
+ property string wallpaperUrl: ""
+ property string wallpaperAtmosphereUrl: ""
+ property real wallpaperBlur: 0.75
+ function refreshWallpaper() {}
  property bool reduceMotion: false
  property bool forceCanvasArt: false
  property string restoreScope: ""
