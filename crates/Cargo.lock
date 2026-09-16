@@ -3951,9 +3951,11 @@ dependencies = [
  "qbz-core",
  "qbz-credentials",
  "qbz-models",
+ "qbz-net-proxy",
  "qbz-offline-cache",
  "qbz-player",
  "qbz-qobuz",
+ "qbz-secrets",
  "rand 0.10.2",
  "reqwest",
  "rusqlite",
@@ -4328,6 +4330,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+]
+
+[[package]]
+name = "qbz-net-proxy"
+version = "2.1.1"
+dependencies = [
+ "reqwest",
+ "thiserror 2.0.20",
+ "url",
 ]
 
 [[package]]

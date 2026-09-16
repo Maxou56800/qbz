@@ -13,6 +13,8 @@ qbz-core = { path = "../qbz-core" }
 qbz-qobuz = { path = "../qbz-qobuz" }
 qbz-credentials = { path = "../qbz-credentials" }
 qbz-offline-cache = { path = "../qbz-offline-cache" }
+qbz-secrets = { path = "../qbz-secrets" }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

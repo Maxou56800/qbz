@@ -27,6 +27,7 @@ members = [
     "qbz-disc",
     "qbz-rip",
     "qbz-secrets",
+    "qbz-net-proxy",
     "qbz-offline-cache",
     "qbz-plex",
     "qconnect-core",
@@ -84,7 +85,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTTP
-reqwest = { version = "0.13", default-features = false, features = ["json", "query", "form", "rustls-no-provider", "cookies", "stream"] }
+# `socks` unlocks socks4a/socks5h proxy URLs (qbz-net-proxy) — resolve-on-proxy
+# DNS only, never the local-resolve socks4/socks5 variants. No feature deps of
+# its own; orthogonal to the rustls-no-provider TLS backend below.
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "form", "rustls-no-provider", "cookies", "stream", "socks"] }
 
 # Logging
 log = "0.4"

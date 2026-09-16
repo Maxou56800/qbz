@@ -1,0 +1,14 @@
+[package]
+name = "qbz-net-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "User-configured HTTP/HTTPS/SOCKS proxy: config type and a reqwest ClientBuilder helper"
+
+[dependencies]
+reqwest = { workspace = true }
+# Percent-encodes proxy username/password correctly when building the proxy
+# URL reqwest parses (Url::set_username/set_password), instead of hand-rolled
+# string formatting that a `:` or `@` in either field would break.
+url = "2"
+thiserror = { workspace = true }
