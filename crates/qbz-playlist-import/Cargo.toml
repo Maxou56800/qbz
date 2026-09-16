@@ -12,6 +12,7 @@ qbz-qobuz = { path = "../qbz-qobuz" }
 
 # HTTP (one shared client for all providers — see src/http.rs)
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 # Serialization
 serde = { workspace = true }

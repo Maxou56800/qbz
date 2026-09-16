@@ -19,7 +19,8 @@ const CONNECT_TIMEOUT_SECS: u64 = 10;
 pub(crate) fn http() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .expect("apply proxy configuration")
             .connect_timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
             .build()
             .expect("static reqwest client")

@@ -66,7 +66,8 @@ pub fn select_release(
 }
 
 pub fn client(timeout: Duration) -> Result<reqwest::Client> {
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| e.to_string())?
         .user_agent(concat!("QBZ/", env!("CARGO_PKG_VERSION")))
         .https_only(true)
         .connect_timeout(Duration::from_secs(4))
