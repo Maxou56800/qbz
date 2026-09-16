@@ -1911,9 +1911,14 @@ Rectangle {
                         // the entry can.
                         menuShowGoTo: false
                         onPlayRequested: QbzPlayer.playAlbumFrom(albumHeader.id, item.id)
+                        // TrackRow emits "next" | "later" | "queue" and
+                        // `enqueue_album_track` has an arm for each. Folding
+                        // everything but "next" into "later" made this row's
+                        // "Add to queue" insert on the manual block's tail —
+                        // right after the current track, under the "Next in
+                        // queue" header — instead of appending at the end.
                         onEnqueueRequested: function (m) {
-                            QbzPlayer.enqueueAlbumTrack(albumHeader.id, item.id,
-                                m === "next" ? "next" : "later")
+                            QbzPlayer.enqueueAlbumTrack(albumHeader.id, item.id, m)
                         }
                         onMixtapeRequested: QbzMyQbzAdd.open(JSON.stringify([{
                             "itemType": "track", "source": "qobuz",
