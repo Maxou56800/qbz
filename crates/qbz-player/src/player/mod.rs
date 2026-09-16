@@ -166,6 +166,48 @@ struct DirectDsdMedia {
     mode: u8,
 }
 
+/// Reopen the same direct format at the saved DSD bit position after release.
+#[cfg(target_os = "linux")]
+fn resume_direct_dsd(
+    media: &DirectDsdMedia,
+    device: &str,
+    position: u64,
+    state: &SharedState,
+) -> Result<(PlaybackEngine, StreamType), String> {
+    let mut demux = qbz_dsd::open_dsd(&media.path).map_err(|e| e.to_string())?;
+    let dsd_rate = demux.info().dsd_rate;
+    demux
+        .seek_to_bit(position.saturating_mul(dsd_rate as u64))
+        .map_err(|e| e.to_string())?;
+    let (stream, source, rate): (_, Box<dyn Iterator<Item = i32> + Send>, u32) = if media.mode == 1
+    {
+        let source = qbz_dsd::DopStream::new(demux).map_err(|e| e.to_string())?;
+        let rate = source.carrier_rate();
+        let stream = qbz_audio::alsa_backend::create_dop_stream(device, rate, 2)?;
+        (
+            stream,
+            Box::new(DsdErrorReport::new(source, state.clone())),
+            rate,
+        )
+    } else {
+        let (stream, little_endian) =
+            qbz_audio::alsa_backend::create_native_dsd_stream(device, dsd_rate, 2)?;
+        let source =
+            qbz_dsd::NativeDsdStream::new(demux, little_endian).map_err(|e| e.to_string())?;
+        let rate = source.rate();
+        (
+            stream,
+            Box::new(DsdErrorReport::new(source, state.clone())),
+            rate,
+        )
+    };
+    let stream = Arc::new(stream);
+    let mut engine = PlaybackEngine::new_alsa_dop(stream.clone(), media.mode != 1);
+    engine.replace_dop(source, position.saturating_mul(rate as u64))?;
+    state.set_current_device(Some(device.to_string()));
+    Ok((engine, StreamType::Direct(stream)))
+}
+
 struct GaplessPending {
     track_id: u64,
     play_generation: u64,
@@ -3988,46 +4030,65 @@ impl Player {
                             }
                         }
                         AudioCommand::Pause { play_gen } => {
+                            if *thread_state.play_intent.lock().unwrap() != (play_gen, false) { return; }
                             if let Some(ref engine) = *current_engine {
-                                if thread_state.apply_playing_intent(engine, play_gen, false) {
-                                    *pause_suspend_deadline = Some(Instant::now() + Duration::from_millis(PAUSE_SUSPEND_DELAY_MS));
+                                if !thread_state.apply_playing_intent(engine, play_gen, false) { return; }
+                            }
+                            thread_state.pause_playback_timer();
+                            thread_state.is_playing.store(false, Ordering::SeqCst);
+                            // User transport pause releases now, including direct DSD.
+                            // Wake blocked decoders without sealing the ongoing download.
+                            if let Some(source) = current_streaming_source.as_ref() { source.interrupt_readers(); }
+                            if let Some(GaplessPending { media: GaplessMedia::Streaming(source), .. }) = gapless_pending.as_ref() { source.interrupt_readers(); }
+                            if let Some(engine) = current_engine.take() { engine.stop(); }
+                            thread_state.set_hardware_volume_active(false);
+                            drop(stream_opt.take());
+                            *pause_suspend_deadline = None;
+                            *gapless_pending = None;
+                            *gapless_request_armed = false;
+                            thread_state.set_gapless_ready(false);
+                            thread_state.set_gapless_next_track_id(0);
+                            #[cfg(target_os = "linux")]
+                            {
+                                qbz_audio::pipewire_backend::PipeWireBackend::reset_pipewire_clock();
+                                if let Err(error) = qbz_audio::alsa_backend::resume_suspended_sink() {
+                                    log::warn!("Audio thread: paused, sink recovery pending: {error}");
                                 }
                             }
+                            log::info!("Audio thread: output device released on pause");
                         }
                         AudioCommand::Resume { play_gen } => {
                             if *thread_state.play_intent.lock().unwrap() != (play_gen, true) { return; }
                             *pause_suspend_deadline = None;
                             if current_engine.is_none() {
+                                #[cfg(target_os = "linux")]
+                                if let Some(media) = current_direct_dsd.as_ref() {
+                                    let resume_pos = thread_state.position.load(Ordering::SeqCst);
+                                    let device = thread_settings.lock().ok().and_then(|s| s.output_device.clone());
+                                    let result = device.ok_or_else(|| "No direct DSD output device configured".to_string())
+                                        .and_then(|device| resume_direct_dsd(media, &device, resume_pos, &thread_state));
+                                    match result {
+                                        Ok((engine, stream)) => {
+                                            thread_state.apply_playing_intent(&engine, play_gen, true);
+                                            *current_engine = Some(engine);
+                                            *stream_opt = Some(stream);
+                                        }
+                                        Err(error) => {
+                                            log::error!("Direct DSD resume failed: {error}");
+                                            thread_state.set_stream_error(true);
+                                        }
+                                    }
+                                    return;
+                                }
                                 // Try to get audio data from regular storage or streaming source
-                                let disk_source = current_streaming_source.as_ref()
-                                    .filter(|source| source.is_complete() && source.is_file_backed())
+                                let streaming_source = current_streaming_source.as_ref()
                                     .cloned();
-                                let audio_data: Arc<Vec<u8>> = if disk_source.is_some() {
+                                let audio_data: Arc<Vec<u8>> = if streaming_source.is_some() {
                                     Arc::new(Vec::new())
                                 } else if let Some(ref data) =
                                     *current_audio_data
                                 {
                                     data.clone()
-                                } else if let Some(ref streaming_src) = *current_streaming_source {
-                                    // Try to get complete data from streaming source
-                                    if streaming_src.is_complete() {
-                                        match streaming_src.complete_data_shared() {
-                                            Some(data) => {
-                                                log::info!("Resume: using complete streaming data ({} bytes)", data.len());
-                                                // Store it in current_audio_data for future use
-                                                *current_audio_data = Some(data.clone());
-                                                data
-                                            }
-                                            None => {
-                                                log::warn!("Audio thread: cannot resume - streaming source complete but data unavailable");
-                                                return;
-                                            }
-                                        }
-                                    } else {
-                                        log::warn!("Audio thread: cannot resume - streaming not complete yet ({} bytes buffered)",
-                                        streaming_src.buffer_size());
-                                        return;
-                                    }
                                 } else {
                                     log::warn!(
                                         "Audio thread: cannot resume - no audio data available"
@@ -4093,8 +4154,11 @@ impl Player {
 
                                 let resume_pos = thread_state.position.load(Ordering::SeqCst);
                                 let source: Result<Box<dyn Source<Item = f32> + Send>, String> =
-                                    if let Some(disk) = disk_source.as_ref() {
-                                        IncrementalStreamingSource::new(disk.clone()).and_then(|mut source| {
+                                    if let Some(buffered) = streaming_source.as_ref() {
+                                        IncrementalStreamingSource::new_for_play(
+                                            buffered.clone(),
+                                            PlaybackBufferReporter::new(thread_state.clone(), thread_state.current_track_id(), play_gen),
+                                        ).and_then(|mut source| {
                                             if resume_pos > 0 { source.seek_to(Duration::from_secs(resume_pos))?; }
                                             Ok(Box::new(source) as _)
                                         })
@@ -4106,7 +4170,7 @@ impl Player {
                                     Err(error) => { log::error!("Failed to decode audio for resume: {error}"); return; }
                                 };
 
-                                // A Resume that rebuilds from completed streaming data
+                                // A Resume that rebuilds from streaming data
                                 // can run after a PlayStreaming that failed BEFORE
                                 // storing the duration. Backfill from the decoded
                                 // source so the position clamp (current_position)
@@ -4122,7 +4186,7 @@ impl Player {
                                 }
 
                                 let skipped_source: Box<dyn Source<Item = f32> + Send> =
-                                    if resume_pos > 0 && disk_source.is_none() {
+                                    if resume_pos > 0 && streaming_source.is_none() {
                                         Box::new(
                                             source.skip_duration(Duration::from_secs(resume_pos)),
                                         )
@@ -4244,6 +4308,13 @@ impl Player {
                             *gapless_request_armed = false;
                             thread_state.set_gapless_ready(false);
                             thread_state.set_gapless_next_track_id(0);
+
+                            if current_engine.is_none() && current_direct_dsd.is_some()
+                                && !thread_state.is_playing()
+                            {
+                                thread_state.position.store(position_secs, Ordering::SeqCst);
+                                return;
+                            }
 
                             #[cfg(target_os = "linux")]
                             if current_engine.as_ref().map(|e| e.is_dop()).unwrap_or(false) {
@@ -4398,6 +4469,13 @@ impl Player {
                                         progress * 100.0
                                     );
                                 }
+                            }
+
+                            // Seeking a released, paused track changes only the resume
+                            // position. It must not reacquire the DAC until Play.
+                            if current_engine.is_none() && !thread_state.is_playing() {
+                                thread_state.position.store(position_secs, Ordering::SeqCst);
+                                return;
                             }
 
                             let Some(ref stream) = *stream_opt else {
@@ -4590,6 +4668,8 @@ impl Player {
                             );
                             *pause_suspend_deadline = None;
 
+                            if let Some(source) = current_streaming_source.as_ref() { source.interrupt_readers(); }
+                            if let Some(GaplessPending { media: GaplessMedia::Streaming(source), .. }) = gapless_pending.as_ref() { source.interrupt_readers(); }
                             if let Some(engine) = current_engine.take() {
                                 engine.stop();
                             }
@@ -4616,6 +4696,12 @@ impl Player {
                                     })
                                     .unwrap_or(false);
                                 if !next_is_alsa_direct {
+                                    // A direct DSD resume must never reacquire ALSA
+                                    // after the user selected a different backend.
+                                    if current_direct_dsd.take().is_some() {
+                                        thread_state.set_loaded_audio(false);
+                                        thread_state.set_dsd_mode(0);
+                                    }
                                     if let Err(error) =
                                         qbz_audio::alsa_backend::resume_suspended_sink()
                                     {
@@ -4653,9 +4739,13 @@ impl Player {
                         }
                         AudioCommand::ReleaseDevice { completed } => {
                             log::info!("Audio thread: releasing output device (user-requested)");
+                            thread_state.pause_playback_timer();
+                            thread_state.is_playing.store(false, Ordering::SeqCst);
                             // Cancel any deferred drop and tear the stream down NOW so
                             // the device is freed immediately (no warm-stream lingering).
                             *pause_suspend_deadline = None;
+                            if let Some(source) = current_streaming_source.as_ref() { source.interrupt_readers(); }
+                            if let Some(GaplessPending { media: GaplessMedia::Streaming(source), .. }) = gapless_pending.as_ref() { source.interrupt_readers(); }
                             if let Some(engine) = current_engine.take() {
                                 engine.stop();
                             }
@@ -4673,11 +4763,12 @@ impl Player {
                             };
                             #[cfg(not(target_os = "linux"))]
                             let release_result = Ok(());
-                            thread_state.pause_playback_timer();
-                            thread_state.is_playing.store(false, Ordering::SeqCst);
                             // Keep current_audio_data / current_streaming_source intact
                             // so a later Play / Resume reopens and continues.
-                            log::info!("Audio thread: output device released");
+                            match &release_result {
+                                Ok(()) => log::info!("Audio thread: output device released"),
+                                Err(error) => log::warn!("Audio thread: PCM released, sink recovery pending: {error}"),
+                            }
                             let _ = completed.send(release_result);
                         }
                         AudioCommand::PlayNext {
@@ -5358,9 +5449,9 @@ impl Player {
                     }
                 } else {
                     if let Some(deadline) = pause_suspend_deadline {
-                        // DoP streams are NEVER suspended on pause: the writer
-                        // keeps the DAC locked in DSD mode with 0x69 silence,
-                        // and there is no current_audio_data to resume from.
+                        // Automatic idle suspension leaves direct DSD alone.
+                        // Explicit Pause releases it in the command handler;
+                        // Resume reconstructs it from current_direct_dsd.
                         let dop_active = current_engine
                             .as_ref()
                             .map(|e| e.is_dop())
