@@ -36,8 +36,8 @@ use super::engine::VolumeMode; // T10 (OD4): join-time volume report honors the 
 use super::lan::DaemonLanProjectionSlot;
 use super::sink::{DaemonEventSink, DaemonQconnectApp};
 use super::transport::{
-    default_qconnect_device_info, default_qconnect_device_info_with_name, resolve_transport_config,
-    QconnectJoinSessionRequest, AUDIO_QUALITY_HIRES_LEVEL2,
+    default_qconnect_device_info, default_qconnect_device_info_with_name, load_persisted_device_name,
+    resolve_transport_config, QconnectJoinSessionRequest, AUDIO_QUALITY_HIRES_LEVEL2,
 };
 use super::{update_lifecycle_state_if_running, DaemonQconnectInner};
 use crate::adapter::DaemonAdapter;
@@ -151,8 +151,12 @@ impl SessionLoopHost for DaemonSessionLoopHost {
         if !self.authority.is_current(self.stamp) {
             return;
         }
+        // Announce the same persisted name the local identity matches against;
+        // the default name would break the renderer self-match after reconnect.
+        let device_name = load_persisted_device_name();
+        log::info!("[QConnect] reconnect: announcing device name {device_name:?}");
         if let Err(err) =
-            bootstrap_remote_presence(&self.app, None, &self.authority, self.stamp).await
+            bootstrap_remote_presence(&self.app, device_name, &self.authority, self.stamp).await
         {
             if !self.authority.is_current(self.stamp) {
                 return;

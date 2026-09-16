@@ -316,7 +316,7 @@ pub fn build_set_position_player_state_request(
 
 /// Load the persisted custom device name from the daemon-root settings DB.
 /// Fail-open: None when `init_settings_db_path` never ran or on any read error.
-fn load_persisted_device_name() -> Option<String> {
+pub(crate) fn load_persisted_device_name() -> Option<String> {
     qconnect_settings_db_path().and_then(|path| load_device_name_at(&path))
 }
 
