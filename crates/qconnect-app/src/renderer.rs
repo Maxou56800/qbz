@@ -738,14 +738,21 @@ async fn align_remote_occurrence(
         let (tracks, _) = engine.get_all_queue_tracks().await;
         return Ok(before != tracks.iter().position(|track| track.id == target.track_id));
     };
-    let index = queue.queue_items.iter().chain(queue.autoplay_items.iter())
-        .position(|item| item.queue_item_id == target.queue_item_id && item.track_id == target.track_id)
-        .ok_or("renderer occurrence is absent from synchronized queue")?;
+    let same = |item: &qconnect_core::QueueItem|
+        item.queue_item_id == target.queue_item_id && item.track_id == target.track_id;
+    let queued = queue.queue_items.iter().position(|item| same(item));
+    if queued.is_none() && !queue.autoplay_items.iter().any(|item| same(item)) {
+        return Err("renderer occurrence is absent from synchronized queue".into());
+    }
+    // Only queue_items are materialized locally; autoplay stays session-side.
     let (tracks, current) = engine.get_all_queue_tracks().await;
-    let cloud_ids: Vec<_> = queue.queue_items.iter().chain(queue.autoplay_items.iter()).map(|item| item.track_id).collect();
-    if tracks.len() != cloud_ids.len() || !tracks.iter().zip(cloud_ids).all(|(track, id)| track.id == id && qconnect_queue_track_is_resolvable(track)) {
+    if tracks.len() != queue.queue_items.len() || !tracks.iter().zip(&queue.queue_items)
+        .all(|(track, item)| track.id == item.track_id && qconnect_queue_track_is_resolvable(track)) {
         return Err("local queue does not match synchronized occurrences".into());
     }
+    // An autoplay suggestion has no local occurrence: the caller loads it by
+    // id; the local cursor and the shuffle projection stay untouched.
+    let Some(index) = queued else { return Ok(false) };
     let renderer = QConnectRendererState { current_track: Some(target.clone()), ..Default::default() };
     let projected = sync_remote_shuffle_projection(engine, sync, &queue, &renderer).await?;
     if !projected && current != Some(index) { engine.play_index(index).await; }
@@ -1041,6 +1048,57 @@ mod tests {
         apply_renderer_command(&engine, &sync, &command, &QConnectRendererState::default()).await.unwrap();
         assert_eq!(engine.calls().play_indexes, vec![2]);
         assert_eq!(engine.calls().set_queues, 0);
+    }
+
+    // Only queue_items are materialized locally; autoplay suggestions stay in
+    // the session. Local queue [7, 8] is the materialization of this session.
+    async fn autoplay_session(local: Vec<u64>, shuffle: bool) -> (MockEngine, Arc<Mutex<QconnectRemoteSyncState>>) {
+        let mut engine = MockEngine::new();
+        engine.loaded_audio = true;
+        engine.playback.track_id = 7;
+        engine.queue_tracks = local.into_iter().map(mock_queue_track).collect();
+        engine.queue_index = Some(0);
+        let sync = sync();
+        sync.lock().await.last_remote_queue_state = Some(QConnectQueueState {
+            queue_items: vec![qi(7, 10), qi(8, 11)], autoplay_items: vec![qi(9, 20), qi(10, 21)],
+            shuffle_mode: shuffle, shuffle_order: shuffle.then(|| vec![1, 0]), ..Default::default() });
+        (engine, sync)
+    }
+
+    fn play(track: QueueItem) -> RendererCommand {
+        RendererCommand::SetState { playing_state: Some(PLAYING_STATE_PLAYING),
+            current_position_ms: Some(0), current_track: Some(track), next_track: None }
+    }
+
+    #[tokio::test]
+    async fn autoplay_session_queue_target_moves_occurrence_and_loads() {
+        let (engine, sync) = autoplay_session(vec![7, 8], false).await;
+        apply_renderer_command(&engine, &sync, &play(qi(8, 11)), &QConnectRendererState::default()).await.unwrap();
+        assert_eq!(engine.calls().play_indexes, vec![1]);
+        assert_eq!(engine.calls().start_track_streams, vec![8]);
+        assert_eq!(engine.calls().set_queues, 0);
+    }
+
+    #[tokio::test]
+    async fn autoplay_suggestion_target_loads_by_id_without_touching_queue() {
+        for shuffle in [false, true] {
+            let (engine, sync) = autoplay_session(vec![7, 8], shuffle).await;
+            apply_renderer_command(&engine, &sync, &play(qi(9, 20)), &QConnectRendererState::default()).await.unwrap();
+            assert_eq!(engine.calls().start_track_streams, vec![9]);
+            assert!(engine.calls().play_indexes.is_empty());
+            assert!(engine.calls().set_queue_with_order.is_empty());
+            assert_eq!(engine.calls().set_queues, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn autoplay_session_still_rejects_unmaterialized_local_queue() {
+        for target in [qi(8, 11), qi(9, 20)] {
+            let (engine, sync) = autoplay_session(vec![7], false).await;
+            assert!(apply_renderer_command(&engine, &sync, &play(target), &QConnectRendererState::default()).await.is_err());
+            assert!(engine.calls().start_track_streams.is_empty());
+            assert!(engine.calls().play_indexes.is_empty());
+        }
     }
 
     #[test]

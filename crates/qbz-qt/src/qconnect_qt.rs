@@ -1972,6 +1972,14 @@ impl QtQconnectService {
             }
         }
 
+        // What the controller's row selection is built from. Without it the
+        // periodic report is the only one whose ids never reach the log, and a
+        // wrong id here reads on the controller as "already on that track".
+        log::debug!(
+            "[QConnect] periodic report: track={track_id} current_qid={current_qid:?} next_qid={next_qid:?} playing={playing_state} pos={position_ms} qv={}.{}",
+            queue_version.major,
+            queue_version.minor,
+        );
         let report = build_renderer_playback_report(
             Uuid::new_v4().to_string(),
             queue_version,
@@ -4663,8 +4671,12 @@ impl SessionLoopHost for QtSessionLoopHost {
                 log::warn!("[QConnect] reconnect credential refresh failed: {error}");
             }
         }
+        // Announce the same persisted name the local identity matches against;
+        // the default name would break the renderer self-match after reconnect.
+        let device_name = load_persisted_device_name();
+        log::info!("[QConnect] reconnect: announcing device name {device_name:?}");
         if let Err(err) =
-            bootstrap_remote_presence(&self.app, None, &self.authority, self.stamp).await
+            bootstrap_remote_presence(&self.app, device_name, &self.authority, self.stamp).await
         {
             if !self.authority.is_current(self.stamp) {
                 return;

@@ -194,24 +194,37 @@ pub fn should_materialize_remote_queue(
     state: &mut QconnectRemoteSyncState,
     queue: &QConnectQueueState,
 ) -> bool {
-    if state.local_playback_conflict_pending {
-        return false;
-    }
+    // The takeover echo is evaluated BEFORE the conflict gate: accepting it
+    // materializes nothing, it only retires the fence that local authority
+    // armed. Leaving it behind an unresolved conflict flag dropped the echo of
+    // our own publish, and with no further cloud queue state the fence stayed
+    // armed until an unrelated local action republished the queue (every
+    // renderer command discarded meanwhile).
+    let conflict_pending = state.local_playback_conflict_pending;
     let Some(pending) = state.pending_local_queue_takeover.as_mut() else {
-        return true;
+        return !conflict_pending;
     };
     let incoming_ids: Vec<u64> = queue.queue_items.iter().map(|item| item.track_id).collect();
-    if incoming_ids == pending.expected_track_ids && pending.action_confirmed {
-        state.pending_local_queue_takeover = None;
-        state.last_applied_queue_state = Some(queue.clone());
-        state.local_playback_state_assertion_pending = true;
-        // The core already owns this exact queue and cursor. This is an
-        // acknowledgement, not an instruction to materialize/seek it again.
+    let accepted = incoming_ids == pending.expected_track_ids && pending.action_confirmed;
+    if !accepted {
+        log::debug!(
+            "[QConnect] takeover echo rejected: action_confirmed={} ids_match={} conflict={} expected={:?} incoming={:?}",
+            pending.action_confirmed,
+            incoming_ids == pending.expected_track_ids,
+            conflict_pending,
+            pending.expected_track_ids,
+            incoming_ids,
+        );
+        if pending.action_confirmed {
+            pending.retry_needed = true;
+        }
         return false;
     }
-    if pending.action_confirmed {
-        pending.retry_needed = true;
-    }
+    state.pending_local_queue_takeover = None;
+    state.last_applied_queue_state = Some(queue.clone());
+    state.local_playback_state_assertion_pending = true;
+    // The core already owns this exact queue and cursor. This is an
+    // acknowledgement, not an instruction to materialize/seek it again.
     false
 }
 
@@ -376,6 +389,28 @@ mod tests {
             &queue(&[10, 20])
         ));
         assert!(state.pending_local_queue_takeover.is_some());
+    }
+
+    /// Reconnecting while local audio plays arms the conflict flag. The echo of
+    /// the queue local authority just published must still retire the fence:
+    /// otherwise every renderer command is discarded until an unrelated local
+    /// action republishes the queue.
+    #[test]
+    fn takeover_echo_retires_the_fence_even_with_the_conflict_flag_armed() {
+        let mut state = QconnectRemoteSyncState::default();
+        set_local_playback_conflict_pending(&mut state, true);
+        arm_local_queue_takeover(&mut state, vec![10, 20], "load-1".to_string());
+        assert!(confirm_local_queue_takeover_action(&mut state, "load-1"));
+
+        assert!(!should_materialize_remote_queue(
+            &mut state,
+            &queue(&[10, 20])
+        ));
+        assert!(state.pending_local_queue_takeover.is_none());
+        assert!(state.local_playback_state_assertion_pending);
+        confirm_local_playback_state_asserted(&mut state);
+        set_local_playback_conflict_pending(&mut state, false);
+        assert!(!remote_renderer_commands_are_fenced(&state));
     }
 
     #[test]

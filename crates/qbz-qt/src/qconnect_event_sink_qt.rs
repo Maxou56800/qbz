@@ -699,7 +699,25 @@ impl QconnectEventSink for QtQconnectEventSink {
                 // payload is intentionally never logged: it can carry session and
                 // delegated-credential material.
                 if message_type == "MESSAGE_TYPE_SRVR_CTRL_RENDERER_STATE_UPDATED" {
-                    log::debug!("[QConnect] Session management: {message_type}");
+                    // Allowlisted scalars ONLY, same rule as loop_mode below:
+                    // never the payload. They are what a peer renderer — the
+                    // official web/desktop client included — announces about
+                    // its cursor, which is the contract QBZ is compared against
+                    // at the end of the queue.
+                    let player_state = payload.get("player_state");
+                    let scalar = |field: &str| {
+                        player_state
+                            .and_then(|value| value.get(field))
+                            .and_then(Value::as_i64)
+                    };
+                    log::debug!(
+                        "[QConnect] Session management: {message_type} renderer={:?} current_qid={:?} next_qid={:?} playing={:?} pos={:?}",
+                        payload.get("renderer_id").and_then(Value::as_i64),
+                        scalar("current_queue_item_id"),
+                        scalar("next_queue_item_id"),
+                        scalar("playing_state"),
+                        scalar("current_position"),
+                    );
                 } else if message_type == "MESSAGE_TYPE_SRVR_CTRL_LOOP_MODE_SET" {
                     // This allowlisted scalar makes an actual mode transition
                     // break the consecutive-log run; never print the payload.
