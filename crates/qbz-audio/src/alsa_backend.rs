@@ -89,68 +89,81 @@ pub fn resume_suspended_sink() -> Result<(), String> {
         return Ok(());
     };
 
-    // The PCM and reservation have already been dropped by every caller, but
-    // PipeWire may need a short moment to recreate the parked sink. Retry the
-    // exact recorded name, then the default alias as a compatibility fallback.
-    // Keep SUSPENDED_SINK populated until one command actually succeeds: the
-    // old take-before-command implementation permanently lost the recovery
-    // target on one transient `pactl` failure while logging success anyway.
+    resume_sink_with(&sink, |target| {
+        let output = std::process::Command::new("pactl")
+            .args(["suspend-sink", target, "0"])
+            .output()
+            .map_err(|error| error.to_string())?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    })?;
+    if let Ok(mut guard) = SUSPENDED_SINK.lock() {
+        if guard.as_deref() == Some(sink.as_str()) {
+            *guard = None;
+        }
+    }
+    log::info!("[ALSA Backend] Resumed PipeWire sink '{sink}'");
+    Ok(())
+}
+
+fn resume_sink_with(
+    sink: &str,
+    mut resume: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    // Only success on the recorded sink counts. The default may now be HDMI
+    // or another DAC; waking it must not discard the pending recovery target.
     let mut last_error = String::new();
     for delay_ms in [0u64, 25, 75, 150] {
         if delay_ms > 0 {
             std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
-        let mut targets = vec![sink.as_str()];
-        if sink != "@DEFAULT_SINK@" {
-            targets.push("@DEFAULT_SINK@");
-        }
-        for target in targets {
-            match std::process::Command::new("pactl")
-                .args(["suspend-sink", target, "0"])
-                .output()
-            {
-                Ok(output) if output.status.success() => {
-                    if let Ok(mut guard) = SUSPENDED_SINK.lock() {
-                        if guard.as_deref() == Some(sink.as_str()) {
-                            *guard = None;
-                        }
-                    }
-                    log::info!(
-                        "[ALSA Backend] Resumed PipeWire sink '{}' via '{}'",
-                        sink,
-                        target
-                    );
-                    return Ok(());
-                }
-                Ok(output) => {
-                    last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                }
-                Err(error) => {
-                    last_error = error.to_string();
-                    if error.kind() == std::io::ErrorKind::NotFound {
-                        let message = format!(
-                            "cannot resume PipeWire sink '{}': pactl is unavailable ({error})",
-                            sink
-                        );
-                        log::warn!("[ALSA Backend] {message}");
-                        return Err(message);
-                    }
-                }
-            }
+        match resume(sink) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = error,
         }
     }
+    Err(format!(
+        "cannot resume PipeWire sink '{sink}' after releasing ALSA: {last_error}"
+    ))
+}
 
-    let message = format!(
-        "cannot resume PipeWire sink '{}' after releasing ALSA: {}",
-        sink,
-        if last_error.is_empty() {
-            "pactl failed without a diagnostic"
-        } else {
-            last_error.as_str()
-        }
-    );
-    log::warn!("[ALSA Backend] {message}");
-    Err(message)
+#[cfg(test)]
+mod sink_recovery_tests {
+    use super::resume_sink_with;
+
+    #[test]
+    fn another_default_sink_cannot_acknowledge_dac_recovery() {
+        let mut attempts = Vec::new();
+        let result = resume_sink_with("usb-dac", |target| {
+            attempts.push(target.to_string());
+            if target == "@DEFAULT_SINK@" {
+                Ok(())
+            } else {
+                Err("not recreated yet".into())
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(attempts, vec!["usb-dac"; 4]);
+    }
+
+    #[test]
+    fn retries_the_recorded_sink_until_it_reappears() {
+        let mut attempts = 0;
+        assert!(resume_sink_with("usb-dac", |target| {
+            assert_eq!(target, "usb-dac");
+            attempts += 1;
+            if attempts == 2 {
+                Ok(())
+            } else {
+                Err("not recreated yet".into())
+            }
+        })
+        .is_ok());
+        assert_eq!(attempts, 2);
+    }
 }
 
 /// Common audio sample rates to check for device support
