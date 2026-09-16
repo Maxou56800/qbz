@@ -52,6 +52,7 @@ pub type QtDelegationCoordinator = DelegationCoordinator<QtDelegationHost>;
 
 const SHUTDOWN_RESTORE_OWNER: u8 = 0;
 const SHUTDOWN_RESTORE_QUEUE_ONLY: u8 = 1;
+const SHUTDOWN_OWNER_QUEUE_RESTORED: u8 = 2;
 
 #[derive(Clone)]
 struct OwnerSnapshot {
@@ -270,6 +271,12 @@ impl QtDelegationHost {
 
     pub(crate) fn current_projected_session_id(&self, stamp: AuthorityStamp) -> Option<String> {
         self.projection.current_session_id(&self.authority, stamp)
+    }
+
+    /// A silent exit restored the queue but not the player's resume position.
+    /// Preserve the already-persisted owner session instead of saving idle zero.
+    pub fn shutdown_restored_queue_only(&self) -> bool {
+        self.shutdown_mode.load(Ordering::Acquire) == SHUTDOWN_OWNER_QUEUE_RESTORED
     }
 
     pub fn set_shutdown_restore_owner(&self, restore: bool) {
@@ -877,7 +884,9 @@ impl DelegationHost for QtDelegationHost {
             // Process exit still restores the owner's queue for persistence,
             // but must never schedule audible playback or reopen the DAC.
             let _ = self.runtime.core().stop();
-            let _ = self.restore_owner_snapshot().await;
+            if self.restore_owner_snapshot().await.is_some() {
+                self.shutdown_mode.store(SHUTDOWN_OWNER_QUEUE_RESTORED, Ordering::Release);
+            }
             None
         } else {
             // A pending candidate may have captured a snapshot, but disabling an

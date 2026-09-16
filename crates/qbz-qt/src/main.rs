@@ -4270,7 +4270,7 @@ fn main() {
                     )
                     .await
                     {
-                        Ok(Ok(())) => true,
+                        Ok(Ok(can_persist_owner)) => can_persist_owner,
                         Ok(Err(error)) => {
                             log::warn!("[qbz-qt] QConnect shutdown failed: {error}");
                             false
@@ -4299,8 +4299,8 @@ fn main() {
             qconnect_owner_safe = qconnect_stopped;
             if !qconnect_stopped {
                 log::warn!(
-                    "[qbz-qt] QConnect shutdown did not finish within 3s; \
-                     skipping session persistence to avoid saving delegated state"
+                    "[qbz-qt] preserving the saved owner session after QConnect shutdown \
+                     (teardown incomplete or owner playback intentionally not restored)"
                 );
             }
             if !notification_withdrawn {
