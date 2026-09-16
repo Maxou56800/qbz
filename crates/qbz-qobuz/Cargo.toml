@@ -8,6 +8,7 @@ description = "Qobuz API client for QBZ"
 [dependencies]
 qbz-models = { path = "../qbz-models" }
 qbz-cmaf = { path = "../qbz-cmaf" }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 # Async
 tokio = { workspace = true }

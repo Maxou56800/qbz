@@ -36,8 +36,10 @@ impl LastFmClient {
             reqwest::header::HeaderValue::from_static("QBZ/1.0.0"),
         );
 
+        let builder =
+            qbz_net_proxy::apply_current(Client::builder()).unwrap_or_else(|_| Client::builder());
         Self {
-            client: Client::builder()
+            client: builder
                 .default_headers(headers)
                 .build()
                 .unwrap_or_else(|_| Client::new()),

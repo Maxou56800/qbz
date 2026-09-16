@@ -548,7 +548,8 @@ pub fn normalize_base_url(input: &str) -> String {
 }
 
 fn client() -> Result<reqwest::Client> {
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| SubsonicError::Transport(e.to_string()))?
         .connect_timeout(Duration::from_secs(5))
         .timeout(HTTP_TIMEOUT)
         .build()

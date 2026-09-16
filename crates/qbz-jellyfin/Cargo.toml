@@ -8,6 +8,7 @@ description = "Jellyfin integration for QBZ: HTTP client, JSON metadata, bit-per
 [dependencies]
 # HTTP client for the Jellyfin server API.
 reqwest = { workspace = true, features = ["json"] }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 # Jellyfin speaks JSON end to end (Plex speaks XML — that is the whole
 # difference between this crate's parsing and `qbz-plex`'s).

@@ -503,7 +503,8 @@ fn build_plex_client_with_timeout(timeout: Duration) -> Result<reqwest::Client, 
         HeaderValue::from_static("qbz-plex-lan-poc"),
     );
 
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| format!("Failed to apply proxy configuration: {}", e))?
         .default_headers(headers)
         .timeout(timeout)
         .connect_timeout(Duration::from_secs(8))
@@ -527,7 +528,8 @@ fn build_plex_auth_client(client_identifier: &str) -> Result<reqwest::Client, St
     );
     headers.insert("Accept", HeaderValue::from_static("application/json"));
 
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| format!("Failed to apply proxy configuration: {}", e))?
         .default_headers(headers)
         .timeout(Duration::from_secs(20))
         .connect_timeout(Duration::from_secs(8))

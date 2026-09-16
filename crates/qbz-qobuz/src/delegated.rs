@@ -282,7 +282,8 @@ pub struct DelegatedQobuzClient {
 
 impl DelegatedQobuzClient {
     pub fn new(config: DelegatedApiConfig) -> DelegatedApiResult<Self> {
-        let http = Client::builder()
+        let http = qbz_net_proxy::apply_current(Client::builder())
+            .map_err(|_| DelegatedApiError::ClientInitialization)?
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)

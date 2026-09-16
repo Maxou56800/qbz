@@ -11,6 +11,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 
 # HTTP client for the Plex Media Server LAN API
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 # DTO serialization (camelCase envelopes shared with the frontend)
 serde = { workspace = true }

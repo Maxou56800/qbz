@@ -315,6 +315,14 @@ impl NetworkSettingsStore {
         if !settings.proxy_enabled {
             return Ok(None);
         }
+        if settings.proxy_host.trim().is_empty() {
+            // "Enabled" with no host set yet (e.g. mid-edit in Settings,
+            // before Save/Test is pressed) must behave as disabled, not as a
+            // config that is guaranteed to fail every client in the
+            // workspace that calls qbz_net_proxy::apply_current.
+            log::warn!("[NetworkSettings] proxy is enabled but has no host set; treating as disabled");
+            return Ok(None);
+        }
         let kind = ProxyKind::from_str(&settings.proxy_kind).map_err(|e| e.to_string())?;
         let auth = if settings.proxy_auth_enabled {
             Some(ProxyAuth {
@@ -518,6 +526,16 @@ mod tests {
     fn proxy_config_is_none_while_disabled() {
         let (dir, store) = fresh_store("network-config-disabled");
         store.set_proxy_host("proxy.example.com").expect("set host");
+        assert!(store.proxy_config().expect("config").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn proxy_config_is_none_when_enabled_with_no_host() {
+        // Enabled mid-edit, before a host is entered, must not surface a
+        // config that fails every client in the workspace that reads it.
+        let (dir, store) = fresh_store("network-config-no-host");
+        store.set_proxy_enabled(true).expect("enable");
         assert!(store.proxy_config().expect("config").is_none());
         let _ = std::fs::remove_dir_all(dir);
     }

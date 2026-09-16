@@ -136,7 +136,8 @@ impl DiscogsClient {
             reqwest::header::HeaderValue::from_static("QBZ/1.0.0"),
         );
 
-        let client = Client::builder()
+        let client = qbz_net_proxy::apply_current(Client::builder())
+            .expect("Failed to apply proxy configuration")
             .timeout(Duration::from_secs(10))
             .default_headers(headers)
             .build()

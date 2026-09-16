@@ -136,7 +136,12 @@ impl QobuzClient {
     }
 
     fn build(bundle_cache_dir: Option<PathBuf>) -> Result<Self> {
-        let http = Client::builder()
+        // Applied once, at construction: a later Settings -> Network change
+        // takes effect on the next login/restart, same as the rest of this
+        // client's per-instance state (tokens, session). Live-reloading a
+        // cached client mid-session would need every method that already
+        // reads `self.http` directly to go through a staleness check instead.
+        let http = qbz_net_proxy::apply_current(Client::builder())?
             .user_agent(USER_AGENT)
             .cookie_store(true)
             // Bound the TCP connect phase so a dead route (e.g. a stale CDN

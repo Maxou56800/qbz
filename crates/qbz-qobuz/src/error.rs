@@ -52,6 +52,9 @@ pub enum ApiError {
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
 
+    #[error("Invalid proxy configuration: {0}")]
+    InvalidProxyConfig(#[from] qbz_net_proxy::ProxyConfigError),
+
     #[error("JSON parsing error: {0}")]
     ParseError(#[from] serde_json::Error),
 

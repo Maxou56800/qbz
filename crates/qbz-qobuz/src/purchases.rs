@@ -609,7 +609,8 @@ impl QobuzClient {
         use std::io::Write;
         use std::time::Duration;
 
-        let client = reqwest::Client::builder()
+        let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .map_err(|e| format!("Failed to apply proxy configuration: {}", e))?
             .connect_timeout(Duration::from_secs(10))
             .http1_only()
             .build()

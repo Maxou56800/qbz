@@ -427,7 +427,8 @@ pub async fn download_raw_with_progress(
 /// surfaces a cert issue, adding the `native-tls` feature to qbz-qobuz is
 /// the escape hatch.
 fn build_cdn_client() -> std::result::Result<reqwest::Client, String> {
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| format!("CMAF client proxy error: {}", e))?
         .connect_timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("CMAF client error: {}", e))

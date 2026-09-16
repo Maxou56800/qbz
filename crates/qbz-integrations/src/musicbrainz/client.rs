@@ -125,7 +125,9 @@ impl MusicBrainzClient {
             version
         );
 
-        let client = Client::builder()
+        let builder =
+            qbz_net_proxy::apply_current(Client::builder()).unwrap_or_else(|_| Client::builder());
+        let client = builder
             .user_agent(&user_agent)
             .timeout(Duration::from_secs(6))
             .build()
