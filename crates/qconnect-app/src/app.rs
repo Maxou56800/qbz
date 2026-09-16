@@ -1101,6 +1101,21 @@ where
                                 PlaybackBufferState::Ready
                             }
                         });
+                    // The acknowledgement report omitted both ids (40a2fa618:
+                    // the server rejected ids it could not match after a
+                    // QBZ-initiated queue load). Omitted is 0 on the wire and 0
+                    // is the FIRST queue item, so every command-driven track
+                    // change made the controller jump to the head of the queue
+                    // until the next periodic report corrected it. Resolve them
+                    // against the synchronized queue, exactly like the periodic
+                    // report already does (1d2873045 did that for transitions),
+                    // and keep them omitted when they do not resolve: an id the
+                    // server cannot match is still never sent.
+                    let (current_queue_item_id, next_queue_item_id) =
+                        crate::reporting::acknowledged_queue_item_ids(
+                            &self.queue_state_snapshot().await,
+                            renderer,
+                        );
                     let report = build_renderer_playback_report(
                         self.next_action_uuid(),
                         queue_version_ref,
@@ -1113,8 +1128,8 @@ where
                                     .map(|event| event.position.saturating_mul(1000).min(i64::MAX as u64) as i64)
                             } else { renderer.current_position_ms.map(|value| value.min(i64::MAX as u64) as i64) },
                             duration_ms: None,
-                            current_queue_item_id: None,
-                            next_queue_item_id: None,
+                            current_queue_item_id,
+                            next_queue_item_id,
                         },
                     );
                     self.send_renderer_report(report).await?;
@@ -5346,11 +5361,18 @@ mod tests {
             .iter()
             .find(|msg| msg.message_type == "MESSAGE_TYPE_RNDR_SRVR_STATE_UPDATED")
             .expect("state update report");
-        assert!(state_update
-            .payload
-            .get("current_queue_item_id")
-            .expect("current_queue_item_id field")
-            .is_null());
+        // The acknowledgement names the occurrence the command asked for, once
+        // it resolves in the synchronized queue: an omitted id reads as queue
+        // item 0 and bounced controllers to the head of the queue. An
+        // occurrence that does NOT resolve is still reported absent (covered in
+        // `reporting::tests::acknowledgement_names_the_requested_occurrence_or_stays_absent`).
+        assert_eq!(
+            state_update
+                .payload
+                .get("current_queue_item_id")
+                .and_then(serde_json::Value::as_u64),
+            Some(991)
+        );
         assert!(state_update
             .payload
             .get("next_queue_item_id")
