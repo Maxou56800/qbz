@@ -164,9 +164,82 @@ pub fn apply(
     Ok(builder.proxy(config.to_reqwest_proxy()?))
 }
 
+/// The result of testing whether a configured proxy can actually reach a
+/// target. This is not a perfect classification of *why* a request failed —
+/// reqwest deliberately keeps its error internals opaque past a handful of
+/// stable predicates (`is_connect`, `is_timeout`) and neither HTTP CONNECT
+/// nor SOCKS auth rejections are given a distinct, matchable error variant.
+/// What *is* unambiguous is a direct TCP probe of the proxy's own address,
+/// done before reqwest ever gets involved: it tells a user staring at a
+/// failed test whether to recheck the host/port, or to look at credentials
+/// and Qobuz reachability instead. That one distinction is worth making;
+/// inventing finer-grained categories the transport can't actually support
+/// would just be a more confident-looking guess.
+#[derive(Debug)]
+pub enum ProxyTestOutcome {
+    /// Reached `target_url` successfully through the proxy.
+    Reachable,
+    /// A direct TCP connection to the proxy's own host:port failed or timed
+    /// out. The proxy configuration itself (host/port) is the problem, or
+    /// nothing is listening there.
+    ProxyUnreachable,
+    /// The proxy's own TCP port answered, but the request through it still
+    /// failed — rejected credentials, the proxy's ACL refusing the target,
+    /// the target being unreachable through it, or a timeout past the
+    /// connect phase all land here. `detail` is reqwest's error text for
+    /// display purposes only: it is not a stable contract to match on.
+    RequestFailed { timed_out: bool, detail: String },
+}
+
+/// Test a proxy configuration against `target_url` (e.g. a Qobuz endpoint),
+/// bounded by `timeout` for each phase. See [`ProxyTestOutcome`] for what is
+/// and isn't distinguished.
+pub async fn test(
+    config: &ProxyConfig,
+    target_url: &str,
+    timeout: std::time::Duration,
+) -> ProxyTestOutcome {
+    let proxy_addr = format!("{}:{}", config.host, config.port);
+    // `timeout(...)` yields `Result<io::Result<TcpStream>, Elapsed>` — a
+    // nested Result. Both the outer Elapsed (too slow) and an inner Err
+    // (e.g. connection refused, fast) mean the proxy itself isn't reachable;
+    // only Ok(Ok(_)) means stage one passed.
+    match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&proxy_addr)).await {
+        Ok(Ok(_stream)) => {}
+        Ok(Err(_)) | Err(_) => return ProxyTestOutcome::ProxyUnreachable,
+    }
+
+    let client = match apply(ClientBuilder::new().timeout(timeout), Some(config)) {
+        Ok(builder) => match builder.build() {
+            Ok(client) => client,
+            Err(err) => {
+                return ProxyTestOutcome::RequestFailed {
+                    timed_out: false,
+                    detail: err.to_string(),
+                }
+            }
+        },
+        Err(err) => {
+            return ProxyTestOutcome::RequestFailed {
+                timed_out: false,
+                detail: err.to_string(),
+            }
+        }
+    };
+
+    match client.get(target_url).send().await {
+        Ok(_) => ProxyTestOutcome::Reachable,
+        Err(err) => ProxyTestOutcome::RequestFailed {
+            timed_out: err.is_timeout(),
+            detail: err.to_string(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn config(kind: ProxyKind, auth: Option<ProxyAuth>) -> ProxyConfig {
         ProxyConfig {
@@ -268,5 +341,81 @@ mod tests {
         let rendered = format!("{auth:?}");
         assert!(!rendered.contains("super-secret"));
         assert!(rendered.contains("<redacted>"));
+    }
+
+    /// Binds a listener, then drops it immediately: the OS gives back
+    /// "connection refused" for this port fast and deterministically,
+    /// instead of relying on an address nothing has ever listened on (which
+    /// can time out ambiguously depending on the network/firewall).
+    async fn closed_port() -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        listener.local_addr().unwrap().port()
+    }
+
+    /// Building a real `reqwest::Client` needs a process-wide rustls
+    /// `CryptoProvider` installed once. Mirrors `qbz_app::ensure_crypto_provider`
+    /// (this crate must not depend on qbz-app to reuse it — wrong direction).
+    fn ensure_crypto_provider() {
+        use std::sync::Once;
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        });
+    }
+
+    // Both scenarios live in one test function, run strictly sequentially:
+    // two ephemeral-port `TcpListener`s racing across concurrently-running
+    // `#[tokio::test]` functions could see the OS hand the "closed" test the
+    // port the "live listener" test had just bound, an intermittent and
+    // very confusing failure to chase. One function removes the race
+    // entirely rather than papering over it with a retry.
+    #[tokio::test]
+    async fn stage_one_probe_distinguishes_an_unreachable_proxy_from_a_live_one() {
+        ensure_crypto_provider();
+
+        let unreachable_cfg = ProxyConfig {
+            kind: ProxyKind::Http,
+            host: "127.0.0.1".to_string(),
+            port: closed_port().await,
+            auth: None,
+        };
+        let outcome = test(
+            &unreachable_cfg,
+            "https://example.invalid",
+            Duration::from_secs(2),
+        )
+        .await;
+        assert!(
+            matches!(outcome, ProxyTestOutcome::ProxyUnreachable),
+            "expected ProxyUnreachable, got {outcome:?}"
+        );
+
+        // The listener answers the TCP handshake (stage 1 passes) but speaks
+        // no proxy protocol at all, so the tunneled request itself fails.
+        // The point of this half is the *distinction*: this must NOT also be
+        // reported as ProxyUnreachable, since the proxy's own address did
+        // answer.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            // Accept and immediately drop every connection for the test's
+            // lifetime, so the client's handshake fails instead of hanging.
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+        let live_cfg = ProxyConfig {
+            kind: ProxyKind::Socks5,
+            host: "127.0.0.1".to_string(),
+            port,
+            auth: None,
+        };
+        let outcome = test(&live_cfg, "https://example.invalid", Duration::from_secs(2)).await;
+        assert!(
+            matches!(outcome, ProxyTestOutcome::RequestFailed { .. }),
+            "expected RequestFailed, got {outcome:?}"
+        );
     }
 }

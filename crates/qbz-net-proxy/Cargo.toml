@@ -12,3 +12,11 @@ reqwest = { workspace = true }
 # string formatting that a `:` or `@` in either field would break.
 url = "2"
 thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+# Building a real reqwest::Client needs a process-wide rustls CryptoProvider
+# installed once (the `rustls-no-provider` TLS backend does not pick a
+# default for you). The real app does this at startup; the `test()` tests
+# below build a real client, so they install it themselves.
+rustls = { version = "0.23", features = ["aws_lc_rs"] }

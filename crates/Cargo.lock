@@ -4337,7 +4337,9 @@ name = "qbz-net-proxy"
 version = "2.1.1"
 dependencies = [
  "reqwest",
+ "rustls",
  "thiserror 2.0.20",
+ "tokio",
  "url",
 ]
 
