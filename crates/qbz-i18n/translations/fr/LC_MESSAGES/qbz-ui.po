@@ -7738,3 +7738,50 @@ msgstr "En attente du volume du renderer…"
 
 msgid "This audio output does not support volume control."
 msgstr "Cette sortie audio ne permet pas de régler le volume."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Notes de version"
+
+msgid "New in {}"
+msgstr "Nouveautés de {}"
+
+msgid "Open settings"
+msgstr "Ouvrir les réglages"
+
+msgid "Open playback"
+msgstr "Ouvrir la lecture"
+
+msgid "Open audio"
+msgstr "Ouvrir l'audio"
+
+msgid "Everything in one menu"
+msgstr "Tout dans un seul menu"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "Les réglages, les raccourcis et les mises à jour sont dans le menu hamburger, et les sections ont été réorganisées pour trouver plus vite le réglage voulu."
+
+msgid "Playback memory is yours to choose"
+msgstr "La mémoire de lecture, c'est vous qui choisissez"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto, High, Desktop, Low ou Custom : le cache suit la mémoire de votre ordinateur, et Streaming only le désactive comme les clients officiels."
+
+msgid "Even volume across albums"
+msgstr "Un volume homogène d'un album à l'autre"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "La normalisation du volume a été refaite à partir des valeurs de loudness déjà fournies par Qobuz, avec des préréglages pour les usages les plus courants."
+
+msgid "Quality of life"
+msgstr "Confort d'utilisation"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "Menus retrouvés, actions groupées plus complètes et navigation plus stable, avec boucle A-B et avance ou retour contrôlés."
+
+msgid "A steadier Qobuz Connect"
+msgstr "Un Qobuz Connect plus solide"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "Vos retours ont guidé cette version : un Qobuz Connect plus solide, des bugs signalés corrigés et un travail de stabilité dans toute l'application."

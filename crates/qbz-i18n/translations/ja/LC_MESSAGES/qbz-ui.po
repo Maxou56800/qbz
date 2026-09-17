@@ -7721,3 +7721,50 @@ msgstr "レンダラーの音量を待機中…"
 
 msgid "This audio output does not support volume control."
 msgstr "この音声出力は音量調整に対応していません。"
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "リリースノート"
+
+msgid "New in {}"
+msgstr "{} の新機能"
+
+msgid "Open settings"
+msgstr "設定を開く"
+
+msgid "Open playback"
+msgstr "再生設定を開く"
+
+msgid "Open audio"
+msgstr "オーディオ設定を開く"
+
+msgid "Everything in one menu"
+msgstr "すべてが一つのメニューに"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "設定・ショートカット・アップデートはハンバーガーメニューにまとまり、目的の設定を見つけやすいようにセクションを整理しました。"
+
+msgid "Playback memory is yours to choose"
+msgstr "再生メモリーは自分で選べます"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto・High・Desktop・Low・Custom から選択。キャッシュはパソコンのメモリーに合わせて動き、Streaming only では公式クライアントと同じくキャッシュを使いません。"
+
+msgid "Even volume across albums"
+msgstr "アルバムをまたいでも音量が均一"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "音量ノーマライズを Qobuz が提供するラウドネス値ベースで作り直し、よくある再生環境向けのプリセットを用意しました。"
+
+msgid "Quality of life"
+msgstr "使い心地の改善"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "失われていたメニューの復活、より充実した一括操作、安定したナビゲーションに加え、A-B リピートと前後スキップを追加しました。"
+
+msgid "A steadier Qobuz Connect"
+msgstr "より安定した Qobuz Connect"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "このリリースは皆さんのフィードバックから生まれました。より安定した Qobuz Connect、報告された不具合の修正、アプリ全体の安定化に取り組みました。"

@@ -7759,3 +7759,50 @@ msgstr "Ожидание громкости рендерера…"
 
 msgid "This audio output does not support volume control."
 msgstr "Этот аудиовыход не поддерживает регулировку громкости."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Примечания к выпуску"
+
+msgid "New in {}"
+msgstr "Новое в {}"
+
+msgid "Open settings"
+msgstr "Открыть настройки"
+
+msgid "Open playback"
+msgstr "Открыть воспроизведение"
+
+msgid "Open audio"
+msgstr "Открыть аудио"
+
+msgid "Everything in one menu"
+msgstr "Всё в одном меню"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "Настройки, горячие клавиши и обновления собраны в гамбургер-меню, а разделы перегруппированы, чтобы нужный параметр было проще найти."
+
+msgid "Playback memory is yours to choose"
+msgstr "Память воспроизведения выбираете вы"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto, High, Desktop, Low или Custom: кэш следует объёму памяти компьютера, а режим Streaming only отключает его, как в официальных клиентах."
+
+msgid "Even volume across albums"
+msgstr "Ровная громкость между альбомами"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "Нормализация громкости переписана на основе значений loudness, которые Qobuz уже присылает, с пресетами для самых частых сценариев."
+
+msgid "Quality of life"
+msgstr "Удобство в мелочах"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "Возвращённые меню, более полные массовые действия и ровная навигация, плюс A-B повтор и точная перемотка вперёд и назад."
+
+msgid "A steadier Qobuz Connect"
+msgstr "Более стабильный Qobuz Connect"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "Этот выпуск построен на ваших отзывах: более стабильный Qobuz Connect, исправленные сообщённые ошибки и общая работа над надёжностью."

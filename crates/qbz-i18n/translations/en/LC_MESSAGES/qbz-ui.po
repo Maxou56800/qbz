@@ -3401,3 +3401,56 @@ msgstr "Hide Dock icon when closed to menu bar"
 
 msgid "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"
 msgstr "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"
+
+# What's New 2.1.2 deck
+
+msgid "Back"
+msgstr "Back"
+
+msgid "Next"
+msgstr "Next"
+
+msgid "Release notes"
+msgstr "Release notes"
+
+msgid "New in {}"
+msgstr "New in {}"
+
+msgid "Open settings"
+msgstr "Open settings"
+
+msgid "Open playback"
+msgstr "Open playback"
+
+msgid "Open audio"
+msgstr "Open audio"
+
+msgid "Everything in one menu"
+msgstr "Everything in one menu"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+
+msgid "Playback memory is yours to choose"
+msgstr "Playback memory is yours to choose"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+
+msgid "Even volume across albums"
+msgstr "Even volume across albums"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+
+msgid "Quality of life"
+msgstr "Quality of life"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+
+msgid "A steadier Qobuz Connect"
+msgstr "A steadier Qobuz Connect"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."

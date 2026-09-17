@@ -7738,3 +7738,50 @@ msgstr "Aguardando o volume do renderer…"
 
 msgid "This audio output does not support volume control."
 msgstr "Esta saída de áudio não permite controlar o volume."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Notas da versão"
+
+msgid "New in {}"
+msgstr "Novidades na {}"
+
+msgid "Open settings"
+msgstr "Abrir definições"
+
+msgid "Open playback"
+msgstr "Abrir reprodução"
+
+msgid "Open audio"
+msgstr "Abrir áudio"
+
+msgid "Everything in one menu"
+msgstr "Tudo num só menu"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "As definições, os atalhos e as atualizações estão no menu hambúrguer, e as secções foram reorganizadas para encontrares mais depressa o que precisas."
+
+msgid "Playback memory is yours to choose"
+msgstr "A memória de reprodução escolhe-la tu"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto, High, Desktop, Low ou Custom: a cache segue a memória do teu computador, e Streaming only desliga-a como os clientes oficiais."
+
+msgid "Even volume across albums"
+msgstr "Volume uniforme entre álbuns"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "A normalização de volume foi refeita com os valores de loudness que a Qobuz já envia, com predefinições para os usos mais comuns."
+
+msgid "Quality of life"
+msgstr "Qualidade de vida"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "Menus recuperados, ações em bloco mais completas e navegação mais estável, além de ciclo A-B e avanço e recuo controlados."
+
+msgid "A steadier Qobuz Connect"
+msgstr "Um Qobuz Connect mais sólido"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "O teu feedback guiou esta versão: um Qobuz Connect mais sólido, erros reportados corrigidos e trabalho de estabilidade em toda a aplicação."

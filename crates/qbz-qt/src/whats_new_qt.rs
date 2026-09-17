@@ -92,6 +92,96 @@ pub struct TocEntry {
     pub label: String,
 }
 
+/// One curated card of the release's visual deck.
+///
+/// The deck is what the modal shows FIRST; the rendered release body becomes
+/// its last card. Text lives here and not in the artwork on purpose: a msgid is
+/// the English string and travels to all eight catalogs, while text baked into
+/// a `.webp` would need eight sets of images per release.
+///
+/// `action_section` is a `SettingsView` sub-section index (Audio 0, Playback 1,
+/// Appearance 2 — the order that file documents), used as
+/// `QbzBridge.settingsSetSection(n)` before navigating. `-1` opens Settings
+/// without choosing a section; `None` means the card has no button.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct Slide {
+    pub image: String,
+    pub title: String,
+    pub body: String,
+    #[serde(rename = "actionLabel")]
+    pub action_label: String,
+    #[serde(rename = "actionSection")]
+    pub action_section: i32,
+}
+
+/// The deck for `version`, empty when that version has none.
+///
+/// Matched on the `MAJOR.MINOR.PATCH` prefix so a `-rc`/`-beta` build of the
+/// same version still shows its deck. A version without a deck degrades to the
+/// release-notes body the modal has always rendered.
+fn deck_for(version: &str) -> Vec<Slide> {
+    let base = version
+        .split(['-', '+'])
+        .next()
+        .unwrap_or(version)
+        .to_string();
+    if base != "2.1.2" {
+        return Vec::new();
+    }
+    let art = |file: &str| format!("../assets/whatsnew/2.1.2/{file}");
+    vec![
+        Slide {
+            image: art("01-settings.webp"),
+            title: qbz_i18n::t("Everything in one menu"),
+            body: qbz_i18n::t(
+                "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find.",
+            ),
+            action_label: qbz_i18n::t("Open settings"),
+            action_section: -1,
+        },
+        Slide {
+            image: art("02-memory.webp"),
+            title: qbz_i18n::t("Playback memory is yours to choose"),
+            body: qbz_i18n::t(
+                "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do.",
+            ),
+            action_label: qbz_i18n::t("Open playback"),
+            action_section: 1,
+        },
+        Slide {
+            image: art("03-loudness.webp"),
+            title: qbz_i18n::t("Even volume across albums"),
+            body: qbz_i18n::t(
+                "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups.",
+            ),
+            action_label: qbz_i18n::t("Open audio"),
+            action_section: 0,
+        },
+        Slide {
+            image: art("04-qol.webp"),
+            title: qbz_i18n::t("Quality of life"),
+            body: qbz_i18n::t(
+                "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back.",
+            ),
+            action_label: String::new(),
+            action_section: -1,
+        },
+        Slide {
+            image: art("05-connect.webp"),
+            title: qbz_i18n::t("A steadier Qobuz Connect"),
+            body: qbz_i18n::t(
+                "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app.",
+            ),
+            action_label: String::new(),
+            action_section: -1,
+        },
+    ]
+}
+
+/// Pref key: the last version whose deck was dismissed. The deck opens by
+/// itself exactly once per version; the hamburger row reopens it any time.
+const SEEN_PREF: &str = "whatsnew_seen_version";
+
 #[derive(Default)]
 struct State {
     version: String,
@@ -115,10 +205,15 @@ struct Doc<'a> {
     has_body: bool,
     toc: &'a [TocEntry],
     blocks: &'a [Block],
+    deck: &'a [Slide],
 }
 
 pub fn publish() {
     let st = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    // The deck is keyed on the RUNNING version, never on the fetched release:
+    // the artwork ships inside this binary, so a fetch that lands on another
+    // tag (or fails) must not pair these cards with another version's notes.
+    let deck = deck_for(crate::about_qt::app_version());
     let doc = Doc {
         open: OPEN.load(Ordering::SeqCst),
         loading: LOADING.load(Ordering::SeqCst),
@@ -127,6 +222,7 @@ pub fn publish() {
         has_body: st.has_body,
         toc: &st.toc,
         blocks: &st.blocks,
+        deck: &deck,
     };
     let json = serde_json::to_string(&doc).unwrap_or_else(|_| "{}".into());
     drop(st);
@@ -156,7 +252,28 @@ pub fn open() {
 
 pub fn close() {
     OPEN.store(false, Ordering::SeqCst);
+    // Dismissing is the acknowledgement, whichever card it happened on: the
+    // deck has been seen for this version and will not open by itself again.
+    // Reopening from the hamburger is always available and rewrites the same
+    // value, so it never re-arms the automatic open.
+    let version = crate::about_qt::app_version();
+    if !deck_for(version).is_empty() {
+        crate::settings_qt::save_pref(SEEN_PREF, serde_json::Value::String(version.to_string()));
+    }
     publish();
+}
+
+/// Open the deck by itself, once per version. Called after the shell is up:
+/// never over the login screen, and never when this version has no deck.
+pub fn auto_open_if_new() {
+    let version = crate::about_qt::app_version();
+    if deck_for(version).is_empty() {
+        return;
+    }
+    if crate::settings_qt::pref_str(SEEN_PREF, "") == version {
+        return;
+    }
+    open();
 }
 
 /// Apply the fetched release (or its absence) to the document.

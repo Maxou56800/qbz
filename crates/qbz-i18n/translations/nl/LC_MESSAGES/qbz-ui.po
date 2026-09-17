@@ -7728,3 +7728,50 @@ msgstr "Wachten op het volume van de renderer…"
 
 msgid "This audio output does not support volume control."
 msgstr "Deze audio-uitgang ondersteunt geen volumeregeling."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Release-opmerkingen"
+
+msgid "New in {}"
+msgstr "Nieuw in {}"
+
+msgid "Open settings"
+msgstr "Instellingen openen"
+
+msgid "Open playback"
+msgstr "Afspelen openen"
+
+msgid "Open audio"
+msgstr "Audio openen"
+
+msgid "Everything in one menu"
+msgstr "Alles in één menu"
+
+msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgstr "Instellingen, sneltoetsen en updates staan in het hamburgermenu, en de secties zijn heringedeeld zodat je de juiste instelling sneller vindt."
+
+msgid "Playback memory is yours to choose"
+msgstr "Jij kiest het afspeelgeheugen"
+
+msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgstr "Auto, High, Desktop, Low of Custom: de cache volgt het geheugen van je computer, en Streaming only zet hem uit zoals de officiële clients."
+
+msgid "Even volume across albums"
+msgstr "Gelijk volume tussen albums"
+
+msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgstr "Volumenormalisatie is opnieuw gebouwd op de loudness-waarden die Qobuz al meestuurt, met presets voor de meest voorkomende situaties."
+
+msgid "Quality of life"
+msgstr "Dagelijks gemak"
+
+msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgstr "Teruggekeerde menu's, volledigere bulkacties en rustiger navigatie, plus A-B-herhaling en gecontroleerd vooruit- en terugspoelen."
+
+msgid "A steadier Qobuz Connect"
+msgstr "Een stabielere Qobuz Connect"
+
+msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgstr "Jouw feedback stuurde deze release: een stabielere Qobuz Connect, gemelde problemen verholpen en brede stabiliteitswerk in de hele app."
