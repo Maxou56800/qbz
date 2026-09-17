@@ -1602,6 +1602,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: proxy_port,
             auth: None,
+            insecure_tls: false,
         }));
         let _ = dial_ws("wss://example.invalid:443/ws").await;
         qbz_net_proxy::set_current(None);

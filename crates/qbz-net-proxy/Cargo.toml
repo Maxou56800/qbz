@@ -30,10 +30,19 @@ tokio = { workspace = true }
 tokio-socks = { version = "0.5", optional = true }
 # Proxy-Authorization: Basic header for the HTTP CONNECT tunnel, only.
 base64 = { workspace = true, optional = true }
+# insecure_tls.rs: a custom rustls ClientConfig for ProxyConfig::insecure_tls
+# (bypasses TLS verification for the https:// proxy's own handshake only —
+# see that module's docs). Same version/provider as qbz-app/qbz-qobuz so the
+# process-wide CryptoProvider `ensure_crypto_provider()` installs is the one
+# this crate reads back via `CryptoProvider::get_default()`.
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+# The delegate half of ScopedInsecureVerifier: the same platform-native
+# verifier reqwest's own "rustls-no-provider" backend uses, so verifying
+# every non-proxy hostname behaves identically to the unmodified path.
+rustls-platform-verifier = "0.7"
 
 [dev-dependencies]
-# Building a real reqwest::Client needs a process-wide rustls CryptoProvider
-# installed once (the `rustls-no-provider` TLS backend does not pick a
-# default for you). The real app does this at startup; the `test()` tests
-# below build a real client, so they install it themselves.
-rustls = { version = "0.23", features = ["aws_lc_rs"] }
+# insecure_tls.rs's own test: a real TLS server presenting a self-signed
+# cert, to prove ScopedInsecureVerifier's bypass over an actual handshake
+# rather than just asserting the ClientConfig builds.
+tokio-rustls = "0.26"

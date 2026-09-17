@@ -32,13 +32,19 @@ Column {
     property string passInput: ""
     property bool authEnabledInput: net.proxyAuthEnabled === true
     property int kindIndexInput: net.proxyKindIndex || 0
+    property bool insecureTlsInput: net.proxyInsecureTls === true
     // Re-seed the staged auth/kind choice whenever the document changes
     // underneath an untouched field (e.g. another window changed it), but
     // never clobber text the user is mid-typing.
     onNetChanged: {
         authEnabledInput = net.proxyAuthEnabled === true
         kindIndexInput = net.proxyKindIndex || 0
+        insecureTlsInput = net.proxyInsecureTls === true
     }
+
+    // Index into proxyKindOptions ("HTTP", "HTTPS", "SOCKS4", "SOCKS5") —
+    // only an https-kind proxy has a TLS handshake of its own to skip.
+    readonly property bool isHttpsKind: root.kindIndexInput === 1
 
     readonly property string effectiveHost:
         root.hostInput !== "" ? root.hostInput : (root.net.proxyHost || "")
@@ -124,6 +130,22 @@ Column {
     }
 
     SettingRow { kioskHost: root.kioskHost;
+        visible: root.net.proxyEnabled === true && root.isHttpsKind
+        label: QbzSession.tr("Skip certificate verification for this proxy", QbzSession.trRev)
+        description: QbzSession.tr("Only affects the connection to the proxy itself — Qobuz and everything else reached through it are still verified normally. Use this only for a proxy whose certificate you know and trust, such as a self-signed one you control.", QbzSession.trRev)
+        QbzToggle { kioskHost: root.kioskHost;
+            checked: root.insecureTlsInput
+            onToggled: function (v) { root.insecureTlsInput = v }
+        }
+    }
+    WarningBanner {
+        visible: root.net.proxyEnabled === true && root.isHttpsKind && root.insecureTlsInput
+        variant: "warning"
+        title: QbzSession.tr("Certificate verification is off for this proxy", QbzSession.trRev)
+        body: QbzSession.tr("QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it.", QbzSession.trRev)
+    }
+
+    SettingRow { kioskHost: root.kioskHost;
         visible: root.net.proxyEnabled === true
         label: QbzSession.tr("Authentication", QbzSession.trRev)
         description: QbzSession.tr("The proxy requires a username and password.", QbzSession.trRev)
@@ -198,7 +220,8 @@ Column {
                     parseInt(portField.text, 10),
                     root.authEnabledInput,
                     root.effectiveUser,
-                    root.passInput)
+                    root.passInput,
+                    root.insecureTlsInput)
             }
         }
     }

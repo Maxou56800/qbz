@@ -3051,6 +3051,7 @@ pub(crate) fn network_test_and_save(
     auth_enabled: bool,
     username: String,
     password: String,
+    insecure_tls: bool,
 ) {
     spawn(async move {
         settings_qt::network::test_and_save(
@@ -3060,6 +3061,7 @@ pub(crate) fn network_test_and_save(
             auth_enabled,
             username,
             password,
+            insecure_tls,
         )
         .await
     });

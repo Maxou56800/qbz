@@ -45,6 +45,8 @@ mod tunnel;
 #[cfg(feature = "tunnel")]
 pub use tunnel::{connect_tunnel, TunnelStream};
 
+mod insecure_tls;
+
 /// Which proxy protocol the user selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProxyKind {
@@ -118,6 +120,12 @@ pub struct ProxyConfig {
     pub host: String,
     pub port: u16,
     pub auth: Option<ProxyAuth>,
+    /// Skip TLS certificate verification for the connection to the proxy
+    /// itself. Only meaningful for [`ProxyKind::Https`] (an HTTP/SOCKS proxy
+    /// has no TLS layer of its own to skip). Never widens past the proxy:
+    /// see [`insecure_tls`] — the real target reached through the proxy is
+    /// still fully verified.
+    pub insecure_tls: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -130,6 +138,8 @@ pub enum ProxyConfigError {
     InvalidUrl(#[from] url::ParseError),
     #[error("invalid proxy configuration: {0}")]
     Invalid(#[from] reqwest::Error),
+    #[error("could not set up the insecure-TLS proxy connection: {0}")]
+    InsecureTls(String),
     #[cfg(feature = "tunnel")]
     #[error("{0}")]
     Tunnel(String),
@@ -174,6 +184,13 @@ pub fn apply(
     let Some(config) = config else {
         return Ok(builder);
     };
+    let builder = if config.kind == ProxyKind::Https && config.insecure_tls {
+        builder.use_preconfigured_tls(insecure_tls::client_config_for_insecure_proxy(
+            &config.host,
+        )?)
+    } else {
+        builder
+    };
     Ok(builder.proxy(config.to_reqwest_proxy()?))
 }
 
@@ -188,6 +205,13 @@ pub fn apply_blocking(
 ) -> Result<reqwest::blocking::ClientBuilder, ProxyConfigError> {
     let Some(config) = config else {
         return Ok(builder);
+    };
+    let builder = if config.kind == ProxyKind::Https && config.insecure_tls {
+        builder.use_preconfigured_tls(insecure_tls::client_config_for_insecure_proxy(
+            &config.host,
+        )?)
+    } else {
+        builder
     };
     Ok(builder.proxy(config.to_reqwest_proxy()?))
 }
@@ -290,6 +314,7 @@ mod tests {
             host: "proxy.example.com".to_string(),
             port: 1080,
             auth,
+            insecure_tls: false,
         }
     }
 
@@ -421,6 +446,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: closed_port().await,
             auth: None,
+            insecure_tls: false,
         };
         let outcome = test(
             &unreachable_cfg,
@@ -454,6 +480,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port,
             auth: None,
+            insecure_tls: false,
         };
         let outcome = test(&live_cfg, "https://example.invalid", Duration::from_secs(2)).await;
         assert!(

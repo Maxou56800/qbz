@@ -123,6 +123,7 @@ pub mod qbz_bridge {
             auth_enabled: bool,
             username: QString,
             password: QString,
+            insecure_tls: bool,
         );
 
         // --- Integrations (phase 19) ---------------------------------------
@@ -348,6 +349,7 @@ impl qbz_bridge::QbzBridge {
         auth_enabled: bool,
         username: QString,
         password: QString,
+        insecure_tls: bool,
     ) {
         crate::network_test_and_save(
             kind_index,
@@ -356,6 +358,7 @@ impl qbz_bridge::QbzBridge {
             auth_enabled,
             username.to_string(),
             password.to_string(),
+            insecure_tls,
         );
     }
 

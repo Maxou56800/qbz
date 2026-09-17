@@ -40,6 +40,10 @@ pub struct Snapshot {
     pub block_qconnect_lan: bool,
     #[serde(rename = "blockCast")]
     pub block_cast: bool,
+    /// Skip TLS certificate verification for an `https`-kind proxy's own
+    /// handshake only — see `qbz_net_proxy::insecure_tls`'s doc comment.
+    #[serde(rename = "proxyInsecureTls")]
+    pub proxy_insecure_tls: bool,
     /// A test_and_save() is running — the button shows a spinner and further
     /// clicks are ignored (guarded by `TEST_BUSY`, not just the UI).
     #[serde(rename = "testBusy")]
@@ -75,6 +79,36 @@ static TEST_STATE: std::sync::Mutex<TestState> = std::sync::Mutex::new(TestState
     restart_recommended: false,
 });
 
+/// Translate a raw `qbz_net_proxy::test` failure into something a user can
+/// act on. The raw chain (already logged in full by the caller) stays
+/// technical on purpose — this is what actually renders in Settings, so it
+/// only needs to cover the handful of causes a user can do something about.
+fn friendly_proxy_error(raw_detail: &str, config: &qbz_net_proxy::ProxyConfig) -> String {
+    let lower = raw_detail.to_lowercase();
+    if lower.contains("certificate") || lower.contains("causedasendentity") {
+        return if config.kind == qbz_net_proxy::ProxyKind::Https && !config.insecure_tls {
+            "The proxy's TLS certificate could not be verified. If you trust this proxy \
+             (for example, one using a self-signed certificate you control), enable \
+             \"Skip certificate verification for this proxy\" below."
+                .to_string()
+        } else {
+            "The proxy's TLS certificate could not be verified.".to_string()
+        };
+    }
+    if lower.contains("proxy authorization required") || lower.contains("authoriz") {
+        return "The proxy rejected the connection: authentication is required, or the \
+                username/password provided is incorrect."
+            .to_string();
+    }
+    if lower.contains("socks") && lower.contains("handshake") {
+        return "The proxy did not complete the SOCKS handshake correctly. If this is a \
+                SOCKS4 proxy, try SOCKS5 if the provider supports it — some SOCKS4 servers \
+                are known to be incompatible with this app's SOCKS4 client."
+            .to_string();
+    }
+    raw_detail.to_string()
+}
+
 /// Read the current proxy setting and push it into the process-wide
 /// registry every HTTP client (and the QConnect WebSocket tunnel) reads.
 /// Called once at startup (`crate::settings_qt::seed_network_proxy`) and
@@ -108,6 +142,7 @@ pub fn snapshot() -> Snapshot {
         proxy_has_password: settings.proxy_has_password,
         block_qconnect_lan: settings.block_qconnect_lan,
         block_cast: settings.block_cast,
+        proxy_insecure_tls: settings.proxy_insecure_tls,
         test_busy: test.busy,
         test_result_kind: test.result_kind,
         test_result_detail: test.result_detail,
@@ -166,6 +201,7 @@ pub async fn test_and_save(
     auth_enabled: bool,
     username: String,
     password: String,
+    insecure_tls: bool,
 ) {
     {
         let mut test = TEST_STATE.lock().unwrap_or_else(|p| p.into_inner());
@@ -189,6 +225,7 @@ pub async fn test_and_save(
         if !password.is_empty() {
             store.set_proxy_password(&password)?;
         }
+        store.set_proxy_insecure_tls(insecure_tls)?;
         store.set_proxy_enabled(true)
     })();
 
@@ -270,7 +307,7 @@ pub async fn test_and_save(
                 config.host,
                 config.port
             );
-            ("failed".to_string(), detail)
+            ("failed".to_string(), friendly_proxy_error(&detail, &config))
         }
     };
     {

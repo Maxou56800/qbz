@@ -7835,3 +7835,19 @@ msgstr "このプロキシの変更を完全に適用するにはQBZを再起動
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "New streaming requests already use it. Your account session and Qobuz Connect only pick it up after a restart."
 msgstr "新しいストリーミングリクエストにはすでに適用されています。アカウントセッションとQobuz Connectは再起動後にのみ反映されます。"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Skip certificate verification for this proxy"
+msgstr "このプロキシの証明書検証をスキップする"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Only affects the connection to the proxy itself — Qobuz and everything else reached through it are still verified normally. Use this only for a proxy whose certificate you know and trust, such as a self-signed one you control."
+msgstr "この設定はプロキシ自体への接続にのみ影響します。Qobuzやそれを経由する他の通信は通常どおり検証されます。証明書を把握し信頼できるプロキシ(自分で管理する自己署名証明書など)にのみ使用してください。"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Certificate verification is off for this proxy"
+msgstr "このプロキシの証明書検証はオフになっています"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it."
+msgstr "QBZはこのプロキシが提示するどんな証明書でも受け入れます。そこまでのネットワーク経路を信頼できる場合にのみオンのままにしてください。"

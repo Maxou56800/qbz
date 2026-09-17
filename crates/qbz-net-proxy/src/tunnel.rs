@@ -199,6 +199,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port,
             auth,
+            insecure_tls: false,
         }
     }
 
@@ -318,6 +319,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 1,
             auth: None,
+            insecure_tls: false,
         };
         let err = match connect_tunnel(&cfg, "example.invalid", 443).await {
             Err(e) => e,

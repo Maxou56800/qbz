@@ -126,6 +126,7 @@ mod tests {
             host: "proxy.example.com".to_string(),
             port: 8080,
             auth: None,
+            insecure_tls: false,
         }));
         assert_ne!(before, current_generation());
     }
@@ -138,6 +139,7 @@ mod tests {
             host: "proxy.example.com".to_string(),
             port: 8080,
             auth: None,
+            insecure_tls: false,
         }));
         let before = current_generation();
         set_current(None);

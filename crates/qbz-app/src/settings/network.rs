@@ -67,6 +67,14 @@ pub struct NetworkSettings {
     /// server.
     #[serde(default)]
     pub block_cast: bool,
+    /// Skip TLS certificate verification for an `https` proxy's own
+    /// handshake — never for the real target reached through it. Only
+    /// meaningful when `proxy_kind == "https"`; see
+    /// `qbz_net_proxy::insecure_tls`'s doc comment for why this can't be
+    /// reqwest's `danger_accept_invalid_certs` (that disables verification
+    /// for the whole client, Qobuz's own API included).
+    #[serde(default)]
+    pub proxy_insecure_tls: bool,
 }
 
 impl Default for NetworkSettings {
@@ -81,6 +89,7 @@ impl Default for NetworkSettings {
             proxy_has_password: false,
             block_qconnect_lan: false,
             block_cast: false,
+            proxy_insecure_tls: false,
         }
     }
 }
@@ -120,6 +129,10 @@ impl NetworkSettingsStore {
         )
         .map_err(|e| format!("Failed to create network settings table: {}", e))?;
 
+        let _ = conn.execute_batch(
+            "ALTER TABLE network_settings ADD COLUMN proxy_insecure_tls INTEGER NOT NULL DEFAULT 0;",
+        );
+
         conn.execute("INSERT OR IGNORE INTO network_settings (id) VALUES (1)", [])
             .map_err(|e| format!("Failed to insert default network settings: {}", e))?;
 
@@ -150,7 +163,7 @@ impl NetworkSettingsStore {
             .query_row(
                 "SELECT proxy_enabled, proxy_kind, proxy_host, proxy_port, proxy_auth_enabled,
                         proxy_username, proxy_password_wrapped IS NOT NULL, block_qconnect_lan,
-                        block_cast
+                        block_cast, proxy_insecure_tls
                  FROM network_settings WHERE id = 1",
                 [],
                 |row| {
@@ -163,6 +176,7 @@ impl NetworkSettingsStore {
                     let proxy_has_password: bool = row.get(6)?;
                     let block_qconnect_lan: i32 = row.get(7)?;
                     let block_cast: i32 = row.get(8)?;
+                    let proxy_insecure_tls: i32 = row.get(9)?;
                     Ok(NetworkSettings {
                         proxy_enabled: proxy_enabled != 0,
                         proxy_kind: normalize_proxy_kind(&proxy_kind),
@@ -173,6 +187,7 @@ impl NetworkSettingsStore {
                         proxy_has_password,
                         block_qconnect_lan: block_qconnect_lan != 0,
                         block_cast: block_cast != 0,
+                        proxy_insecure_tls: proxy_insecure_tls != 0,
                     })
                 },
             )
@@ -305,6 +320,16 @@ impl NetworkSettingsStore {
         Ok(())
     }
 
+    pub fn set_proxy_insecure_tls(&self, value: bool) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE network_settings SET proxy_insecure_tls = ?1 WHERE id = 1",
+                params![if value { 1 } else { 0 }],
+            )
+            .map_err(|e| format!("Failed to set proxy_insecure_tls: {}", e))?;
+        Ok(())
+    }
+
     /// The live proxy configuration for `qbz_net_proxy::apply`, or `None`
     /// when the proxy is off. Decrypts the password fresh on every call so a
     /// change is picked up without restarting the process; callers that
@@ -337,6 +362,7 @@ impl NetworkSettingsStore {
             host: settings.proxy_host,
             port: settings.proxy_port,
             auth,
+            insecure_tls: settings.proxy_insecure_tls,
         }))
     }
 }
@@ -421,6 +447,10 @@ impl NetworkSettingsState {
         self.with_store(|s| s.set_block_cast(value))
     }
 
+    pub fn set_proxy_insecure_tls(&self, value: bool) -> Result<(), String> {
+        self.with_store(|s| s.set_proxy_insecure_tls(value))
+    }
+
     pub fn proxy_config(&self) -> Result<Option<ProxyConfig>, String> {
         self.with_store(|s| s.proxy_config())
     }
@@ -453,6 +483,7 @@ mod tests {
         assert!(!settings.proxy_has_password);
         assert!(!settings.block_qconnect_lan);
         assert!(!settings.block_cast);
+        assert!(!settings.proxy_insecure_tls);
     }
 
     #[test]
@@ -477,6 +508,9 @@ mod tests {
             store.set_proxy_password("hunter2").expect("set password");
             store.set_block_qconnect_lan(true).expect("set lan block");
             store.set_block_cast(true).expect("set cast block");
+            store
+                .set_proxy_insecure_tls(true)
+                .expect("set insecure tls");
         }
 
         let reopened = NetworkSettingsStore::new_at(&dir).expect("reopen store");
@@ -490,6 +524,7 @@ mod tests {
         assert!(settings.proxy_has_password);
         assert!(settings.block_qconnect_lan);
         assert!(settings.block_cast);
+        assert!(settings.proxy_insecure_tls);
         // The wrapped blob's bytes persisted (proxy_has_password, checked
         // above) — that's this module's responsibility. Whether the SAME
         // ciphertext still decrypts after a fresh SecretBox::open() is
