@@ -67,7 +67,7 @@ Column {
     GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("PROXY", QbzSession.trRev) }
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Use a proxy", QbzSession.trRev)
-        description: QbzSession.tr("Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy.", QbzSession.trRev)
+        description: QbzSession.tr("Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy. Restart QBZ after enabling, disabling or changing it so the account session and Qobuz Connect pick it up too.", QbzSession.trRev)
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.net.proxyEnabled === true
             onToggled: function (v) { QbzBridge.settingsBool("network-proxy-enabled", v) }

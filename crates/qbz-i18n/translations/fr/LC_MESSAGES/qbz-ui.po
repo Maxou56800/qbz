@@ -7748,8 +7748,8 @@ msgid "Use a proxy"
 msgstr "Utiliser un proxy"
 
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
-msgid "Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy."
-msgstr "Faites transiter le trafic Qobuz — diffusion, API et Qobuz Connect — par un proxy."
+msgid "Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy. Restart QBZ after enabling, disabling or changing it so the account session and Qobuz Connect pick it up too."
+msgstr "Faites transiter le trafic Qobuz — diffusion, API et Qobuz Connect — par un proxy. Redémarrez QBZ après l'avoir activé, désactivé ou modifié pour que la session du compte et Qobuz Connect en tiennent compte aussi."
 
 
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
