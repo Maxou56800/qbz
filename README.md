@@ -934,8 +934,22 @@ Almost all of the documentation, except this README, is AI slop. Seriously,
 help writing or improving it is welcome. I hate writing documentation, and
 who doesn't?
 
+One thing is not negotiable, and it applies to me as much as to anyone sending
+a PR: **the human who signs a commit is the author and is responsible for it.**
+Models are tools, so they do not get co-author credit here — not to hide their
+part, which this whole section is about, but because credit without
+accountability is worth nothing. If your agent wrote it, you still read it, you
+still ran it, and you answer for it.
+
+That also means an agent's output is not evidence on its own. A report that
+nobody verified, or a fix that passes the model's own tests and nothing else,
+costs more time to unpick than it saves. Findings are genuinely welcome — bring
+them as issues with what you observed. A fix is welcome too, once you have run
+it yourself and can say what you tested.
+
 If you have a problem using software built with AI tools, this software is
-probably not for you.
+probably not for you. If you expect unsupervised AI output to be merged because
+it came from a model, that is not for you either.
 
 ## Documentation
 
