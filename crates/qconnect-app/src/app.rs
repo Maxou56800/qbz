@@ -2896,6 +2896,12 @@ where
                                 pending_local_takeover = false;
                                 pending_local_takeover_is_explicit = false;
                                 auto_take_attempted = true;
+                                // Release the fence set above: the baseline it
+                                // guarded is now published. Left set, it drops
+                                // every renderer command (play/pause/next) for
+                                // the rest of the session.
+                                let mut sync = self.sync.lock().await;
+                                crate::set_local_playback_conflict_pending(&mut sync, false);
                             }
                         }
                     }
@@ -3305,6 +3311,13 @@ mod tests {
             app.queue_state_snapshot().await.version,
             QueueVersion::new(4, 1)
         );
+
+        // A completed takeover must release the conflict fence it set while
+        // the baseline was pending, or every later renderer command
+        // (play/pause/next) is silently dropped for the rest of the session.
+        let sync = app.sync_handle();
+        let state = sync.lock().await;
+        assert!(!state.local_playback_conflict_pending);
     }
 
     #[tokio::test]
