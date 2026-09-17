@@ -7834,3 +7834,11 @@ msgstr "Casten blokkeren"
 msgid "Stop Chromecast/DLNA discovery and the local cast media server."
 msgstr "Schakelt Chromecast/DLNA-detectie en de lokale cast-mediaserver uit."
 
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Restart QBZ to finish applying this proxy change"
+msgstr "Start QBZ opnieuw op om deze proxywijziging volledig toe te passen"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "New streaming requests already use it. Your account session and Qobuz Connect only pick it up after a restart."
+msgstr "Nieuwe streamingverzoeken gebruiken hem al. Je accountsessie en Qobuz Connect passen hem pas toe na een herstart."

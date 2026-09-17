@@ -65,6 +65,16 @@ Column {
 
     // ============================== PROXY =================================
     GroupHeader { kioskHost: root.kioskHost; text: QbzSession.tr("PROXY", QbzSession.trRev) }
+    // Dynamic, not just the row description below: appears the moment a
+    // change is actually made (toggle, Test & Save, clear password) and
+    // stays until QBZ restarts (the flag is process-lifetime only, never
+    // persisted) — the row description alone was too easy to miss.
+    WarningBanner {
+        visible: root.net.restartRecommended === true
+        variant: "warning"
+        title: QbzSession.tr("Restart QBZ to finish applying this proxy change", QbzSession.trRev)
+        body: QbzSession.tr("New streaming requests already use it. Your account session and Qobuz Connect only pick it up after a restart.", QbzSession.trRev)
+    }
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Use a proxy", QbzSession.trRev)
         description: QbzSession.tr("Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy. Restart QBZ after enabling, disabling or changing it so the account session and Qobuz Connect pick it up too.", QbzSession.trRev)

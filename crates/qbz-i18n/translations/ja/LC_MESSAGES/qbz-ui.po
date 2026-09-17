@@ -7827,3 +7827,11 @@ msgstr "キャストをブロック"
 msgid "Stop Chromecast/DLNA discovery and the local cast media server."
 msgstr "Chromecast/DLNAの検出とローカルのキャスト用メディアサーバーを停止します。"
 
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Restart QBZ to finish applying this proxy change"
+msgstr "このプロキシの変更を完全に適用するにはQBZを再起動してください"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "New streaming requests already use it. Your account session and Qobuz Connect only pick it up after a restart."
+msgstr "新しいストリーミングリクエストにはすでに適用されています。アカウントセッションとQobuz Connectは再起動後にのみ反映されます。"

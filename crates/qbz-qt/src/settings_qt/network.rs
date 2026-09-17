@@ -51,6 +51,13 @@ pub struct Snapshot {
     pub test_result_kind: String,
     #[serde(rename = "testResultDetail")]
     pub test_result_detail: String,
+    /// The proxy was enabled, disabled or reconfigured since QBZ started.
+    /// Not persisted (resets to false on every launch): it exists to tell the
+    /// user a restart is needed for the account session and Qobuz Connect to
+    /// pick up the change — see `client.rs`'s "applied once, at construction"
+    /// comment for why this can't just apply itself live.
+    #[serde(rename = "restartRecommended")]
+    pub restart_recommended: bool,
 }
 
 #[derive(Clone, Default)]
@@ -58,12 +65,14 @@ struct TestState {
     busy: bool,
     result_kind: String,
     result_detail: String,
+    restart_recommended: bool,
 }
 
 static TEST_STATE: std::sync::Mutex<TestState> = std::sync::Mutex::new(TestState {
     busy: false,
     result_kind: String::new(),
     result_detail: String::new(),
+    restart_recommended: false,
 });
 
 /// Read the current proxy setting and push it into the process-wide
@@ -102,6 +111,7 @@ pub fn snapshot() -> Snapshot {
         test_busy: test.busy,
         test_result_kind: test.result_kind,
         test_result_detail: test.result_detail,
+        restart_recommended: test.restart_recommended,
     }
 }
 
@@ -114,7 +124,17 @@ pub fn seed() {
 pub fn set_proxy_enabled(value: bool) -> Result<(), String> {
     super::network().set_proxy_enabled(value)?;
     apply_proxy_config();
+    mark_restart_recommended();
     Ok(())
+}
+
+/// Flag that the account session / Qobuz Connect won't see the current proxy
+/// config until QBZ restarts (see `Snapshot::restart_recommended`'s doc).
+fn mark_restart_recommended() {
+    TEST_STATE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .restart_recommended = true;
 }
 
 pub fn set_block_qconnect_lan(value: bool) -> Result<(), String> {
@@ -133,6 +153,7 @@ pub fn clear_password() {
         return;
     }
     apply_proxy_config();
+    mark_restart_recommended();
 }
 
 /// Persist every staged field, apply it, and test reachability against a
@@ -183,6 +204,7 @@ pub async fn test_and_save(
         return;
     }
     apply_proxy_config();
+    mark_restart_recommended();
 
     let config = match store.proxy_config() {
         Ok(Some(config)) => config,
