@@ -1,10 +1,13 @@
 // crates/qbzd/src/tui/screens/qconnect.rs — the Qobuz Connect screen (03 §3.4).
 //
 // Writes the daemon-root qconnect_settings.db KV via the App's write_one path
-// (qconnect.startup_mode / device_name / volume_mode). `device_uuid` is never
-// displayed. `remember_last` is not offered (desktop-ism). The device-name
-// preview resolves through the SAME `resolve_qconnect_friendly_name` the connect
-// path uses, so the phone-facing name shown here is exactly what will appear.
+// (qconnect.startup_mode / device_name / volume_mode / block_lan). `device_uuid`
+// is never displayed. `remember_last` is not offered (desktop-ism). The
+// device-name preview resolves through the SAME `resolve_qconnect_friendly_name`
+// the connect path uses, so the phone-facing name shown here is exactly what
+// will appear. `block_lan` is the daemon's OWN LAN safety switch — a separate
+// flag from the desktop's Settings -> Network kill switch, since qbzd never
+// reads the desktop's profile (see qconnect/transport.rs's doc comment).
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
@@ -25,6 +28,10 @@ struct Staged {
     device_name: String,
     /// "software" (OD4 default) | "locked".
     volume_mode: String,
+    /// Daemon's own LAN safety switch — see qconnect/mod.rs::start_lan and
+    /// qconnect/transport.rs::load_block_lan_at. NOT the desktop's
+    /// block_qconnect_lan (a separate flag in a separate profile).
+    block_lan: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +39,7 @@ enum QField {
     Enable,
     DeviceName,
     VolumeMode,
+    BlockLan,
 }
 
 enum Editor {
@@ -46,14 +54,20 @@ pub struct QConnectState {
     editor: Option<Editor>,
 }
 
-const FIELDS: [QField; 3] = [QField::Enable, QField::DeviceName, QField::VolumeMode];
+const FIELDS: [QField; 4] = [QField::Enable, QField::DeviceName, QField::VolumeMode, QField::BlockLan];
 
 impl QConnectState {
-    pub fn new(startup_on: bool, device_name: Option<String>, volume_mode: Option<String>) -> Self {
+    pub fn new(
+        startup_on: bool,
+        device_name: Option<String>,
+        volume_mode: Option<String>,
+        block_lan: bool,
+    ) -> Self {
         let staged = Staged {
             enable: startup_on,
             device_name: device_name.unwrap_or_default(),
             volume_mode: volume_mode.unwrap_or_else(|| s::VOL_SOFTWARE.to_string()),
+            block_lan,
         };
         Self {
             baseline: staged.clone(),
@@ -99,6 +113,9 @@ impl QConnectState {
         if a.volume_mode != b.volume_mode {
             out.push(("qconnect.volume_mode".to_string(), a.volume_mode.clone()));
         }
+        if a.block_lan != b.block_lan {
+            out.push(("qconnect.block_lan".to_string(), a.block_lan.to_string()));
+        }
         out
     }
 
@@ -130,6 +147,7 @@ impl QConnectState {
             KeyCode::Enter | KeyCode::Char(' ') => {
                 match FIELDS[self.focus] {
                     QField::Enable => self.staged.enable ^= true,
+                    QField::BlockLan => self.staged.block_lan ^= true,
                     QField::DeviceName => {
                         self.editor = Some(Editor::Name(TextInput::new(&self.staged.device_name, false)));
                     }
@@ -178,8 +196,10 @@ impl QConnectState {
 
     pub fn draw(&self, f: &mut Frame, area: Rect, ctx: &DrawCtx) {
         let width = area.width.saturating_sub(2); // section inner width
-        let ctrl_col =
-            widgets::control_column(&[s::QC_ENABLE, s::QC_DEVICE_NAME, s::QC_VOLUME_MODE], width);
+        let ctrl_col = widgets::control_column(
+            &[s::QC_ENABLE, s::QC_DEVICE_NAME, s::QC_VOLUME_MODE, s::QC_BLOCK_LAN],
+            width,
+        );
         let mut lines: Vec<Line> = Vec::new();
         let mut within: Option<(u16, u16)> = None;
         for (i, field) in FIELDS.iter().enumerate() {
@@ -201,6 +221,11 @@ impl QConnectState {
                     (s::QC_DEVICE_NAME, shown, "[input]")
                 }
                 QField::VolumeMode => (s::QC_VOLUME_MODE, self.staged.volume_mode.clone(), "[select]"),
+                QField::BlockLan => (
+                    s::QC_BLOCK_LAN,
+                    if self.staged.block_lan { "on" } else { "off" }.to_string(),
+                    "[toggle]",
+                ),
             };
             let start = lines.len() as u16;
             let mut block = widgets::field_block(
@@ -211,6 +236,10 @@ impl QConnectState {
             // The device-name field carries a live preview + applies-next note.
             if *field == QField::DeviceName {
                 block.extend(widgets::wrapped_note(&s::qc_preview(&self.effective_name()), width, theme::dim()));
+                block.extend(widgets::wrapped_note(s::QC_APPLIES_NEXT, width, theme::dim()));
+            }
+            if *field == QField::BlockLan {
+                block.extend(widgets::wrapped_note(s::QC_BLOCK_LAN_NOTE, width, theme::dim()));
                 block.extend(widgets::wrapped_note(s::QC_APPLIES_NEXT, width, theme::dim()));
             }
             if focused {
@@ -255,4 +284,32 @@ fn qconnect_live_line(p: &Value) -> Option<String> {
         parts.push("session active".to_string());
     }
     Some(parts.join(" · "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_keys_only_emits_changed_fields() {
+        let mut st = QConnectState::new(false, None, None, false);
+        assert!(st.save_keys().is_empty(), "clean screen writes nothing");
+        st.staged.block_lan = true;
+        assert_eq!(
+            st.save_keys(),
+            vec![("qconnect.block_lan".to_string(), "true".to_string())]
+        );
+    }
+
+    #[test]
+    fn enter_on_the_block_lan_field_toggles_it() {
+        use ratatui::crossterm::event::KeyModifiers;
+
+        let mut st = QConnectState::new(false, None, None, false);
+        st.focus = FIELDS.iter().position(|f| *f == QField::BlockLan).unwrap();
+        st.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(st.staged.block_lan);
+        st.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(!st.staged.block_lan);
+    }
 }

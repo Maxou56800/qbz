@@ -490,7 +490,8 @@ impl App {
                 );
                 let name = qconnect_kv::load_device_name_at(&db);
                 let vol = qconnect_kv::load_volume_mode_at(&db);
-                Active::QConnect(QConnectState::new(on, name, vol))
+                let block_lan = qconnect_kv::load_block_lan_at(&db);
+                Active::QConnect(QConnectState::new(on, name, vol, block_lan))
             }
             Screen::Network => {
                 let (cfg, warns) = QbzdConfig::load(&self.roots.config.join("qbzd.toml"))
@@ -1980,7 +1981,7 @@ mod tests {
                 &AudioSettings::default(),
                 &qbz_app::settings::playback::PlaybackPreferences::default(),
             )),
-            Screen::QConnect => Active::QConnect(QConnectState::new(false, None, None)),
+            Screen::QConnect => Active::QConnect(QConnectState::new(false, None, None, false)),
             Screen::Network => {
                 Active::Network(NetworkState::new(&QbzdConfig::default(), Vec::new()))
             }

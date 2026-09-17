@@ -246,6 +246,9 @@ pub const QCONNECT_SECTION: &str = "CONNECTION";
 pub const QC_ENABLE: &str = "Enable";
 pub const QC_DEVICE_NAME: &str = "Device name";
 pub const QC_VOLUME_MODE: &str = "Volume mode";
+pub const QC_BLOCK_LAN: &str = "Block LAN";
+pub const QC_BLOCK_LAN_NOTE: &str =
+    "blocks mDNS advertisement and the local Connect receiver on this network";
 pub const QC_APPLIES_NEXT: &str = "applies on the next connection";
 pub const VOL_SOFTWARE: &str = "software";
 pub const VOL_LOCKED: &str = "locked";
