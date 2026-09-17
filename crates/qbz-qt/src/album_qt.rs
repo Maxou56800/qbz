@@ -1016,7 +1016,14 @@ pub fn download_booklet() {
         format!("{title}.pdf")
     };
     crate::spawn(async move {
-        let client = match reqwest::Client::builder().timeout(BOOKLET_TIMEOUT).build() {
+        let builder = match qbz_net_proxy::apply_current(reqwest::Client::builder()) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[qbz-qt] booklet proxy config error: {e}");
+                return;
+            }
+        };
+        let client = match builder.timeout(BOOKLET_TIMEOUT).build() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("[qbz-qt] booklet HTTP client error: {e}");

@@ -19,7 +19,8 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Build the fast-path client with a total deadline of `total`.
 pub(crate) fn build_client(total: std::time::Duration) -> reqwest::Client {
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .expect("apply proxy configuration")
         .timeout(total)
         .connect_timeout(CONNECT_TIMEOUT.min(total))
         .user_agent("QBZ/1.0.0")

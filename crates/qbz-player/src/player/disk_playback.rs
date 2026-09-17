@@ -156,7 +156,8 @@ impl Player {
         &self,
         url: &str,
     ) -> Result<(Arc<BufferedMediaSource>, BufferWriter), String> {
-        let client = reqwest::Client::builder()
+        let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .map_err(|e| e.to_string())?
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(120))
             .build()

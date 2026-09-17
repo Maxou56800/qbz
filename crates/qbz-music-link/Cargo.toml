@@ -15,6 +15,7 @@ async-trait = { workspace = true }
 
 # HTTP
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 # Serialization
 serde = { workspace = true }

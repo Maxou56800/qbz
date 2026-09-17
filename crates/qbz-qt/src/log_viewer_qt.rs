@@ -277,12 +277,10 @@ pub async fn upload() {
     publish();
 
     let body = bundle_text().await;
-    let url = match reqwest::Client::new()
-        .post("https://paste.rs/")
-        .body(body)
-        .send()
-        .await
-    {
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .and_then(|builder| builder.build().map_err(Into::into))
+        .unwrap_or_default();
+    let url = match client.post("https://paste.rs/").body(body).send().await {
         Ok(resp) => resp.text().await.unwrap_or_default().trim().to_string(),
         Err(e) => {
             log::warn!("[qbz-qt] log upload failed: {e}");

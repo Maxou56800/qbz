@@ -19,6 +19,7 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # Async runtime + HTTP (download pipeline + artwork)
 tokio = { workspace = true }
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 futures-util = { workspace = true }
 
 # FLAC tag + artwork embedding (legacy-format post-processing)

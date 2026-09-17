@@ -18,6 +18,7 @@ tokio = { workspace = true }
 # Artwork download + cache + (Linux) resize for the notification icon. Matches
 # the Tauri notification helpers so output is identical.
 reqwest = { workspace = true, features = ["blocking"] }
+qbz-net-proxy = { path = "../qbz-net-proxy", features = ["blocking"] }
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",

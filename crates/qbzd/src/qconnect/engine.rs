@@ -124,7 +124,9 @@ fn classify_owner_api_failure(error: &ApiError) -> QconnectOwnerFailure {
         | ApiError::NoQualityAvailable
         | ApiError::TrackUnavailable(_) => QconnectOwnerFailure::TrackUnavailable,
         ApiError::OfflineMode => QconnectOwnerFailure::Offline,
-        ApiError::NetworkError(_) => QconnectOwnerFailure::Network,
+        ApiError::NetworkError(_) | ApiError::InvalidProxyConfig(_) => {
+            QconnectOwnerFailure::Network
+        }
         ApiError::ParseError(_) | ApiError::ApiResponse(_) => QconnectOwnerFailure::InvalidResponse,
         ApiError::RateLimited(_) => QconnectOwnerFailure::RateLimited,
         ApiError::ServerError(_) => QconnectOwnerFailure::Server,
@@ -687,7 +689,10 @@ fn clamp_quality(requested: Quality, cap: Quality) -> Quality {
 }
 
 async fn download_remote_audio(url: &str) -> Result<Vec<u8>, String> {
-    let response = reqwest::Client::new()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .and_then(|builder| builder.build().map_err(Into::into))
+        .unwrap_or_default();
+    let response = client
         .get(url)
         .header("User-Agent", "Mozilla/5.0")
         .send()

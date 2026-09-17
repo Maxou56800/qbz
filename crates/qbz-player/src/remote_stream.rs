@@ -163,7 +163,8 @@ pub async fn probe_remote_stream_info_with_headers(
     use reqwest::StatusCode;
     use std::time::Instant;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|err| format!("apply proxy configuration: {err}"))?
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -342,7 +343,8 @@ pub async fn download_and_stream_remote_track_with_headers(
     };
     let writer = &guard.writer;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|err| format!("apply proxy configuration: {err}"))?
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(300))
         .build()

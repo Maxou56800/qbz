@@ -75,6 +75,17 @@ pub fn apply_current(builder: ClientBuilder) -> Result<ClientBuilder, ProxyConfi
     apply(builder, guard.config.as_ref())
 }
 
+/// [`apply_current`], for the blocking client (see [`crate::apply_blocking`]).
+#[cfg(feature = "blocking")]
+pub fn apply_current_blocking(
+    builder: reqwest::blocking::ClientBuilder,
+) -> Result<reqwest::blocking::ClientBuilder, ProxyConfigError> {
+    let guard = cell()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::apply_blocking(builder, guard.config.as_ref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

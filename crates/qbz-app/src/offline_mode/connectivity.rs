@@ -376,17 +376,23 @@ impl ConnectivityActor {
         let (recheck_tx, mut recheck_rx) = tokio::sync::mpsc::channel::<()>(4);
 
         tokio::spawn(async move {
-            let client = match reqwest::Client::builder()
-                .timeout(PROBE_TIMEOUT)
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("[Connectivity] probe client build failed: {}", e);
-                    return;
-                }
-            };
+            // Routed through the same proxy as every other request: probing
+            // direct connectivity while the rest of the app goes through a
+            // proxy would report "online"/"offline" against the wrong path.
+            let client =
+                match qbz_net_proxy::apply_current(reqwest::Client::builder()).and_then(|builder| {
+                    builder
+                        .timeout(PROBE_TIMEOUT)
+                        .redirect(reqwest::redirect::Policy::none())
+                        .build()
+                        .map_err(Into::into)
+                }) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("[Connectivity] probe client build failed: {}", e);
+                        return;
+                    }
+                };
 
             let mut judge = ConnectivityJudge::new();
             let mut next_delay = Duration::from_millis(10); // first verdict ASAP

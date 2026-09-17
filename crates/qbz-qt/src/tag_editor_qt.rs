@@ -1570,7 +1570,8 @@ async fn download_bounded_https(url: &str) -> Result<Vec<u8>, String> {
     if !url.starts_with("https://") {
         return Err(qbz_i18n::t("Artwork source did not provide a secure URL."));
     }
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|error| error.to_string())?
         .connect_timeout(std::time::Duration::from_secs(8))
         .timeout(std::time::Duration::from_secs(30))
         .user_agent("QBZ/2 metadata-editor")

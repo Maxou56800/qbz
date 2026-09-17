@@ -194,7 +194,14 @@ async fn fetch_release_for_version(version: &str) -> Option<FetchedRelease> {
     };
     let url = format!("{GITHUB_RELEASES_URL}/tags/{tag}");
 
-    let client = match reqwest::Client::builder()
+    let builder = match qbz_net_proxy::apply_current(reqwest::Client::builder()) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("[qbz-qt] whats-new proxy config error: {e}");
+            return None;
+        }
+    };
+    let client = match builder
         .timeout(std::time::Duration::from_secs(8))
         .user_agent("qbz")
         .build()

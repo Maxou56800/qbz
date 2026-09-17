@@ -37,7 +37,8 @@ impl StreamFetcher {
     fn build_client() -> Result<reqwest::Client, String> {
         // rustls via the workspace reqwest (same TLS backend qbz-qobuz uses
         // for all CDN traffic, including CMAF segment downloads).
-        reqwest::Client::builder()
+        qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .map_err(|e| format!("Failed to apply proxy configuration: {}", e))?
             .timeout(Duration::from_secs(300)) // 5 minute timeout for large files
             .connect_timeout(Duration::from_secs(15))
             .build()

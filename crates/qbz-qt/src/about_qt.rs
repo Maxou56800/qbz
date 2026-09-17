@@ -325,7 +325,14 @@ fn start_avatar_loads() {
     if AVATARS_STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
-    let client = match reqwest::Client::builder()
+    let builder = match qbz_net_proxy::apply_current(reqwest::Client::builder()) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("[qbz-qt] about avatar proxy config error: {e}");
+            return;
+        }
+    };
+    let client = match builder
         .timeout(std::time::Duration::from_secs(8))
         // GitHub rejects requests without one.
         .user_agent("qbz")

@@ -15,7 +15,8 @@ use crate::model::{normalize, LyricsProvider};
 
 /// Build a shared HTTP client with reasonable timeout
 fn build_client() -> Result<Client, String> {
-    Client::builder()
+    qbz_net_proxy::apply_current(Client::builder())
+        .map_err(|e| format!("Failed to apply proxy configuration: {}", e))?
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))

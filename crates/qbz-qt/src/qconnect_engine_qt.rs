@@ -571,7 +571,10 @@ impl QconnectRendererEngine for QtRendererEngine {
 }
 
 async fn download_remote_audio(url: &str) -> Result<Vec<u8>, String> {
-    let response = reqwest::Client::new()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .and_then(|builder| builder.build().map_err(Into::into))
+        .unwrap_or_default();
+    let response = client
         .get(url)
         .header("User-Agent", "Mozilla/5.0")
         .send()
@@ -715,7 +718,8 @@ async fn stream_remote_track_into_player(
 async fn probe_remote_stream_info(url: &str) -> Result<RemoteStreamInfo, String> {
     use std::time::Instant;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|_| "apply proxy configuration failed".to_string())?
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -833,7 +837,8 @@ async fn download_and_stream_remote_track(
     };
     let writer = &guard.writer;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|_| "apply proxy configuration failed".to_string())?
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(300))
         .build()

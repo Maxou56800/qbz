@@ -1161,11 +1161,14 @@ pub async fn fetch_asset_bytes(url: &str) -> Option<Vec<u8>> {
         return None;
     }
 
-    let client = match reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(ASSET_TIMEOUT_SECS))
-        .build()
-    {
+    let client =
+        match qbz_net_proxy::apply_current(reqwest::Client::builder()).and_then(|builder| {
+            builder
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(ASSET_TIMEOUT_SECS))
+                .build()
+                .map_err(Into::into)
+        }) {
         Ok(client) => client,
         Err(e) => {
             log::warn!("[Purchases] could not build the asset client: {e}");

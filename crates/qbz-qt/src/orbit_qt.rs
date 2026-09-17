@@ -207,7 +207,8 @@ async fn get<T: serde::de::DeserializeOwned>(
     url: reqwest::Url,
     token: &str,
 ) -> Result<T, &'static str> {
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|_| "verify-failed")?
         .timeout(Duration::from_secs(6))
         .redirect(reqwest::redirect::Policy::none())
         .build()

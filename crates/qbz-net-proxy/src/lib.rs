@@ -36,6 +36,8 @@ use reqwest::ClientBuilder;
 use url::Url;
 
 mod current;
+#[cfg(feature = "blocking")]
+pub use current::apply_current_blocking;
 pub use current::{apply_current, current_generation, set_current, Generation};
 
 /// Which proxy protocol the user selected.
@@ -161,6 +163,21 @@ pub fn apply(
     builder: ClientBuilder,
     config: Option<&ProxyConfig>,
 ) -> Result<ClientBuilder, ProxyConfigError> {
+    let Some(config) = config else {
+        return Ok(builder);
+    };
+    Ok(builder.proxy(config.to_reqwest_proxy()?))
+}
+
+/// [`apply`], for the small number of call sites that use
+/// `reqwest::blocking` (a shared client needed outside an async context).
+/// Behind the `blocking` feature so the ~20 async-only consumers of this
+/// crate never pull in reqwest's blocking client.
+#[cfg(feature = "blocking")]
+pub fn apply_blocking(
+    builder: reqwest::blocking::ClientBuilder,
+    config: Option<&ProxyConfig>,
+) -> Result<reqwest::blocking::ClientBuilder, ProxyConfigError> {
     let Some(config) = config else {
         return Ok(builder);
     };

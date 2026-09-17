@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "User-configured HTTP/HTTPS/SOCKS proxy: config type and a reqwest ClientBuilder helper"
 
+[features]
+# Adds apply_blocking()/apply_current_blocking() for the one call site
+# (qbz-media-controls) that needs reqwest::blocking instead of the async
+# client every other consumer of this crate uses.
+blocking = ["reqwest/blocking"]
+
 [dependencies]
 reqwest = { workspace = true }
 # Percent-encodes proxy username/password correctly when building the proxy

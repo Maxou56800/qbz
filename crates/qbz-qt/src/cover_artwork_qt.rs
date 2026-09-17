@@ -223,10 +223,14 @@ pub fn save_cover_as(album_id: String, title: String, artwork_url: String) {
         if artwork_url.is_empty() {
             return;
         }
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-        {
+        let builder = match qbz_net_proxy::apply_current(reqwest::Client::builder()) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[qbz-qt] cover save-as proxy config error: {e}");
+                return;
+            }
+        };
+        let client = match builder.timeout(std::time::Duration::from_secs(30)).build() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("[qbz-qt] cover save-as client error: {e}");
@@ -422,10 +426,14 @@ pub fn save_artist_image_as(artist_name: String, artwork_url: String) {
         if artwork_url.is_empty() {
             return;
         }
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-        {
+        let builder = match qbz_net_proxy::apply_current(reqwest::Client::builder()) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[qbz-qt] artist image save-as proxy config error: {e}");
+                return;
+            }
+        };
+        let client = match builder.timeout(std::time::Duration::from_secs(30)).build() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("[qbz-qt] artist image save-as client error: {e}");

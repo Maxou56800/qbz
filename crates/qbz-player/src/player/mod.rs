@@ -6460,7 +6460,8 @@ impl Player {
             armed: true,
         };
         let writer = &guard.writer;
-        let client = reqwest::Client::builder()
+        let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .map_err(|e| format!("proxy config error: {}", e))?
             .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| format!("CMAF client error: {}", e))?;
@@ -7165,7 +7166,8 @@ impl Player {
     async fn download_audio(&self, url: &str) -> Result<Vec<u8>, String> {
         use std::time::Duration;
 
-        let client = reqwest::Client::builder()
+        let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .map_err(|_| "Failed to apply proxy configuration".to_string())?
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(10))
             .build()

@@ -3995,7 +3995,8 @@ const SHADOW_DOWNLOAD_MAX_BYTES: u64 = 400 * 1024 * 1024;
 
 fn proxy_client() -> &'static reqwest::Client {
     PROXY_HTTP.get_or_init(|| {
-        reqwest::Client::builder()
+        qbz_net_proxy::apply_current(reqwest::Client::builder())
+            .unwrap_or_else(|_| reqwest::Client::builder())
             .connect_timeout(std::time::Duration::from_secs(10))
             // A source server (Plex / Jellyfin / Subsonic) that stops
             // answering mid-body used to park the media server's request

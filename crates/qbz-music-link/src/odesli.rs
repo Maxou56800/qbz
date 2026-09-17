@@ -210,7 +210,8 @@ impl Default for SongLinkClient {
 impl SongLinkClient {
     pub fn new() -> Self {
         Self {
-            client: Client::builder()
+            client: qbz_net_proxy::apply_current(Client::builder())
+                .unwrap_or_else(|_| Client::builder())
                 .timeout(REQUEST_TIMEOUT)
                 .connect_timeout(Duration::from_secs(5))
                 .build()

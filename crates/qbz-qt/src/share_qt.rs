@@ -223,10 +223,13 @@ pub(crate) fn share_playlist(playlist_id: String) {
 /// Shared HTTP client settings for the share resolvers (Tauri parity:
 /// 10 s request / 5 s connect timeouts).
 fn share_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .build()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map(|builder| {
+            builder
+                .timeout(std::time::Duration::from_secs(10))
+                .connect_timeout(std::time::Duration::from_secs(5))
+        })
+        .and_then(|builder| builder.build().map_err(Into::into))
         .unwrap_or_default()
 }
 

@@ -31,6 +31,7 @@ rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 urlencoding = "2"
 # Deep links are validated by a real parse before they are acted on: a
 # launcher can split a URL across argv, and a bare scheme is not a URL.

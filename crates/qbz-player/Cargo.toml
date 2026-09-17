@@ -39,6 +39,7 @@ rodio = { version = "0.22", features = ["symphonia-all"] }
 
 # HTTP client for streaming
 reqwest = { workspace = true }
+qbz-net-proxy = { path = "../qbz-net-proxy" }
 
 [dev-dependencies]
 tempfile = "3"

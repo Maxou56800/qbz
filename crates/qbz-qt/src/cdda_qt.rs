@@ -94,7 +94,9 @@ pub struct DiscMeta {
 async fn lookup_musicbrainz(disc_id: &str) -> Option<DiscMeta> {
     // MusicBrainz requires a descriptive User-Agent and blocks clients that do
     // not send one.
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| log::warn!("[qbz-qt] cd: proxy config: {e}"))
+        .ok()?
         .user_agent(concat!(
             "QBZ/",
             env!("CARGO_PKG_VERSION"),
@@ -301,7 +303,8 @@ async fn fetch_cover_at(key: &str) -> Option<String> {
     // 500px: the pane draws it at 224 and the grid at 220, so anything larger
     // is bytes nobody looks at.
     let url = format!("https://coverartarchive.org/{key}/front-500");
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .ok()?
         .user_agent(concat!(
             "QBZ/",
             env!("CARGO_PKG_VERSION"),

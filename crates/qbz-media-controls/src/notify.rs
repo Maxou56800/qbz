@@ -172,7 +172,8 @@ fn resolve_local_artwork(url: &str) -> Option<PathBuf> {
 fn http_client() -> &'static reqwest::blocking::Client {
     static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
+        qbz_net_proxy::apply_current_blocking(reqwest::blocking::Client::builder())
+            .expect("apply proxy configuration")
             .pool_max_idle_per_host(2)
             .build()
             .expect("failed to build notification HTTP client")

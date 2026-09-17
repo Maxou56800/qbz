@@ -436,7 +436,8 @@ async fn play_stream(
 async fn fetch_body(url: &str, request_headers: &[(String, String)]) -> Result<Vec<u8>, String> {
     use reqwest::header::{HeaderName, HeaderValue};
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|e| format!("apply proxy configuration failed: {e}"))?
         .connect_timeout(std::time::Duration::from_secs(10))
         .timeout(std::time::Duration::from_secs(300))
         .build()

@@ -99,7 +99,8 @@ const MEMO_CAP: usize = 8192;
 /// Shared client (artwork.rs: "instead of reqwest::get building a fresh
 /// client + TLS state per image").
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
-    reqwest::Client::builder()
+    qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .expect("apply proxy configuration")
         .timeout(HTTP_TIMEOUT)
         .build()
         .expect("reqwest client")

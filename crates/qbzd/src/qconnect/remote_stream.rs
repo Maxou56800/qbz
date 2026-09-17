@@ -126,7 +126,8 @@ pub async fn stream_remote_track_into_player(
 pub async fn probe_remote_stream_info(url: &str) -> Result<RemoteStreamInfo, String> {
     use std::time::Instant;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|_| "apply proxy configuration failed".to_string())?
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -245,7 +246,8 @@ pub async fn download_and_stream_remote_track(
     };
     let writer = &guard.writer;
 
-    let client = reqwest::Client::builder()
+    let client = qbz_net_proxy::apply_current(reqwest::Client::builder())
+        .map_err(|_| "apply proxy configuration failed".to_string())?
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(300))
         .build()
