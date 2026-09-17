@@ -40,6 +40,11 @@ mod current;
 pub use current::apply_current_blocking;
 pub use current::{apply_current, current_generation, set_current, Generation};
 
+#[cfg(feature = "tunnel")]
+mod tunnel;
+#[cfg(feature = "tunnel")]
+pub use tunnel::{connect_tunnel, TunnelStream};
+
 /// Which proxy protocol the user selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProxyKind {
@@ -125,6 +130,9 @@ pub enum ProxyConfigError {
     InvalidUrl(#[from] url::ParseError),
     #[error("invalid proxy configuration: {0}")]
     Invalid(#[from] reqwest::Error),
+    #[cfg(feature = "tunnel")]
+    #[error("{0}")]
+    Tunnel(String),
 }
 
 impl ProxyConfig {

@@ -10,6 +10,11 @@ description = "User-configured HTTP/HTTPS/SOCKS proxy: config type and a reqwest
 # (qbz-media-controls) that needs reqwest::blocking instead of the async
 # client every other consumer of this crate uses.
 blocking = ["reqwest/blocking"]
+# Adds connect_tunnel(): a raw, proxy-tunneled AsyncRead+AsyncWrite stream for
+# the one consumer (qconnect-transport-ws) that does not use reqwest at all
+# and needs to hand its own TCP stream to tokio-tungstenite. Everyone else
+# only ever goes through reqwest's own proxy support, so this stays optional.
+tunnel = ["dep:tokio-socks", "dep:base64"]
 
 [dependencies]
 reqwest = { workspace = true }
@@ -19,6 +24,12 @@ reqwest = { workspace = true }
 url = "2"
 thiserror = { workspace = true }
 tokio = { workspace = true }
+# SOCKS4/SOCKS5 tunneling for connect_tunnel(). Domain targets are passed
+# through as-is (IntoTargetAddr), which is what makes the proxy resolve DNS
+# instead of the local resolver — see the module docs on DNS leaks.
+tokio-socks = { version = "0.5", optional = true }
+# Proxy-Authorization: Basic header for the HTTP CONNECT tunnel, only.
+base64 = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Building a real reqwest::Client needs a process-wide rustls CryptoProvider
