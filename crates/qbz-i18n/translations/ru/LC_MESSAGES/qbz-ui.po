@@ -7777,32 +7777,29 @@ msgstr "Открыть воспроизведение"
 msgid "Open audio"
 msgstr "Открыть аудио"
 
-msgid "Everything in one menu"
-msgstr "Всё в одном меню"
+msgid "Reorganised settings"
+msgstr "Переорганизованные настройки"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "Настройки, горячие клавиши и обновления собраны в гамбургер-меню, а разделы перегруппированы, чтобы нужный параметр было проще найти."
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Я знаю, что привычки и предпочтения в прослушивании различаются так же, как музыкальные вкусы, поэтому опции переорганизованы, а редко используемые скрыты. Загляните в раздел настроек и настройте его под себя."
 
-msgid "Playback memory is yours to choose"
-msgstr "Память воспроизведения выбираете вы"
+msgid "Cache profiles"
+msgstr "Профили кэша"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto, High, Desktop, Low или Custom: кэш следует объёму памяти компьютера, а режим Streaming only отключает его, как в официальных клиентах."
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Кэширование больше не решение продукта: теперь вы выбираете, кто им занимается — кэш, оперативная память или накопитель, — исходя из своих предпочтений и возможностей компьютера."
 
-msgid "Even volume across albums"
-msgstr "Ровная громкость между альбомами"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "Функция полностью переписана: теперь мы используем данные LUFS от Qobuz и добавили профили, соответствующие отраслевым стандартам."
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "Нормализация громкости переписана на основе значений loudness, которые Qobuz уже присылает, с пресетами для самых частых сценариев."
-
-msgid "Quality of life"
+msgid "Quality of Life"
 msgstr "Удобство в мелочах"
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "Возвращённые меню, более полные массовые действия и ровная навигация, плюс A-B повтор и точная перемотка вперёд и назад."
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Вернулись возможности, потерянные при сменах фронтенда, вместе с более полными групповыми действиями и дополнительными элементами управления воспроизведением (перемотка на 10 секунд вперёд и назад по полосе прогресса, воспроизведение по кругу) и не только."
 
-msgid "A steadier Qobuz Connect"
-msgstr "Более стабильный Qobuz Connect"
+msgid "QConnect hardening"
+msgstr "Укрепление QConnect"
 
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "Этот выпуск построен на ваших отзывах: более стабильный Qobuz Connect, исправленные сообщённые ошибки и общая работа над надёжностью."
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Более стабильная работа: исправления ошибок, проблемы, мешавшие реализации в стиле официального клиента, несовпадающие очереди и сбои. Эта функция продолжает улучшаться."

@@ -3425,32 +3425,29 @@ msgstr "Open playback"
 msgid "Open audio"
 msgstr "Open audio"
 
-msgid "Everything in one menu"
-msgstr "Everything in one menu"
+msgid "Reorganised settings"
+msgstr "Reorganised settings"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
 
-msgid "Playback memory is yours to choose"
-msgstr "Playback memory is yours to choose"
+msgid "Cache profiles"
+msgstr "Cache profiles"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
 
-msgid "Even volume across albums"
-msgstr "Even volume across albums"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
+msgid "Quality of Life"
+msgstr "Quality of Life"
 
-msgid "Quality of life"
-msgstr "Quality of life"
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
+msgid "QConnect hardening"
+msgstr "QConnect hardening"
 
-msgid "A steadier Qobuz Connect"
-msgstr "A steadier Qobuz Connect"
-
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."

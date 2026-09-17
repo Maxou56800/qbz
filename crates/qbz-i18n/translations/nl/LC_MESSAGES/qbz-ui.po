@@ -7746,32 +7746,29 @@ msgstr "Afspelen openen"
 msgid "Open audio"
 msgstr "Audio openen"
 
-msgid "Everything in one menu"
-msgstr "Alles in één menu"
+msgid "Reorganised settings"
+msgstr "Opnieuw ingedeelde instellingen"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "Instellingen, sneltoetsen en updates staan in het hamburgermenu, en de secties zijn heringedeeld zodat je de juiste instelling sneller vindt."
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Ik weet dat luistergewoonten en voorkeuren net zo verschillen als de muzieksmaak, dus de opties zijn opnieuw ingedeeld en de minst gebruikte zijn verborgen. Bekijk de instellingen en pas ze aan naar jouw smaak."
 
-msgid "Playback memory is yours to choose"
-msgstr "Jij kiest het afspeelgeheugen"
+msgid "Cache profiles"
+msgstr "Cacheprofielen"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto, High, Desktop, Low of Custom: de cache volgt het geheugen van je computer, en Streaming only zet hem uit zoals de officiële clients."
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching is geen productbeslissing meer: je kiest nu zelf of de cache, het geheugen of de opslag het afhandelt, afhankelijk van je voorkeuren en wat je computer aankan."
 
-msgid "Even volume across albums"
-msgstr "Gelijk volume tussen albums"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "De functie is volledig herschreven: we gebruiken nu de LUFS-informatie van Qobuz en hebben profielen volgens de industriestandaard ingebouwd."
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "Volumenormalisatie is opnieuw gebouwd op de loudness-waarden die Qobuz al meestuurt, met presets voor de meest voorkomende situaties."
-
-msgid "Quality of life"
+msgid "Quality of Life"
 msgstr "Dagelijks gemak"
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "Teruggekeerde menu's, volledigere bulkacties en rustiger navigatie, plus A-B-herhaling en gecontroleerd vooruit- en terugspoelen."
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Functies die bij de frontendwissels verloren gingen zijn terug, samen met meer en betere bulkacties en extra afspeelbediening (10 seconden vooruit en terug op de voortgangsbalk, afspelen in een lus) en meer."
 
-msgid "A steadier Qobuz Connect"
-msgstr "Een stabielere Qobuz Connect"
+msgid "QConnect hardening"
+msgstr "QConnect versterkt"
 
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "Jouw feedback stuurde deze release: een stabielere Qobuz Connect, gemelde problemen verholpen en brede stabiliteitswerk in de hele app."
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Stabieler gedrag: opgeloste bugs, problemen die een implementatie in de stijl van de officiële client in de weg stonden, wachtrijen die niet overeenkwamen en crashes. Deze functie wordt doorlopend verbeterd."

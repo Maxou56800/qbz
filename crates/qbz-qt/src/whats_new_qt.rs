@@ -132,45 +132,45 @@ fn deck_for(version: &str) -> Vec<Slide> {
     vec![
         Slide {
             image: art("01-settings.webp"),
-            title: qbz_i18n::t("Everything in one menu"),
+            title: qbz_i18n::t("Reorganised settings"),
             body: qbz_i18n::t(
-                "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find.",
+                "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking.",
             ),
             action_label: qbz_i18n::t("Open settings"),
             action_section: -1,
         },
         Slide {
             image: art("02-memory.webp"),
-            title: qbz_i18n::t("Playback memory is yours to choose"),
+            title: qbz_i18n::t("Cache profiles"),
             body: qbz_i18n::t(
-                "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do.",
+                "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities.",
             ),
             action_label: qbz_i18n::t("Open playback"),
             action_section: 1,
         },
         Slide {
             image: art("03-loudness.webp"),
-            title: qbz_i18n::t("Even volume across albums"),
+            title: qbz_i18n::t("Volume normalization"),
             body: qbz_i18n::t(
-                "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups.",
+                "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards.",
             ),
             action_label: qbz_i18n::t("Open audio"),
             action_section: 0,
         },
         Slide {
             image: art("04-qol.webp"),
-            title: qbz_i18n::t("Quality of life"),
+            title: qbz_i18n::t("Quality of Life"),
             body: qbz_i18n::t(
-                "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back.",
+                "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc.",
             ),
-            action_label: String::new(),
+            action_label: qbz_i18n::t("Open settings"),
             action_section: -1,
         },
         Slide {
             image: art("05-connect.webp"),
-            title: qbz_i18n::t("A steadier Qobuz Connect"),
+            title: qbz_i18n::t("QConnect hardening"),
             body: qbz_i18n::t(
-                "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app.",
+                "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement.",
             ),
             action_label: String::new(),
             action_section: -1,

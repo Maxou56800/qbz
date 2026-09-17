@@ -7758,32 +7758,29 @@ msgstr "Wiedergabe öffnen"
 msgid "Open audio"
 msgstr "Audio öffnen"
 
-msgid "Everything in one menu"
-msgstr "Alles in einem Menü"
+msgid "Reorganised settings"
+msgstr "Neu geordnete Einstellungen"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "Einstellungen, Tastenkürzel und Updates liegen im Hamburger-Menü, und die Bereiche wurden neu geordnet, damit du die gesuchte Option leichter findest."
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Ich weiß, dass Hörgewohnheiten und Vorlieben so verschieden sind wie der Musikgeschmack, deshalb wurden die Optionen neu geordnet und die selten genutzten ausgeblendet. Sieh dir die Einstellungen an und richte sie nach deinem Geschmack ein."
 
-msgid "Playback memory is yours to choose"
-msgstr "Du wählst den Wiedergabespeicher"
+msgid "Cache profiles"
+msgstr "Cache-Profile"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto, High, Desktop, Low oder Custom: Der Cache richtet sich nach dem Arbeitsspeicher deines Rechners, und „Streaming only“ schaltet ihn ab wie die offiziellen Clients."
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching ist keine Produktentscheidung mehr: Du wählst jetzt, ob Cache, Arbeitsspeicher oder Speicher das übernimmt, je nach deinen Vorlieben und den Möglichkeiten deines Rechners."
 
-msgid "Even volume across albums"
-msgstr "Gleichmäßige Lautstärke über Alben hinweg"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "Die Funktion wurde komplett neu geschrieben: Wir nutzen jetzt die LUFS-Werte von Qobuz und haben Profile nach Industriestandard umgesetzt."
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "Die Lautstärkeanpassung wurde auf Basis der von Qobuz mitgelieferten Loudness-Werte neu gebaut, mit Voreinstellungen für die häufigsten Hörsituationen."
-
-msgid "Quality of life"
+msgid "Quality of Life"
 msgstr "Komfort im Alltag"
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "Wiederhergestellte Menüs, vollständigere Massenaktionen und ruhigere Navigation, dazu A-B-Schleife sowie kontrolliertes Vor- und Zurückspringen."
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Funktionen, die bei den Frontend-Wechseln verloren gingen, sind zurück, dazu mehr und bessere Sammelaktionen und weitere Wiedergabesteuerungen (10 Sekunden vor und zurück auf der Fortschrittsleiste, Wiedergabe in Schleife) und mehr."
 
-msgid "A steadier Qobuz Connect"
-msgstr "Ein stabileres Qobuz Connect"
+msgid "QConnect hardening"
+msgstr "QConnect gehärtet"
 
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "Dein Feedback hat diese Version geprägt: ein stabileres Qobuz Connect, behobene gemeldete Fehler und breite Stabilitätsarbeit in der gesamten App."
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Stabileres Verhalten, vor allem Fehlerbehebungen, Probleme, die eine Umsetzung im Stil des offiziellen Clients verhinderten, nicht übereinstimmende Warteschlangen und Abstürze. Diese Funktion wird laufend weiter verbessert."

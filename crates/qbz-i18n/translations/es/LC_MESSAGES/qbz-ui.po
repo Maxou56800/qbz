@@ -7764,32 +7764,29 @@ msgstr "Abrir reproducción"
 msgid "Open audio"
 msgstr "Abrir audio"
 
-msgid "Everything in one menu"
-msgstr "Todo en un solo menú"
+msgid "Reorganised settings"
+msgstr "Ajustes reorganizados"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "Los ajustes, los atajos y las actualizaciones viven en el menú hamburguesa, y las secciones se reorganizaron para que encuentres el ajuste que necesitas."
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Sé que los hábitos y las preferencias de escucha varían tanto como los gustos musicales, así que las opciones se reorganizaron y las menos usadas quedaron ocultas. Date una vuelta por los ajustes y configúralo a tu gusto."
 
-msgid "Playback memory is yours to choose"
-msgstr "La memoria de reproducción la eliges tú"
+msgid "Cache profiles"
+msgstr "Perfiles de caché"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto, High, Desktop, Low o Custom: la caché sigue la memoria de tu computadora, y Streaming only la apaga como los clientes oficiales."
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "El caché ya no es una decisión del producto: ahora eliges si prefieres que se encargue el caché, la memoria o el almacenamiento, según tus preferencias o las capacidades de tu equipo."
 
-msgid "Even volume across albums"
-msgstr "Volumen parejo entre discos"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "La función se reescribió por completo: ahora usamos la información LUFS que entrega Qobuz y se implementaron perfiles que cumplen con los estándares de la industria."
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "La normalización de volumen se rehízo con los valores de loudness que Qobuz ya envía, con perfiles para los usos más comunes."
-
-msgid "Quality of life"
+msgid "Quality of Life"
 msgstr "Calidad de vida"
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "Menús recuperados, acciones en bloque más completas y navegación más pareja, además de repetición A-B y avance y retroceso controlados."
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Se recuperaron funciones que se habían perdido con los cambios de frontend, junto con más y mejores acciones en lote y controles de reproducción adicionales (saltar 10 segundos adelante y atrás en la barra de progreso, reproducción en bucle), entre otras cosas."
 
-msgid "A steadier Qobuz Connect"
-msgstr "Un Qobuz Connect más sólido"
+msgid "QConnect hardening"
+msgstr "Refuerzo de QConnect"
 
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "Tu feedback guió esta versión: un Qobuz Connect más sólido, errores reportados corregidos y trabajo de estabilidad en toda la app."
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Funcionamiento más estable, sobre todo correcciones de fallas, problemas que impedían una implementación al estilo del cliente oficial, colas que no coincidían y caídas. Esta función sigue en mejora continua."

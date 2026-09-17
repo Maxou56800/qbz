@@ -7739,32 +7739,29 @@ msgstr "再生設定を開く"
 msgid "Open audio"
 msgstr "オーディオ設定を開く"
 
-msgid "Everything in one menu"
-msgstr "すべてが一つのメニューに"
+msgid "Reorganised settings"
+msgstr "設定の再構成"
 
-msgid "Settings, shortcuts and updates live in the hamburger menu, and the sections are reorganized so the setting you need is easier to find."
-msgstr "設定・ショートカット・アップデートはハンバーガーメニューにまとまり、目的の設定を見つけやすいようにセクションを整理しました。"
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "聴き方の習慣も好みも、音楽の趣味と同じくらい人それぞれだと思います。そこで項目を整理し直し、あまり使わないものは隠しました。設定のセクションを見て、好みに合わせて調整してください。"
 
-msgid "Playback memory is yours to choose"
-msgstr "再生メモリーは自分で選べます"
+msgid "Cache profiles"
+msgstr "キャッシュのプロファイル"
 
-msgid "Auto, High, Desktop, Low or Custom: the cache follows your computer's memory, and Streaming only turns it off like the official clients do."
-msgstr "Auto・High・Desktop・Low・Custom から選択。キャッシュはパソコンのメモリーに合わせて動き、Streaming only では公式クライアントと同じくキャッシュを使いません。"
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "キャッシュの扱いは製品側が決めるものではなくなりました。好みやパソコンの性能に応じて、キャッシュ、メモリ、ストレージのどれが担当するかを選べます。"
 
-msgid "Even volume across albums"
-msgstr "アルバムをまたいでも音量が均一"
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "この機能は完全に書き直しました。Qobuz が提供する LUFS の情報を使い、業界標準に沿ったプロファイルを実装しています。"
 
-msgid "Volume normalization was rebuilt on the loudness values Qobuz already ships, with presets for the most common listening setups."
-msgstr "音量ノーマライズを Qobuz が提供するラウドネス値ベースで作り直し、よくある再生環境向けのプリセットを用意しました。"
-
-msgid "Quality of life"
+msgid "Quality of Life"
 msgstr "使い心地の改善"
 
-msgid "Recovered menus, fuller bulk actions and steadier navigation, plus A-B loop and controlled skip forward and back."
-msgstr "失われていたメニューの復活、より充実した一括操作、安定したナビゲーションに加え、A-B リピートと前後スキップを追加しました。"
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "フロントエンドの移行で失われた機能が戻りました。まとめ操作も増えて使いやすくなり、再生コントロールも追加されています（シークバーでの 10 秒送り戻し、ループ再生など）。"
 
-msgid "A steadier Qobuz Connect"
-msgstr "より安定した Qobuz Connect"
+msgid "QConnect hardening"
+msgstr "QConnect の強化"
 
-msgid "Your feedback drove this release: a more solid Qobuz Connect, reported issues fixed and broad stability work across the app."
-msgstr "このリリースは皆さんのフィードバックから生まれました。より安定した Qobuz Connect、報告された不具合の修正、アプリ全体の安定化に取り組みました。"
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "動作がより安定しました。不具合の修正、公式クライアントと同じ形の実装を妨げていた問題、一致しないキュー、クラッシュへの対応です。この機能は継続的に改善しています。"
