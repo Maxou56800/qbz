@@ -69,6 +69,22 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="2.1.2" date="2026-09-16">
+      <description>
+        <p>Second maintenance release for the 2.1 line, and the largest so far: QBZ stops deciding for you. Playback memory becomes a profile you choose, volume normalization is rebuilt on the loudness values Qobuz ships, and every on-disk cache lives in one Storage section.</p>
+        <ul>
+          <li>Playback memory profiles: Auto, High, Desktop, Low or Custom, with Streaming only to disable caching entirely</li>
+          <li>Volume normalization rebuilt, with target-loudness presets and a clipping guard that only limits a boost</li>
+          <li>Storage section: every on-disk cache in one place, with a configurable artwork budget</li>
+          <li>Wallpaper backgrounds: your desktop picture or your own image, with adjustable blur</li>
+          <li>Qobuz Connect: a hardening round driven by real sessions with the official clients, plus LAN renderer pairing</li>
+          <li>Excel-style multi-select on every list, and QBZ reopens the exact page you left</li>
+          <li>A-B loop, optional skip buttons, featured artists on track rows and Buy on Qobuz links</li>
+          <li>Audio: the output device is released on quit, a suspended DAC recovers before a route change, and S16/S24 encode on exact integer scales</li>
+          <li>Media servers: Jellyfin 12 authentication, and servers that send numeric ids now sync</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.1.1" date="2026-09-11">
       <description>
         <p>First maintenance release for the 2.1 line: smoother, faster scrolling in heavily populated sections, resizable side panels, and a broad round of bug fixes.</p>
