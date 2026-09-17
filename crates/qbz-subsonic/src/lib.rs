@@ -385,8 +385,49 @@ pub struct SubsonicTrack {
     pub isrc: Option<String>,
 }
 
+/// Subsonic ids are STRINGS in the specification, and Navidrome, Gonic and
+/// Airsonic emit them that way. Funkwhale emits INTEGERS, so a plain
+/// `String`/`Option<String>` field aborts the whole library sync with
+/// `invalid type: integer 2059, expected a string` — the album list already
+/// tolerated both through [`json_id`], the song rows did not, so a Funkwhale
+/// pod connected, listed albums and then died on its tracks.
+///
+/// A client has no way to make a server spec-compliant, so both shapes are
+/// accepted and normalized to text. The id is opaque either way: it is only
+/// ever echoed back in a query string.
+fn de_id<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<String, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match &value {
+        serde_json::Value::String(text) => Ok(text.clone()),
+        serde_json::Value::Number(_) => Ok(json_id(&value)),
+        other => Err(serde::de::Error::custom(format!(
+            "expected a string or a number id, got {other}"
+        ))),
+    }
+}
+
+/// Optional form of [`de_id`]. `null` and an absent field are both `None`; an
+/// empty string stays empty so the existing `filter(|c| !c.is_empty())` guards
+/// keep working.
+fn de_opt_id<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(text)) => Ok(Some(text)),
+        Some(number @ serde_json::Value::Number(_)) => Ok(Some(json_id(&number))),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "expected a string or a number id, got {other}"
+        ))),
+    }
+}
+
 #[derive(Deserialize)]
 struct SongDto {
+    #[serde(deserialize_with = "de_id")]
     id: String,
     #[serde(default)]
     title: String,
@@ -394,7 +435,7 @@ struct SongDto {
     artist: Option<String>,
     #[serde(default)]
     album: Option<String>,
-    #[serde(default, rename = "albumId")]
+    #[serde(default, rename = "albumId", deserialize_with = "de_opt_id")]
     album_id: Option<String>,
     #[serde(default, rename = "displayAlbumArtist")]
     display_album_artist: Option<String>,
@@ -421,7 +462,7 @@ struct SongDto {
     channel_count: Option<u32>,
     #[serde(default, rename = "bitRate")]
     bit_rate: Option<u32>,
-    #[serde(default, rename = "coverArt")]
+    #[serde(default, rename = "coverArt", deserialize_with = "de_opt_id")]
     cover_art: Option<String>,
     #[serde(default)]
     size: Option<u64>,
@@ -828,11 +869,13 @@ fn albums_of(container: Option<&serde_json::Value>) -> Result<Vec<SubsonicAlbum>
                 .get("id")
                 .map(json_id)
                 .ok_or_else(|| SubsonicError::Decode("album row has no id".to_string()))?;
+            // Same tolerance as the id above: a numeric `coverArt` used to
+            // read as None here and the album silently lost its cover.
             let cover_art = album
                 .get("coverArt")
-                .and_then(|value| value.as_str())
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
+                .filter(|value| value.is_string() || value.is_number())
+                .map(json_id)
+                .filter(|value| !value.is_empty());
             Ok(SubsonicAlbum { id, cover_art })
         })
         .collect()
@@ -988,6 +1031,35 @@ mod tests {
         assert_eq!(albums[0].cover_art.as_deref(), Some("al-box-cover"));
         assert_eq!(albums[1].id, "42");
         assert_eq!(albums[1].cover_art, None);
+    }
+
+    /// Funkwhale answers with INTEGER ids, which the specification says are
+    /// strings. Album rows already tolerated both; song rows aborted the sync
+    /// with `invalid type: integer 2059, expected a string`, so a Funkwhale pod
+    /// listed albums and then died on its tracks. Both shapes map to the same
+    /// text, and a numeric `coverArt` keeps its cover instead of losing it.
+    #[test]
+    fn numeric_ids_map_like_string_ids() {
+        let payload = serde_json::json!({
+            "song": [{
+                "id": 2059,
+                "title": "Ilomilo",
+                "albumId": 317,
+                "coverArt": 317,
+                "duration": 156
+            }]
+        });
+        let songs = songs_of(Some(&payload)).unwrap();
+        assert_eq!(songs[0].id, "2059");
+        assert_eq!(songs[0].album_id, "317");
+        assert_eq!(songs[0].cover_art.as_deref(), Some("317"));
+
+        let albums = albums_of(Some(&serde_json::json!({
+            "album": [{"id": 317, "coverArt": 317}]
+        })))
+        .unwrap();
+        assert_eq!(albums[0].id, "317");
+        assert_eq!(albums[0].cover_art.as_deref(), Some("317"));
     }
 
     /// The measured hi-res row. `duration` is SECONDS on the wire and
