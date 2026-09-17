@@ -861,6 +861,7 @@ fn main() {
                 "qml/settings/LibraryFolderTable.qml",
                 "qml/settings/LocalLibrarySettings.qml",
                 "qml/settings/LocalTabsConfigModal.qml",
+                "qml/settings/NetworkSettings.qml",
                 "qml/settings/OfflineSettings.qml",
                 "qml/settings/StorageSettings.qml",
                 "qml/settings/PlaybackSettings.qml",
