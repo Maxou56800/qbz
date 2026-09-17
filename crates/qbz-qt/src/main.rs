@@ -727,6 +727,20 @@ pub(crate) fn on_boot() {
     });
     offline_fwd::start_ui_forwarder();
 
+    // Populate settingsJson's `network` key before the login screen renders,
+    // not just after a login/shell mount publishes it for the first time:
+    // LoginScreen.qml's own Network-settings escape hatch (for a proxy
+    // misconfigured badly enough to block login itself) needs to show the
+    // TRUE persisted state on first paint, not an empty document that only
+    // self-corrects once the user's first interaction with it republishes.
+    // Deliberately here, not earlier in main() — this needs the Qt-thread
+    // handle `boot()` just registered (crate::ui() silently no-ops without
+    // it) and the AppRuntime `app()` several call sites below already rely
+    // on, not just the tokio runtime.
+    spawn(async {
+        settings_qt::publish_snapshot().await;
+    });
+
     // Image-cache housekeeping, off the Qt thread, once per run: the shared
     // `~/.cache/qbz/images` LRU trim (200 MB, batched under the cache mutex)
     // and the `images/scaled` orphan sweep + byte cap. See artwork_qt.rs
@@ -4061,14 +4075,6 @@ fn main() {
         .build()
         .expect("failed to build the tokio runtime");
     let _ = TOKIO.set(tokio_runtime);
-
-    // Populate settingsJson's `network` key before the login screen renders,
-    // not just after a login/shell mount publishes it for the first time:
-    // LoginScreen.qml's own Network-settings escape hatch (for a proxy
-    // misconfigured badly enough to block login itself) needs to show the
-    // TRUE persisted state on first paint, not an empty document that only
-    // self-corrects once the user touches something.
-    spawn(async { settings_qt::publish_snapshot().await });
 
     // `with_visualizer` == `new` plus a VisualizerTap wired into the player.
     // The tap starts DISABLED (it captures nothing and the FFT producer idles),
