@@ -7738,3 +7738,47 @@ msgstr "Aguardando o volume do renderer…"
 
 msgid "This audio output does not support volume control."
 msgstr "Esta saída de áudio não permite controlar o volume."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Notas da versão"
+
+msgid "New in {}"
+msgstr "Novidades na {}"
+
+msgid "Open settings"
+msgstr "Abrir definições"
+
+msgid "Open playback"
+msgstr "Abrir reprodução"
+
+msgid "Open audio"
+msgstr "Abrir áudio"
+
+msgid "Reorganised settings"
+msgstr "Configurações reorganizadas"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Sei que os hábitos e as preferências de escuta variam tanto como os gostos musicais, por isso as opções foram reorganizadas e as menos usadas ficaram ocultas. Veja a secção de configurações e personalize-a ao seu gosto."
+
+msgid "Cache profiles"
+msgstr "Perfis de cache"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "O cache já não é uma decisão do produto: agora escolhe se prefere que seja o cache, a memória ou o armazenamento a tratar disso, conforme as suas preferências e as capacidades do seu computador."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "A funcionalidade foi totalmente reescrita: agora usamos a informação LUFS fornecida pelo Qobuz e implementámos perfis que cumprem os padrões da indústria."
+
+msgid "Quality of Life"
+msgstr "Qualidade de vida"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Foram recuperadas funcionalidades perdidas durante as mudanças de frontend, além de mais e melhores ações em lote e controlos de reprodução adicionais (avançar e recuar 10 segundos na barra de progresso, reprodução em ciclo), entre outros."
+
+msgid "QConnect hardening"
+msgstr "Reforço do QConnect"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Funcionamento mais estável, sobretudo correções de erros, problemas que impediam uma implementação ao estilo do cliente oficial, filas que não coincidiam e falhas. Esta funcionalidade está em melhoria contínua."

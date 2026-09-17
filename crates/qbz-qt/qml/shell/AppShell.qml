@@ -1100,6 +1100,19 @@ Rectangle {
     }
     WhatsNewModal {
         anchors.fill: parent
+
+        // Offer the release deck once per version, from the SHELL and not from
+        // Main.qml: reaching this file already means the session is up and the
+        // login screen is behind us. One shot, after the first frames settle,
+        // so it never lands on top of a shell that is still assembling; the
+        // controller itself no-ops when the deck was already dismissed
+        // (whats_new_qt::auto_open_if_new).
+        Timer {
+            interval: 1200
+            repeat: false
+            running: true
+            onTriggered: QbzAbout.whatsNewAutoOpen()
+        }
     }
     // A LOADER, not a static mount. `visible: false` still CONSTRUCTS the
     // whole subtree -- panel, Flickable, fourteen Repeater delegates, their

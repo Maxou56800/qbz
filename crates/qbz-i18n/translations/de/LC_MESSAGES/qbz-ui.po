@@ -7740,3 +7740,47 @@ msgstr "Warten auf die Lautstärke des Renderers…"
 
 msgid "This audio output does not support volume control."
 msgstr "Dieser Audioausgang unterstützt keine Lautstärkeregelung."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Versionshinweise"
+
+msgid "New in {}"
+msgstr "Neu in {}"
+
+msgid "Open settings"
+msgstr "Einstellungen öffnen"
+
+msgid "Open playback"
+msgstr "Wiedergabe öffnen"
+
+msgid "Open audio"
+msgstr "Audio öffnen"
+
+msgid "Reorganised settings"
+msgstr "Neu geordnete Einstellungen"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Ich weiß, dass Hörgewohnheiten und Vorlieben so verschieden sind wie der Musikgeschmack, deshalb wurden die Optionen neu geordnet und die selten genutzten ausgeblendet. Sieh dir die Einstellungen an und richte sie nach deinem Geschmack ein."
+
+msgid "Cache profiles"
+msgstr "Cache-Profile"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching ist keine Produktentscheidung mehr: Du wählst jetzt, ob Cache, Arbeitsspeicher oder Speicher das übernimmt, je nach deinen Vorlieben und den Möglichkeiten deines Rechners."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "Die Funktion wurde komplett neu geschrieben: Wir nutzen jetzt die LUFS-Werte von Qobuz und haben Profile nach Industriestandard umgesetzt."
+
+msgid "Quality of Life"
+msgstr "Komfort im Alltag"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Funktionen, die bei den Frontend-Wechseln verloren gingen, sind zurück, dazu mehr und bessere Sammelaktionen und weitere Wiedergabesteuerungen (10 Sekunden vor und zurück auf der Fortschrittsleiste, Wiedergabe in Schleife) und mehr."
+
+msgid "QConnect hardening"
+msgstr "QConnect gehärtet"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Stabileres Verhalten, vor allem Fehlerbehebungen, Probleme, die eine Umsetzung im Stil des offiziellen Clients verhinderten, nicht übereinstimmende Warteschlangen und Abstürze. Diese Funktion wird laufend weiter verbessert."

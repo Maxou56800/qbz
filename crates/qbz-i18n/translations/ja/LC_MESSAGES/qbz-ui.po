@@ -7721,3 +7721,47 @@ msgstr "レンダラーの音量を待機中…"
 
 msgid "This audio output does not support volume control."
 msgstr "この音声出力は音量調整に対応していません。"
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "リリースノート"
+
+msgid "New in {}"
+msgstr "{} の新機能"
+
+msgid "Open settings"
+msgstr "設定を開く"
+
+msgid "Open playback"
+msgstr "再生設定を開く"
+
+msgid "Open audio"
+msgstr "オーディオ設定を開く"
+
+msgid "Reorganised settings"
+msgstr "設定の再構成"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "聴き方の習慣も好みも、音楽の趣味と同じくらい人それぞれだと思います。そこで項目を整理し直し、あまり使わないものは隠しました。設定のセクションを見て、好みに合わせて調整してください。"
+
+msgid "Cache profiles"
+msgstr "キャッシュのプロファイル"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "キャッシュの扱いは製品側が決めるものではなくなりました。好みやパソコンの性能に応じて、キャッシュ、メモリ、ストレージのどれが担当するかを選べます。"
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "この機能は完全に書き直しました。Qobuz が提供する LUFS の情報を使い、業界標準に沿ったプロファイルを実装しています。"
+
+msgid "Quality of Life"
+msgstr "使い心地の改善"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "フロントエンドの移行で失われた機能が戻りました。まとめ操作も増えて使いやすくなり、再生コントロールも追加されています（シークバーでの 10 秒送り戻し、ループ再生など）。"
+
+msgid "QConnect hardening"
+msgstr "QConnect の強化"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "動作がより安定しました。不具合の修正、公式クライアントと同じ形の実装を妨げていた問題、一致しないキュー、クラッシュへの対応です。この機能は継続的に改善しています。"

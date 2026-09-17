@@ -7759,3 +7759,47 @@ msgstr "Ожидание громкости рендерера…"
 
 msgid "This audio output does not support volume control."
 msgstr "Этот аудиовыход не поддерживает регулировку громкости."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Примечания к выпуску"
+
+msgid "New in {}"
+msgstr "Новое в {}"
+
+msgid "Open settings"
+msgstr "Открыть настройки"
+
+msgid "Open playback"
+msgstr "Открыть воспроизведение"
+
+msgid "Open audio"
+msgstr "Открыть аудио"
+
+msgid "Reorganised settings"
+msgstr "Переорганизованные настройки"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Я знаю, что привычки и предпочтения в прослушивании различаются так же, как музыкальные вкусы, поэтому опции переорганизованы, а редко используемые скрыты. Загляните в раздел настроек и настройте его под себя."
+
+msgid "Cache profiles"
+msgstr "Профили кэша"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Кэширование больше не решение продукта: теперь вы выбираете, кто им занимается — кэш, оперативная память или накопитель, — исходя из своих предпочтений и возможностей компьютера."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "Функция полностью переписана: теперь мы используем данные LUFS от Qobuz и добавили профили, соответствующие отраслевым стандартам."
+
+msgid "Quality of Life"
+msgstr "Удобство в мелочах"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Вернулись возможности, потерянные при сменах фронтенда, вместе с более полными групповыми действиями и дополнительными элементами управления воспроизведением (перемотка на 10 секунд вперёд и назад по полосе прогресса, воспроизведение по кругу) и не только."
+
+msgid "QConnect hardening"
+msgstr "Укрепление QConnect"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Более стабильная работа: исправления ошибок, проблемы, мешавшие реализации в стиле официального клиента, несовпадающие очереди и сбои. Эта функция продолжает улучшаться."
