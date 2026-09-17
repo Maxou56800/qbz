@@ -33,13 +33,25 @@ Column {
     property bool authEnabledInput: net.proxyAuthEnabled === true
     property int kindIndexInput: net.proxyKindIndex || 0
     property bool insecureTlsInput: net.proxyInsecureTls === true
-    // Re-seed the staged auth/kind choice whenever the document changes
-    // underneath an untouched field (e.g. another window changed it), but
-    // never clobber text the user is mid-typing.
+    // A toggle/select has no empty-string sentinel for "untouched" the way
+    // hostInput/userInput do, so each field gets its own flag instead —
+    // set the moment the user interacts with it, checked below so a
+    // republish arriving after that (even from this same panel's own
+    // "Use a proxy" toggle, whose settingsBool round trip is NOT
+    // instantaneous: it persists, applies the proxy, and re-enumerates
+    // audio devices before publish_snapshot() answers) can never silently
+    // revert a choice the user already made. A real, reproduced bug before
+    // this: enabling the proxy, then quickly setting Type/host/"skip
+    // certificate verification" and hitting Test & Save, saved with
+    // insecure_tls back at its old persisted value — the late "proxy
+    // enabled" republish had clobbered it in between.
+    property bool authTouched: false
+    property bool kindTouched: false
+    property bool insecureTouched: false
     onNetChanged: {
-        authEnabledInput = net.proxyAuthEnabled === true
-        kindIndexInput = net.proxyKindIndex || 0
-        insecureTlsInput = net.proxyInsecureTls === true
+        if (!authTouched) authEnabledInput = net.proxyAuthEnabled === true
+        if (!kindTouched) kindIndexInput = net.proxyKindIndex || 0
+        if (!insecureTouched) insecureTlsInput = net.proxyInsecureTls === true
     }
 
     // Index into proxyKindOptions ("HTTP", "HTTPS", "SOCKS4", "SOCKS5") —
@@ -98,7 +110,7 @@ Column {
             menuWidth: 160
             options: root.net.proxyKindOptions || []
             currentIndex: root.kindIndexInput
-            onSelected: function (i) { root.kindIndexInput = i }
+            onSelected: function (i) { root.kindIndexInput = i; root.kindTouched = true }
         }
     }
 
@@ -135,7 +147,7 @@ Column {
         description: QbzSession.tr("Only affects the connection to the proxy itself — Qobuz and everything else reached through it are still verified normally. Use this only for a proxy whose certificate you know and trust, such as a self-signed one you control.", QbzSession.trRev)
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.insecureTlsInput
-            onToggled: function (v) { root.insecureTlsInput = v }
+            onToggled: function (v) { root.insecureTlsInput = v; root.insecureTouched = true }
         }
     }
     WarningBanner {
@@ -151,7 +163,7 @@ Column {
         description: QbzSession.tr("The proxy requires a username and password.", QbzSession.trRev)
         QbzToggle { kioskHost: root.kioskHost;
             checked: root.authEnabledInput
-            onToggled: function (v) { root.authEnabledInput = v }
+            onToggled: function (v) { root.authEnabledInput = v; root.authTouched = true }
         }
     }
     SettingRow { kioskHost: root.kioskHost;
