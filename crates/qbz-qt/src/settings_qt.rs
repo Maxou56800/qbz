@@ -48,6 +48,7 @@ use serde::Serialize;
 pub mod devtools;
 pub mod import_export;
 pub mod library;
+pub mod network;
 mod appearance_profile;
 mod playback_storage;
 pub mod offline;
@@ -2473,6 +2474,9 @@ pub struct SettingsDoc {
     /// account migration).
     #[serde(rename = "importExport")]
     pub import_export: import_export::Snapshot,
+    /// Settings > Network (outgoing proxy, QConnect LAN / Cast safety
+    /// switches).
+    pub network: network::Snapshot,
 }
 
 /// Index -> value maps the select handlers resolve against.
@@ -2985,6 +2989,7 @@ pub async fn publish_snapshot() {
             offline: offline::snapshot(),
             dev: devtools::snapshot(),
             import_export: import_export::snapshot(),
+            network: network::snapshot(),
         }
     })
     .await
@@ -3962,6 +3967,12 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "offline-scrobble-accumulated" => {
             offline::set_allow_accumulated_scrobbling(value).map(|_| Apply::None)
         }
+        // --- Network ---------------------------------------------------------
+        "network-proxy-enabled" => network::set_proxy_enabled(value).map(|_| Apply::None),
+        "network-block-qconnect-lan" => {
+            network::set_block_qconnect_lan(value).map(|_| Apply::None)
+        }
+        "network-block-cast" => network::set_block_cast(value).map(|_| Apply::None),
         // --- Local Library > Plex -----------------------------------------
         "plex-metadata-write" => {
             library::set_metadata_write(value);
@@ -4718,6 +4729,8 @@ pub async fn settings_string(key: &str, value: String) {
         // publishes flows back through offline_fwd's forwarder, so there is
         // nothing to await and nothing to republish here.
         "offline-recheck" => crate::offline_fwd::request_recheck(),
+        // --- Network ---------------------------------------------------------
+        "network-clear-password" => network::clear_password(),
         // --- Developer ------------------------------------------------------
         "open-log-file" => devtools::open_log_file(),
         // The value is the include-auth gate ("with-auth" or empty) — see

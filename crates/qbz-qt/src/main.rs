@@ -3044,6 +3044,27 @@ pub(crate) fn refresh_devices() {
     spawn(async move { settings_qt::refresh_devices(&runtime).await });
 }
 
+pub(crate) fn network_test_and_save(
+    kind_index: i32,
+    host: String,
+    port: i32,
+    auth_enabled: bool,
+    username: String,
+    password: String,
+) {
+    spawn(async move {
+        settings_qt::network::test_and_save(
+            kind_index,
+            host,
+            port,
+            auth_enabled,
+            username,
+            password,
+        )
+        .await
+    });
+}
+
 /// Appearance > Theme row: persist the slug + republish the token document
 /// (live switch — QbzTheme.qml rebinds every consumer).
 pub(crate) fn theme_set(slug: String) {
@@ -4019,6 +4040,12 @@ fn main() {
     // rustls process-level CryptoProvider (aws-lc-rs) — required before any
     // reqwest call, same as the Slint and daemon binaries.
     qbz_app::ensure_crypto_provider();
+
+    // Global proxy setting (not per-user — see qbz_app::settings::network's
+    // module docs) into the process-wide registry every HTTP client and the
+    // QConnect WebSocket tunnel read. Before the tokio runtime and any
+    // network call, including the very first login request.
+    settings_qt::network::seed();
 
     // Eight workers instead of one per core: the async lane carries API
     // calls, catalog queries and UI fan-out, none of it CPU-bound, while audio

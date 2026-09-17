@@ -7759,3 +7759,109 @@ msgstr "Ожидание громкости рендерера…"
 
 msgid "This audio output does not support volume control."
 msgstr "Этот аудиовыход не поддерживает регулировку громкости."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "PROXY"
+msgstr "ПРОКСИ"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Use a proxy"
+msgstr "Использовать прокси"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Route Qobuz traffic — streaming, the API and Qobuz Connect — through a proxy."
+msgstr "Направляйте трафик Qobuz — потоковую передачу, API и Qobuz Connect — через прокси-сервер."
+
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "SOCKS resolves hostnames through the proxy, never on this machine."
+msgstr "SOCKS разрешает имена хостов через прокси-сервер, а не на этом компьютере."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Address"
+msgstr "Адрес"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Host or IP"
+msgstr "Хост или IP"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Port"
+msgstr "Порт"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Authentication"
+msgstr "Аутентификация"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "The proxy requires a username and password."
+msgstr "Прокси-сервер требует имя пользователя и пароль."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Username"
+msgstr "Имя пользователя"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Proxy username"
+msgstr "Имя пользователя прокси"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Password"
+msgstr "Пароль"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "A password is saved. Leave blank to keep it."
+msgstr "Пароль сохранён. Оставьте поле пустым, чтобы сохранить его."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Stored — type to replace"
+msgstr "Сохранён — введите новый, чтобы заменить"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Clear saved password"
+msgstr "Удалить сохранённый пароль"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Connection"
+msgstr "Соединение"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Testing…"
+msgstr "Проверка…"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Test & Save"
+msgstr "Проверить и сохранить"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Qobuz is reachable through this proxy."
+msgstr "Qobuz доступен через этот прокси-сервер."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Could not reach the proxy at that address."
+msgstr "Не удалось подключиться к прокси-серверу по этому адресу."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "The request through the proxy failed."
+msgstr "Запрос через прокси-сервер не выполнен."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "SAFETY"
+msgstr "БЕЗОПАСНОСТЬ"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Block Qobuz Connect on the local network"
+msgstr "Блокировать Qobuz Connect в локальной сети"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Stop mDNS advertisement and the local Connect receiver, so nothing reaches other devices on this network outside the proxy."
+msgstr "Отключает анонсирование mDNS и локальный приёмник Connect, чтобы ничего не достигало других устройств в этой сети в обход прокси-сервера."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Block casting"
+msgstr "Блокировать трансляцию (cast)"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Stop Chromecast/DLNA discovery and the local cast media server."
+msgstr "Отключает обнаружение Chromecast/DLNA и локальный медиасервер трансляции."
+

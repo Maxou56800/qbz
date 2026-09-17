@@ -109,6 +109,21 @@ pub mod qbz_bridge {
         /// Output-device refresh button: release a held device, re-enumerate.
         #[qinvokable]
         fn refresh_devices(self: Pin<&mut QbzBridge>);
+        /// Settings > Network > "Test connection": persists every staged
+        /// field (host/port/kind/auth/username, and password unless blank —
+        /// blank means "keep the saved one"), applies it, and tests
+        /// reachability. Republishes `settingsJson` with the busy/result
+        /// state under `doc.network` when it's done.
+        #[qinvokable]
+        fn network_test_and_save(
+            self: Pin<&mut QbzBridge>,
+            kind_index: i32,
+            host: QString,
+            port: i32,
+            auth_enabled: bool,
+            username: QString,
+            password: QString,
+        );
 
         // --- Integrations (phase 19) ---------------------------------------
         /// Non-toggle integration actions (integrations_qt.rs): Last.fm
@@ -323,6 +338,25 @@ impl qbz_bridge::QbzBridge {
 
     pub fn refresh_devices(self: Pin<&mut Self>) {
         crate::refresh_devices();
+    }
+
+    pub fn network_test_and_save(
+        self: Pin<&mut Self>,
+        kind_index: i32,
+        host: QString,
+        port: i32,
+        auth_enabled: bool,
+        username: QString,
+        password: QString,
+    ) {
+        crate::network_test_and_save(
+            kind_index,
+            host.to_string(),
+            port,
+            auth_enabled,
+            username.to_string(),
+            password.to_string(),
+        );
     }
 
     pub fn open_playlist(self: Pin<&mut Self>, playlist_id: QString) {

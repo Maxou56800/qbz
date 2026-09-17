@@ -83,6 +83,7 @@ Item {
         { label: QbzSession.tr("Local Library", QbzSession.trRev), section: 4 },
         { label: QbzSession.tr("Offline", QbzSession.trRev), section: 3 },
         { label: QbzSession.tr("Integrations", QbzSession.trRev), section: 6 },
+        { label: QbzSession.tr("Network", QbzSession.trRev), section: 14 },
         { label: QbzSession.tr("Updates", QbzSession.trRev), section: 12 },
         { label: QbzSession.tr("Blacklist", QbzSession.trRev), section: 5 },
         { label: QbzSession.tr("Storage", QbzSession.trRev), section: 13 },
@@ -313,6 +314,12 @@ Item {
                         label: QbzSession.tr("Integrations", QbzSession.trRev)
                         active: root.section === 6
                         onClicked: QbzBridge.settingsSetSection(6)
+                    }
+                    SubNavItem {
+                        name: "network"
+                        label: QbzSession.tr("Network", QbzSession.trRev)
+                        active: root.section === 14
+                        onClicked: QbzBridge.settingsSetSection(14)
                     }
                     SubNavItem {
                         name: "refresh-cw"
@@ -584,6 +591,15 @@ Item {
                                     width: parent.width
                                     doc: root.doc
                                     confirmHost: settingsConfirmHost
+                                }
+                            }
+                        }
+                        Panel {
+                            panelIndex: 14
+                            sourceComponent: Component {
+                                NetworkSettings { kioskHost: root.kioskHost;
+                                    width: parent.width
+                                    doc: root.doc
                                 }
                             }
                         }
