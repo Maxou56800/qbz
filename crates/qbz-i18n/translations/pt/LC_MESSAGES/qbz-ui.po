@@ -7868,3 +7868,8 @@ msgstr "A verificação do certificado está desativada para este proxy"
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it."
 msgstr "O QBZ aceitará qualquer certificado apresentado por este proxy. Só deixe isto ativado se confiar no caminho de rede até ele."
+
+#: crates/qbz-qt/qml/LoginScreen.qml
+msgid "Network settings"
+msgstr "Definições de rede"
+

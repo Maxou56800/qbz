@@ -14,6 +14,7 @@
 import QtQuick
 import com.blitzfc.qbz
 import "controls"
+import "settings"
 import "theme"
 
 Rectangle {
@@ -27,6 +28,28 @@ Rectangle {
 
     // Slint: in-out property tos-accepted: true.
     property bool tosAccepted: true
+
+    // Escape hatch: a proxy misconfigured badly enough to block network
+    // access blocks LOGIN too, and Settings is only reachable from inside
+    // the post-login shell (ContentRouter) — without this, fixing it would
+    // need editing the SQLite settings DB by hand. Named "Network settings"
+    // here, not "Proxy settings": the same panel also carries the QConnect
+    // LAN / Cast kill switches, and a raw "proxy" label reads as scarier and
+    // more technical than what most people opening this link are doing.
+    property bool showNetworkSettings: false
+    property var doc: ({})
+    function reload() {
+        try {
+            root.doc = JSON.parse(QbzBridge.settingsJson)
+        } catch (e) {
+            root.doc = ({})
+        }
+    }
+    Component.onCompleted: reload()
+    Connections {
+        target: QbzBridge
+        function onSettingsJsonChanged() { root.reload() }
+    }
 
     QbzTheme { id: theme }
 
@@ -430,6 +453,54 @@ Rectangle {
                 }
             }
 
+            Item { width: 1; height: theme.spacingSm }
+
+            // Same escape-hatch spirit as "Start offline" above: always
+            // visible, because the one time this matters most is exactly
+            // when the network is too broken to reach anything — including
+            // a working login.
+            Item {
+                id: networkSettingsButton
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: networkSettingsText.implicitWidth
+                height: root.kioskHost ? 64 : networkSettingsText.implicitHeight + 3
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: networkSettingsText.text
+                Accessible.onPressAction: root.showNetworkSettings = true
+                Keys.onPressed: function (event) {
+                    if (!event.isAutoRepeat
+                            && (event.key === Qt.Key_Return
+                                || event.key === Qt.Key_Enter
+                                || event.key === Qt.Key_Space)) {
+                        root.showNetworkSettings = true
+                        event.accepted = true
+                    }
+                }
+                Text {
+                    id: networkSettingsText
+                    text: QbzSession.tr("Network settings", QbzSession.trRev)
+                    color: networkSettingsArea.containsMouse || networkSettingsButton.activeFocus
+                           ? theme.accent : theme.textMuted
+                    font.pixelSize: theme.fontLink
+                }
+                Rectangle {
+                    y: networkSettingsText.implicitHeight + 1
+                    width: networkSettingsText.implicitWidth
+                    height: 1
+                    color: networkSettingsArea.containsMouse || networkSettingsButton.activeFocus
+                           ? theme.accent : theme.textMuted
+                }
+                MouseArea {
+                    id: networkSettingsArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onPressed: networkSettingsButton.forceActiveFocus()
+                    onClicked: root.showNetworkSettings = true
+                }
+            }
+
             Item { width: 1; height: root.kioskHost ? 12 : theme.spacingXl }
 
             // --- Legal disclaimer ------------------------------------
@@ -450,5 +521,143 @@ Rectangle {
         }
     }
         }
+    }
+
+    // --- Network settings escape hatch (modal) -----------------------
+    // ADR-009: every modal lives at z >= 3000. Declared last so declaration
+    // order (= z-order in QML) puts it over the whole screen regardless.
+    Item {
+        id: networkSettingsOverlay
+        anchors.fill: parent
+        z: 3000
+        visible: root.showNetworkSettings
+        enabled: visible
+        Keys.onEscapePressed: function (event) {
+            root.showNetworkSettings = false
+            event.accepted = true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#bf000000"
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.showNetworkSettings = false
+                onWheel: function (wheel) { wheel.accepted = true }
+            }
+        }
+
+        Rectangle {
+            x: panel.x
+            y: panel.y + 8
+            width: panel.width
+            height: panel.height
+            radius: theme.radiusLg
+            color: "#80000000"
+            opacity: 0.5
+        }
+
+        Rectangle {
+            id: panel
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 80, 560)
+            height: Math.min(parent.height - 48, 560)
+            radius: theme.radiusLg
+            color: theme.surfaceCard
+            border.width: 1
+            border.color: theme.borderSubtle
+
+            MouseArea {
+                anchors.fill: parent
+                onWheel: function (wheel) { wheel.accepted = true }
+            }
+
+            Item {
+                id: panelHeader
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 56
+                anchors.margins: theme.spacingMd
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: QbzSession.tr("Network settings", QbzSession.trRev)
+                    color: theme.textPrimary
+                    font.pixelSize: theme.fontHeading
+                    font.weight: theme.weightSemibold
+                }
+
+                Rectangle {
+                    id: networkCloseButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.kioskHost ? 44 : 28
+                    height: root.kioskHost ? 44 : 28
+                    radius: theme.radiusSm
+                    color: networkCloseArea.containsMouse ? theme.surfaceHover : "transparent"
+                    activeFocusOnTab: root.showNetworkSettings
+                    border.width: activeFocus ? 2 : 0
+                    border.color: theme.accent
+                    Accessible.role: Accessible.Button
+                    Accessible.name: QbzSession.tr("Close", QbzSession.trRev)
+                    Accessible.onPressAction: root.showNetworkSettings = false
+                    Keys.onPressed: function (event) {
+                        if (!event.isAutoRepeat
+                                && (event.key === Qt.Key_Space
+                                    || event.key === Qt.Key_Return
+                                    || event.key === Qt.Key_Enter)) {
+                            root.showNetworkSettings = false
+                            event.accepted = true
+                        }
+                    }
+                    QbzIcon {
+                        anchors.centerIn: parent
+                        name: "x"
+                        width: 17
+                        height: 17
+                        tintName: networkCloseArea.containsMouse ? "primary" : "muted"
+                    }
+                    MouseArea {
+                        id: networkCloseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: networkCloseButton.forceActiveFocus()
+                        onClicked: root.showNetworkSettings = false
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: panelHeader.bottom
+                height: 1
+                color: theme.borderSubtle
+            }
+
+            Flickable {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: panelHeader.bottom
+                anchors.bottom: parent.bottom
+                anchors.margins: theme.spacingMd
+                anchors.topMargin: theme.spacingMd
+                contentWidth: width
+                contentHeight: networkPanel.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                NetworkSettings {
+                    id: networkPanel
+                    width: parent.width
+                    doc: root.doc
+                }
+            }
+        }
+
+        onVisibleChanged: if (visible) Qt.callLater(function () { networkCloseButton.forceActiveFocus() })
     }
 }

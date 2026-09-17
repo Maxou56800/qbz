@@ -7858,3 +7858,8 @@ msgstr "Certificaatverificatie is uitgeschakeld voor deze proxy"
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it."
 msgstr "QBZ accepteert elk certificaat dat deze proxy aanbiedt. Laat dit alleen ingeschakeld als je het netwerkpad ernaartoe vertrouwt."
+
+#: crates/qbz-qt/qml/LoginScreen.qml
+msgid "Network settings"
+msgstr "Netwerkinstellingen"
+

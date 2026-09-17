@@ -4062,6 +4062,14 @@ fn main() {
         .expect("failed to build the tokio runtime");
     let _ = TOKIO.set(tokio_runtime);
 
+    // Populate settingsJson's `network` key before the login screen renders,
+    // not just after a login/shell mount publishes it for the first time:
+    // LoginScreen.qml's own Network-settings escape hatch (for a proxy
+    // misconfigured badly enough to block login itself) needs to show the
+    // TRUE persisted state on first paint, not an empty document that only
+    // self-corrects once the user touches something.
+    spawn(async { settings_qt::publish_snapshot().await });
+
     // `with_visualizer` == `new` plus a VisualizerTap wired into the player.
     // The tap starts DISABLED (it captures nothing and the FFT producer idles),
     // so this costs nothing until the Large dock's band is shown. It is a

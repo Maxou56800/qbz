@@ -7851,3 +7851,8 @@ msgstr "このプロキシの証明書検証はオフになっています"
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it."
 msgstr "QBZはこのプロキシが提示するどんな証明書でも受け入れます。そこまでのネットワーク経路を信頼できる場合にのみオンのままにしてください。"
+
+#: crates/qbz-qt/qml/LoginScreen.qml
+msgid "Network settings"
+msgstr "ネットワーク設定"
+

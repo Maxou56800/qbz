@@ -7889,3 +7889,8 @@ msgstr "Проверка сертификата отключена для это
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "QBZ will accept any certificate this proxy presents. Only leave this on if you trust the network path to it."
 msgstr "QBZ примет любой сертификат, предоставленный этим прокси-сервером. Оставляйте эту опцию включённой, только если вы доверяете сетевому пути к нему."
+
+#: crates/qbz-qt/qml/LoginScreen.qml
+msgid "Network settings"
+msgstr "Настройки сети"
+
