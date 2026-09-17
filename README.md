@@ -991,6 +991,7 @@ pull requests.
 - [@Mazipani](https://github.com/Mazipani) — Chromecast X.509 v1 certificates
 - [@RayneGit](https://github.com/RayneGit) — Wayland clipboard
 - [@LuckyTheCoder](https://github.com/LuckyTheCoder) — macOS Liquid Glass icon
+- [@Maxou56800](https://github.com/Maxou56800) — QConnect local-takeover fence
 
 ## License
 
