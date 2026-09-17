@@ -142,8 +142,14 @@ Item {
     Rectangle {
         id: panel
         anchors.centerIn: parent
-        // 820x700 capped, minus an 80px window margin — WhatsNewModal.slint:36-37.
-        width: Math.min(root.width - 80, 820)
+        // 700 tall capped, minus an 80px window margin — WhatsNewModal.slint:36-37.
+        // WIDER than the Slint original's 820: the card art is 16:9 and the
+        // image covers its box (PreserveAspectCrop), so at 820 the box sat at
+        // ~1.34 and Qt cropped roughly a quarter of the frame's width — taking
+        // with it what the right edge of a screenshot is there to show (the
+        // renderer name on the iOS capture). At 1040 the box lands near 1.72
+        // and the crop all but disappears.
+        width: Math.min(root.width - 80, 1040)
         height: Math.min(root.height - 80, 700)
         radius: theme.radiusMd
         color: theme.surfaceCard
@@ -369,7 +375,13 @@ Item {
 
                     Column {
                         id: bodyCol
-                        width: flick.width
+                        // The panel widened for the card art (see `panel`),
+                        // and release notes are prose: a line that spans the
+                        // whole 1040 is measurably harder to read than the
+                        // same text at a book measure. Cap the column and
+                        // centre it; narrow windows keep the full width.
+                        width: Math.min(flick.width, 720)
+                        x: Math.round((flick.width - width) / 2)
 
                         // ---- TOC: the level-0 headings as a bordered index.
                         // Stacked, not wrapped, and NOT clickable — see the
