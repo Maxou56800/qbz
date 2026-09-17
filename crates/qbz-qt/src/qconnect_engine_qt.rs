@@ -81,7 +81,9 @@ fn classify_owner_api_failure(error: &ApiError) -> QconnectOwnerFailure {
         | ApiError::NoQualityAvailable
         | ApiError::TrackUnavailable(_) => QconnectOwnerFailure::TrackUnavailable,
         ApiError::OfflineMode => QconnectOwnerFailure::Offline,
-        ApiError::NetworkError(_) => QconnectOwnerFailure::Network,
+        ApiError::NetworkError(_) | ApiError::InvalidProxyConfig(_) => {
+            QconnectOwnerFailure::Network
+        }
         ApiError::ParseError(_) | ApiError::ApiResponse(_) => QconnectOwnerFailure::InvalidResponse,
         ApiError::RateLimited(_) => QconnectOwnerFailure::RateLimited,
         ApiError::ServerError(_) => QconnectOwnerFailure::Server,

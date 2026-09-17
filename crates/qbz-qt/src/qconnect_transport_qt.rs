@@ -63,7 +63,9 @@ impl QconnectCredentialFailure {
 
 fn classify_qconnect_credential_error(error: &ApiError) -> QconnectCredentialFailure {
     match error {
-        ApiError::NetworkError(_) => QconnectCredentialFailure::Network,
+        ApiError::NetworkError(_) | ApiError::InvalidProxyConfig(_) => {
+            QconnectCredentialFailure::Network
+        }
         ApiError::AuthenticationError(_)
         | ApiError::InvalidAppId
         | ApiError::InvalidAppSecret

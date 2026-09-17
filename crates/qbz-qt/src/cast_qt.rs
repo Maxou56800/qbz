@@ -1127,6 +1127,14 @@ impl CastService {
     /// loop and the 15 s scan-spinner window. Picker-owned: this is the ONLY
     /// place either discovery is armed.
     pub(crate) async fn start_discovery(self: &Arc<Self>) {
+        if crate::settings_qt::network()
+            .get_settings()
+            .map(|settings| settings.block_cast)
+            .unwrap_or(false)
+        {
+            log::info!("[qbz-qt][Cast] discovery blocked by Settings -> Network");
+            return;
+        }
         {
             let mut inner = self.inner.lock().await;
             if inner.chromecast_discovery.is_none() {
@@ -2475,6 +2483,13 @@ impl CastService {
     }
 
     async fn ensure_media_server(&self, media_stamp: CastMediaIntentStamp) -> Result<(), String> {
+        if crate::settings_qt::network()
+            .get_settings()
+            .map(|settings| settings.block_cast)
+            .unwrap_or(false)
+        {
+            return Err("Casting is blocked by Settings -> Network".to_string());
+        }
         let mut inner = self.inner.lock().await;
         if !media_intent_stamp_matches(&inner, media_stamp) {
             return Err("Cast media request was superseded".to_string());

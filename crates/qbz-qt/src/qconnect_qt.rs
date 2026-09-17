@@ -1503,6 +1503,17 @@ impl QtQconnectService {
         stamp: AuthorityStamp,
         qws_endpoint: &str,
     ) -> Result<(), String> {
+        // Settings -> Network safety switch, independent of the player-bar
+        // Connect toggle and of auto-connect-on-startup: checked first so
+        // the mDNS registration and the local HTTP receiver never bind even
+        // transiently while it's on.
+        if crate::settings_qt::network()
+            .get_settings()
+            .map(|settings| settings.block_qconnect_lan)
+            .unwrap_or(false)
+        {
+            return Err("qconnect-lan-blocked-by-network-settings".to_string());
+        }
         if !self.lan_lifecycle.teardown_safe() {
             return Err("qconnect-lan-physical-teardown-unsafe".to_string());
         }

@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use cxx_qt_lib::QString;
+use qbz_app::settings::network::NetworkSettingsState;
 use qbz_app::settings::playback::{
     AutoplayMode, PlaybackPreferencesState, PlaybackPreferencesStore,
 };
@@ -57,6 +58,7 @@ pub mod offline;
 
 static AUDIO: OnceLock<AudioSettingsState> = OnceLock::new();
 static PLAYBACK: OnceLock<PlaybackPreferencesState> = OnceLock::new();
+static NETWORK: OnceLock<NetworkSettingsState> = OnceLock::new();
 
 fn audio() -> &'static AudioSettingsState {
     AUDIO.get_or_init(|| {
@@ -72,6 +74,19 @@ fn playback() -> &'static PlaybackPreferencesState {
         PlaybackPreferencesState::new().unwrap_or_else(|e| {
             log::warn!("[qbz-qt] playback preferences store unavailable: {e}");
             PlaybackPreferencesState::new_empty()
+        })
+    })
+}
+
+/// Global, not per-user (see `qbz_app::settings::network`'s module docs):
+/// read by the QConnect LAN and Cast kill switches in addition to the
+/// future Network settings panel, so it must stay readable before any
+/// account is active.
+pub(crate) fn network() -> &'static NetworkSettingsState {
+    NETWORK.get_or_init(|| {
+        NetworkSettingsState::new().unwrap_or_else(|e| {
+            log::warn!("[qbz-qt] network settings store unavailable: {e}");
+            NetworkSettingsState::new_empty()
         })
     })
 }
