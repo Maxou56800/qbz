@@ -1,4 +1,5 @@
 use std::{
+    pin::Pin,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -16,12 +17,16 @@ use qconnect_protocol::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
+    net::TcpStream,
     sync::{broadcast, mpsc, watch, Mutex},
     task::JoinHandle,
 };
 use tokio_tungstenite::{
-    connect_async_with_config,
-    tungstenite::{protocol::WebSocketConfig, Bytes, Message as WsMessage},
+    client_async_tls_with_config,
+    tungstenite::{
+        handshake::client::Response, protocol::WebSocketConfig, Bytes, Message as WsMessage,
+    },
+    MaybeTlsStream, WebSocketStream,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -328,6 +333,53 @@ impl WsTransport for NativeWsTransport {
     }
 }
 
+/// Dial `endpoint_url`, tunneled through the process-wide configured proxy
+/// (`qbz_net_proxy::current()`) when there is one, direct otherwise. Returns
+/// the same shape `connect_async_with_config` did, so every match arm at the
+/// call site is unchanged — only the stream type inside `WebSocketStream`
+/// changed, and the reader/writer helpers below are already generic over it.
+async fn dial_ws(
+    endpoint_url: &str,
+) -> Result<
+    (
+        WebSocketStream<MaybeTlsStream<Pin<Box<dyn qbz_net_proxy::TunnelStream>>>>,
+        Response,
+    ),
+    tokio_tungstenite::tungstenite::Error,
+> {
+    let io_err =
+        |msg: String| tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other(msg));
+
+    let parsed = url::Url::parse(endpoint_url).map_err(|e| io_err(e.to_string()))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| io_err("endpoint URL has no host".to_string()))?
+        .to_string();
+    let port = parsed
+        .port_or_known_default()
+        .unwrap_or(match parsed.scheme() {
+            "wss" => 443,
+            _ => 80,
+        });
+
+    let stream: Pin<Box<dyn qbz_net_proxy::TunnelStream>> = match qbz_net_proxy::current() {
+        Some(proxy) => qbz_net_proxy::connect_tunnel(&proxy, &host, port)
+            .await
+            .map_err(|e| {
+                log::warn!("[QConnect/Transport] proxy tunnel failed: {e}");
+                io_err(e.to_string())
+            })?,
+        None => {
+            let tcp = TcpStream::connect((host.as_str(), port))
+                .await
+                .map_err(tokio_tungstenite::tungstenite::Error::Io)?;
+            Box::pin(tcp)
+        }
+    };
+
+    client_async_tls_with_config(endpoint_url, stream, Some(WebSocketConfig::default()), None).await
+}
+
 async fn run_native_transport_loop(
     config: WsTransportConfig,
     mut outbound_rx: mpsc::Receiver<OutboundEnvelope>,
@@ -349,11 +401,7 @@ async fn run_native_transport_loop(
 
         let connect_result = tokio::time::timeout(
             Duration::from_millis(config.connect_timeout_ms.max(1000)),
-            connect_async_with_config(
-                &config.endpoint_url,
-                Some(WebSocketConfig::default()),
-                false,
-            ),
+            dial_ws(&config.endpoint_url),
         )
         .await;
 
@@ -1517,5 +1565,65 @@ mod tests {
             assert_eq!(outcome, ReconnectOutcome::Continue);
         }
         assert_eq!(attempt, 5);
+    }
+
+    // `qbz_net_proxy::current()`/`set_current()` are process-wide; serialize
+    // the tests that touch it so they can't observe each other's writes.
+    static PROXY_SERIAL: Mutex<()> = Mutex::const_new(());
+
+    #[tokio::test]
+    async fn dial_ws_tunnels_through_the_configured_proxy() {
+        let _lock = PROXY_SERIAL.lock().await;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = listener.local_addr().unwrap().port();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = Vec::new();
+            let mut byte = [0u8; 1];
+            loop {
+                stream.read_exact(&mut byte).await.unwrap();
+                buffer.push(byte[0]);
+                if buffer.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let _ = tx.send(String::from_utf8_lossy(&buffer).into_owned());
+            // No real WS server behind the tunnel: refuse it so dial_ws
+            // returns quickly instead of hanging on a handshake that will
+            // never complete.
+            let _ = stream.shutdown().await;
+        });
+
+        qbz_net_proxy::set_current(Some(qbz_net_proxy::ProxyConfig {
+            kind: qbz_net_proxy::ProxyKind::Http,
+            host: "127.0.0.1".to_string(),
+            port: proxy_port,
+            auth: None,
+        }));
+        let _ = dial_ws("wss://example.invalid:443/ws").await;
+        qbz_net_proxy::set_current(None);
+
+        let request = rx.await.unwrap();
+        assert!(request.starts_with("CONNECT example.invalid:443 HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn dial_ws_connects_directly_with_no_proxy_configured() {
+        let _lock = PROXY_SERIAL.lock().await;
+        qbz_net_proxy::set_current(None);
+
+        // Nothing listens on this port: a direct dial fails fast with a
+        // connection-refused-shaped error rather than hanging, proving no
+        // proxy tunnel was attempted (which would fail differently — "proxy
+        // tunnel failed" in the log, not a bare connect error).
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let result = dial_ws(&format!("ws://127.0.0.1:{port}/ws")).await;
+        assert!(result.is_err());
     }
 }

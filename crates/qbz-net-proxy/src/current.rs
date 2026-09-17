@@ -65,6 +65,19 @@ pub fn current_generation() -> Generation {
     )
 }
 
+/// A clone of the current process-wide proxy configuration, `None` when
+/// disabled. For the rare consumer that needs the config itself rather than
+/// a `reqwest::ClientBuilder` to apply it to — currently only
+/// `qconnect-transport-ws`, which hands a raw tunneled stream to
+/// `tokio-tungstenite` instead of building a `reqwest::Client` at all.
+pub fn current() -> Option<ProxyConfig> {
+    cell()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .config
+        .clone()
+}
+
 /// Apply the current process-wide proxy to a client builder. Every
 /// `reqwest::Client::builder()` call site in the workspace should call this
 /// in place of building unproxied.

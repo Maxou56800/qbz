@@ -4786,12 +4786,14 @@ dependencies = [
  "futures-util",
  "log",
  "prost",
+ "qbz-net-proxy",
  "qconnect-protocol",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
+ "url",
  "zeroize",
 ]
 

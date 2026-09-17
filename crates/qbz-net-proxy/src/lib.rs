@@ -38,7 +38,7 @@ use url::Url;
 mod current;
 #[cfg(feature = "blocking")]
 pub use current::apply_current_blocking;
-pub use current::{apply_current, current_generation, set_current, Generation};
+pub use current::{apply_current, current, current_generation, set_current, Generation};
 
 #[cfg(feature = "tunnel")]
 mod tunnel;

@@ -17,3 +17,8 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 prost = "0.14"
 log = "0.4"
 zeroize = "1"
+# Parses endpoint_url into a host/port/scheme to dial the proxy tunnel, when
+# one is configured; connect_async_with_config would otherwise do this
+# itself, but never through a proxy.
+url = "2"
+qbz-net-proxy = { path = "../qbz-net-proxy", features = ["tunnel"] }
