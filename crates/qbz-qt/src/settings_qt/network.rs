@@ -109,6 +109,44 @@ fn friendly_proxy_error(raw_detail: &str, config: &qbz_net_proxy::ProxyConfig) -
     raw_detail.to_string()
 }
 
+/// The other of HTTP/HTTPS. `None` for SOCKS4/5 — there's no cheap "did you
+/// mean the other one" check for those (SOCKS4 and SOCKS5 don't share a
+/// listening port the way a plain-HTTP and a TLS-terminated proxy might get
+/// mixed up on the same port number).
+fn opposite_http_kind(kind: qbz_net_proxy::ProxyKind) -> Option<qbz_net_proxy::ProxyKind> {
+    match kind {
+        qbz_net_proxy::ProxyKind::Http => Some(qbz_net_proxy::ProxyKind::Https),
+        qbz_net_proxy::ProxyKind::Https => Some(qbz_net_proxy::ProxyKind::Http),
+        qbz_net_proxy::ProxyKind::Socks4 | qbz_net_proxy::ProxyKind::Socks5 => None,
+    }
+}
+
+/// A failed HTTP/HTTPS attempt often means the wrong one of the two was
+/// picked for this host:port (reqwest's own error for that — a plaintext
+/// CONNECT sent to a TLS-only listener, or vice versa — is an unhelpfully
+/// generic "tunnel error: unsuccessful"). Rather than guess from that text,
+/// confirm it: retry the SAME host/port/auth with the other kind, and only
+/// report the mismatch if that retry actually succeeds — a real answer
+/// instead of a hedge like "maybe you picked the wrong type".
+async fn detect_http_https_mismatch(
+    config: &qbz_net_proxy::ProxyConfig,
+    target_url: &str,
+    timeout: std::time::Duration,
+) -> Option<qbz_net_proxy::ProxyKind> {
+    let other_kind = opposite_http_kind(config.kind)?;
+    let probe = qbz_net_proxy::ProxyConfig {
+        kind: other_kind,
+        host: config.host.clone(),
+        port: config.port,
+        auth: config.auth.clone(),
+        insecure_tls: config.insecure_tls,
+    };
+    match qbz_net_proxy::test(&probe, target_url, timeout).await {
+        qbz_net_proxy::ProxyTestOutcome::Reachable => Some(other_kind),
+        _ => None,
+    }
+}
+
 /// Read the current proxy setting and push it into the process-wide
 /// registry every HTTP client (and the QConnect WebSocket tunnel) reads.
 /// Called once at startup (`crate::settings_qt::seed_network_proxy`) and
@@ -307,7 +345,30 @@ pub async fn test_and_save(
                 config.host,
                 config.port
             );
-            ("failed".to_string(), friendly_proxy_error(&detail, &config))
+            let mismatch = detect_http_https_mismatch(
+                &config,
+                "https://www.qobuz.com/api.json/0.2/track/get?track_id=5966783",
+                std::time::Duration::from_secs(10),
+            )
+            .await;
+            let message = match mismatch {
+                Some(other_kind) => {
+                    log::info!(
+                        "[qbz-qt] proxy test: {}:{} answered as {} instead of the configured {}",
+                        config.host,
+                        config.port,
+                        other_kind.as_str(),
+                        config.kind.as_str()
+                    );
+                    format!(
+                        "This proxy answered as {} instead — switch Type to {} and try again.",
+                        other_kind.as_str().to_uppercase(),
+                        other_kind.as_str().to_uppercase()
+                    )
+                }
+                None => friendly_proxy_error(&detail, &config),
+            };
+            ("failed".to_string(), message)
         }
     };
     {
