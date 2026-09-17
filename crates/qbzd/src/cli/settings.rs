@@ -105,6 +105,7 @@ const KEY_TABLE: &[(&str, ApplyClass)] = &[
     ("qconnect.device_name", ApplyClass::None),
     ("qconnect.startup_mode", ApplyClass::None),
     ("qconnect.volume_mode", ApplyClass::None),
+    ("qconnect.block_lan", ApplyClass::None),
     // --- hooks (daemon_prefs, CONSOLE ext) ----------------------------------
     ("hooks.script", ApplyClass::None),
 ];
@@ -418,6 +419,7 @@ fn read_all(roots: &ProfileRoots) -> Result<Vec<(&'static str, String)>, String>
             "qconnect.volume_mode" => {
                 qconnect_kv::load_volume_mode_at(&db).unwrap_or_else(|| "software".to_string())
             }
+            "qconnect.block_lan" => render_bool(qconnect_kv::load_block_lan_at(&db)),
             "hooks.script" => prefs.hook_script.clone(),
             other => unreachable!("KEY_TABLE/read_all drifted apart on key: {other}"),
         };
@@ -849,6 +851,10 @@ pub(crate) fn write_one(
         "qconnect.volume_mode" => {
             let v = parse_volume_mode(raw).map_err(SetError::Usage)?;
             qconnect_kv::save_volume_mode_at(&qconnect_db(roots), &v)
+        }
+        "qconnect.block_lan" => {
+            let v = parse_bool(raw).map_err(SetError::Usage)?;
+            qconnect_kv::save_block_lan_at(&qconnect_db(roots), v)
         }
         "hooks.script" => {
             let v = parse_hook_script(raw).map_err(SetError::Usage)?;
@@ -1767,6 +1773,24 @@ mod tests {
         assert_eq!(values["playback.autoplay"], "track_only");
         assert_eq!(values["qconnect.device_name"], "Kitchen");
         assert_eq!(values["qconnect.startup_mode"], "on");
+        cleanup(&roots);
+    }
+
+    #[test]
+    fn qconnect_block_lan_defaults_off_and_round_trips() {
+        let roots = scratch_roots("qc-block-lan");
+        let values: std::collections::HashMap<_, _> =
+            read_all(&roots).unwrap().into_iter().collect();
+        assert_eq!(values["qconnect.block_lan"], "false");
+
+        write_one(&roots, "qconnect.block_lan", "true").expect("set block_lan");
+        let values: std::collections::HashMap<_, _> =
+            read_all(&roots).unwrap().into_iter().collect();
+        assert_eq!(values["qconnect.block_lan"], "true");
+        assert!(qconnect_kv::load_block_lan_at(&qconnect_db(&roots)));
+
+        write_one(&roots, "qconnect.block_lan", "off").expect("clear block_lan");
+        assert!(!qconnect_kv::load_block_lan_at(&qconnect_db(&roots)));
         cleanup(&roots);
     }
 

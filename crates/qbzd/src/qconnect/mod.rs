@@ -264,6 +264,15 @@ impl DaemonQconnectService {
         stamp: AuthorityStamp,
         qws_endpoint: &str,
     ) -> Result<(), String> {
+        // Settings -> Network safety switch, independent of the enable intent
+        // and of the delegated authority: checked first so mDNS registration
+        // and the local HTTP receiver never bind even transiently while it's
+        // on. Daemon counterpart of qbz-qt's qconnect_qt.rs::start_lan gate,
+        // but reads the daemon's OWN root KV (`qconnect.block_lan`, settable
+        // via `qbzd settings set`) rather than the desktop's global settings.
+        if transport::load_block_lan_at(&self.settings_db) {
+            return Err("qconnect-lan-blocked-by-network-settings".to_string());
+        }
         if !self.lan_lifecycle.teardown_safe() {
             return Err("qconnect-lan-physical-teardown-unsafe".to_string());
         }

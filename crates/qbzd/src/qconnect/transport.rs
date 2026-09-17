@@ -507,6 +507,39 @@ pub fn save_volume_mode_at(path: &Path, mode: &str) {
     );
 }
 
+/// Load the "block QConnect LAN" safety switch (`block_lan` = "on" | "off").
+/// Daemon counterpart of the desktop's Settings -> Network kill switch
+/// (`qbz_app::settings::network`'s `block_qconnect_lan`) — a SEPARATE flag,
+/// not a shared one: 01-architecture.md §4.2 forbids the daemon from opening
+/// the desktop's data directory at runtime, so this lives in the daemon's own
+/// root KV like every other qconnect.* setting. Fail-open: false (LAN
+/// advertisement allowed) when missing/invalid, matching the desktop default.
+pub fn load_block_lan_at(path: &Path) -> bool {
+    let Some(conn) = open_qconnect_settings_conn_at(path) else {
+        return false;
+    };
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'block_lan'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+    value.as_deref() == Some("on")
+}
+
+/// Persist the "block QConnect LAN" switch.
+pub fn save_block_lan_at(path: &Path, blocked: bool) {
+    let Some(conn) = open_qconnect_settings_conn_at(path) else {
+        return;
+    };
+    let value = if blocked { "on" } else { "off" };
+    let _ = conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('block_lan', ?1)",
+        rusqlite::params![value],
+    );
+}
+
 /// Build the WS transport config: env overrides first, then auto-discovery via
 /// `qws/createToken`. Mirrors the Tauri `resolve_transport_config` (the per-option
 /// knobs are deferred — the connect path uses defaults + env). `require_jwt =
@@ -674,12 +707,14 @@ mod tests {
         assert_eq!(load_device_name_at(&tmp), None);
         assert_eq!(load_volume_mode_at(&tmp), None);
         assert_eq!(load_last_known_state_at(&tmp), None);
+        assert!(!load_block_lan_at(&tmp), "LAN advertisement allowed by default");
 
         // Persist + read back.
         save_startup_mode_at(&tmp, qconnect_app::QconnectStartupMode::On);
         persist_device_name_at(&tmp, Some("Living Room"));
         save_volume_mode_at(&tmp, "locked");
         save_last_known_state_at(&tmp, true);
+        save_block_lan_at(&tmp, true);
 
         assert_eq!(
             load_startup_mode_at(&tmp),
@@ -688,6 +723,10 @@ mod tests {
         assert_eq!(load_device_name_at(&tmp).as_deref(), Some("Living Room"));
         assert_eq!(load_volume_mode_at(&tmp).as_deref(), Some("locked"));
         assert_eq!(load_last_known_state_at(&tmp), Some(true));
+        assert!(load_block_lan_at(&tmp));
+
+        save_block_lan_at(&tmp, false);
+        assert!(!load_block_lan_at(&tmp));
 
         // Clearing the device name removes it.
         persist_device_name_at(&tmp, None);
