@@ -212,6 +212,7 @@ pub async fn test_and_save(
             // Shouldn't happen right after set_proxy_enabled(true) with a
             // non-empty host, but treat it the same as any other failure
             // rather than unwrap-panicking on a settings-store race.
+            log::warn!("[qbz-qt] proxy test: proxy is not enabled right after saving it");
             {
                 let mut test = TEST_STATE.lock().unwrap_or_else(|p| p.into_inner());
                 test.busy = false;
@@ -222,6 +223,7 @@ pub async fn test_and_save(
             return;
         }
         Err(e) => {
+            log::warn!("[qbz-qt] proxy test: failed to read back the saved proxy config: {e}");
             {
                 let mut test = TEST_STATE.lock().unwrap_or_else(|p| p.into_inner());
                 test.busy = false;
@@ -243,12 +245,31 @@ pub async fn test_and_save(
     .await;
 
     let (kind, detail) = match outcome {
-        qbz_net_proxy::ProxyTestOutcome::Reachable => ("reachable".to_string(), String::new()),
-        qbz_net_proxy::ProxyTestOutcome::ProxyUnreachable => (
-            "proxy-unreachable".to_string(),
-            "Could not reach the proxy at that host/port.".to_string(),
-        ),
-        qbz_net_proxy::ProxyTestOutcome::RequestFailed { detail, .. } => {
+        qbz_net_proxy::ProxyTestOutcome::Reachable => {
+            log::info!(
+                "[qbz-qt] proxy test: reachable ({}:{})",
+                config.host,
+                config.port
+            );
+            ("reachable".to_string(), String::new())
+        }
+        qbz_net_proxy::ProxyTestOutcome::ProxyUnreachable => {
+            log::warn!(
+                "[qbz-qt] proxy test: could not reach the proxy at {}:{}",
+                config.host,
+                config.port
+            );
+            (
+                "proxy-unreachable".to_string(),
+                "Could not reach the proxy at that host/port.".to_string(),
+            )
+        }
+        qbz_net_proxy::ProxyTestOutcome::RequestFailed { detail, timed_out } => {
+            log::warn!(
+                "[qbz-qt] proxy test: request through {}:{} failed (timed_out={timed_out}): {detail}",
+                config.host,
+                config.port
+            );
             ("failed".to_string(), detail)
         }
     };

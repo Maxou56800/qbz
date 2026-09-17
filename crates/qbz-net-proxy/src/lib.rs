@@ -219,6 +219,21 @@ pub enum ProxyTestOutcome {
     RequestFailed { timed_out: bool, detail: String },
 }
 
+/// Join an error with its full `.source()` chain (reqwest's own `Display`
+/// stops at the top-level message — "error sending request for url (...)"
+/// — and hides the actual cause, e.g. the SOCKS/CONNECT failure, one or two
+/// levels down).
+fn describe_error(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        out.push_str(": ");
+        out.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    out
+}
+
 /// Test a proxy configuration against `target_url` (e.g. a Qobuz endpoint),
 /// bounded by `timeout` for each phase. See [`ProxyTestOutcome`] for what is
 /// and isn't distinguished.
@@ -243,14 +258,14 @@ pub async fn test(
             Err(err) => {
                 return ProxyTestOutcome::RequestFailed {
                     timed_out: false,
-                    detail: err.to_string(),
+                    detail: describe_error(&err),
                 }
             }
         },
         Err(err) => {
             return ProxyTestOutcome::RequestFailed {
                 timed_out: false,
-                detail: err.to_string(),
+                detail: describe_error(&err),
             }
         }
     };
@@ -259,7 +274,7 @@ pub async fn test(
         Ok(_) => ProxyTestOutcome::Reachable,
         Err(err) => ProxyTestOutcome::RequestFailed {
             timed_out: err.is_timeout(),
-            detail: err.to_string(),
+            detail: describe_error(&err),
         },
     }
 }
