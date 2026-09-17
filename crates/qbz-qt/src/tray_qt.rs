@@ -645,7 +645,7 @@ pub(crate) fn refresh_mac_dock_policy(tray_live: bool) {
     #[cfg(target_os = "macos")]
     {
         let hide_dock = crate::settings_qt::tray()
-            .get()
+            .get_settings()
             .map(|settings| settings.mac_hide_dock)
             .unwrap_or(false);
         set_mac_dock_hidden(mac_dock_should_hide(
