@@ -84,6 +84,10 @@ Rectangle {
         var id = doc.id || ""
         if (id === loadedPlaylistId)
             return
+        // An in-place playlist switch starts at the top; the first document
+        // of a mount leaves the viewport to ScrollMemory.
+        if (loadedPlaylistId !== "")
+            rowsModel.scrollToTop()
         loadedPlaylistId = id
         setMultiSelect(false)
     }
@@ -396,7 +400,10 @@ Rectangle {
         cacheBuffer: height
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.tracks
+        // Swapped on a QbzArrayModel, never on `model:` — a fresh array there
+        // makes Qt 6.11 focus delegate 0, and the header's search box lost the
+        // keyboard whenever a filtered document landed (see the control).
+        model: QbzArrayModel { id: rowsModel; view: trackList; rows: root.tracks; delegate: trackDelegate }
         header: Column {
             width: trackList.width
             spacing: 12
@@ -460,117 +467,122 @@ Rectangle {
                 error:root.doc.error || ""
             }
         }
-                delegate: TrackRow {
-                    kioskHost: true
-                    required property var modelData
-                    required property int index
-                    width: parent ? parent.width : 0
-                    item: modelData
-                    number: index + 1
-                    showArtwork: false
-                    showSource: root.isLocal || !root.online
-                    showAlbum: false
-                    artistLink: true
-                    showDownload: true
-                    // Alternating row tint, like the local album page
-                    // (LocalAlbumView.qml). TrackRow already owns the stripe —
-                    // it paints `#07ffffff` on even `number`s — so this is the
-                    // whole change.
-                    zebra: true
-                    selectMode: root.multiSelect
-                    checked: root.selected[item.id] === true
-                    onToggleSelect: function (mods) { root.toggleSelected(item.id, mods) }
-                    menuShowRemove: root.isOwner
-                    // Reorder chevrons (owner findings 5 + 8). `index` is the
-                    // index into `root.tracks`, which under `canReorder` is
-                    // the unfiltered document — the empty-search term of that
-                    // predicate is what guarantees it.
-                    showReorder: root.canReorder
-                    canMoveUp: index > 0
-                    canMoveDown: index < root.tracks.length - 1
-                    onMoveUpRequested: QbzBridge.playlistMoveRow(String(item.id), -1)
-                    onMoveDownRequested: QbzBridge.playlistMoveRow(String(item.id), 1)
-                    onPlayRequested: QbzBridge.playlistPlayTrack(item.id)
-                    onEnqueueRequested: function (m) { QbzBridge.playlistEnqueueTrack(item.id, m) }
-                    // The DISPLAY row id, as a string. For a Qobuz row it IS
-                    // the membership id (`playlist_qt.rs:363-364` sets both
-                    // from `track.id`); for a LOCAL row `playlistTrackId` is a
-                    // queue id — or 0 on an unresolved one — and the removal
-                    // has to be keyed on the id the position map knows.
-                    onRemoveRequested: QbzBridge.playlistRemoveTrack(String(item.id))
-                    // "Find available version" (contract §6.1) — the ONE
-                    // surface that offers it, and the gate is the reference's:
-                    // a QOBUZ playlist the signed-in user OWNS. Qobuz refuses
-                    // a write to anyone else's playlist, so offering it there
-                    // would be a dead action; a LOCAL playlist's rows are not
-                    // catalog memberships at all, and a mixed local/plex row in
-                    // this same view carries its own `source` word, which is
-                    // why the third term reads the row and not just the doc.
-                    routeReplaceExternally: root.isOwner && !root.isLocal
-                        && (modelData.source || "") === ""
-                    // Everything Rust needs, in ONE JSON object (the
-                    // `QbzMyQbzAdd.open(JSON.stringify(...))` idiom). No row
-                    // INDEX is passed on purpose: `index` here is the index
-                    // into the DISPLAYED list, which under a search filter or a
-                    // non-default sort is not the playlist's own order — the
-                    // reposition step derives the real slot from the
-                    // authoritative playlist it re-fetches anyway.
-                    onReplaceRequested: QbzTrackReplace.open(JSON.stringify({
-                        "playlistId": String(root.doc.id || ""),
-                        "playlistTrackId": String(item.playlistTrackId || item.id),
-                        "trackId": String(item.id),
-                        "title": item.title || "",
-                        "artist": item.artist || "",
-                        "album": item.album || "",
-                        "isrc": item.isrc || "",
-                        "durationSecs": item.durationSecs || 0
-                    }))
-                    // "Add to playlist" — this view serves BOTH a Qobuz
-                    // playlist and a LOCAL one (`local_playlist_qt::load`
-                    // publishes into this same document through
-                    // `playlist_qt::adopt_doc`), so the row's id space is not
-                    // uniform here and the routing reads the row's own
-                    // `source` word ("" = Qobuz, "local" | "plex" = a
-                    // library.db / Plex ref). The local arm hands the DISPLAY
-                    // id to Rust, which resolves it through
-                    // `local_playlist_qt::local_picker_ref_for_row` — a Plex
-                    // row's rating key only exists in the open detail's queue
-                    // snapshot and QML cannot build the ref itself.
-                    routePlaylistAddExternally: modelData.source === "local"
-                        || modelData.source === "plex"
-                    onPlaylistAddRequested: QbzPlaylistPicker.openForLocalRow(item.id)
-                    // MyQBZ "Add to mixtape" — the HOST builds the AddItem
-                    // array (TrackRow does not know itemType/source).
-                    //
-                    // SOURCE comes off the ROW, never a literal: a Qobuz
-                    // playlist's rows carry no `source` and are catalog rows,
-                    // while a LOCAL playlist's rows carry "local" | "plex"
-                    // (playlist_qt.rs PlaylistTrackRow.source). "plex" folds
-                    // into "local" because `AddItem.source` is
-                    // "qobuz" | "local" and `source_from_str`
-                    // (myqbz_add_qt.rs:85-90) maps anything that is not
-                    // "local" back to Qobuz — passing "plex" verbatim would
-                    // store a Plex row under a catalog id again.
-                    onMixtapeRequested: QbzMyQbzAdd.open(JSON.stringify([{
-                        "itemType": "track",
-                        "source": (item.source === "local" || item.source === "plex")
-                            ? "local" : "qobuz",
-                        "sourceItemId": item.id, "title": item.title || "",
-                        "subtitle": item.artist || "", "artworkUrl": item.artUrl || "",
-                        "year": null, "trackCount": null
-                    }]))
-                    onBodyDragStarted: function (n) {
-                        // #589: report the source index BEFORE the shared drag.
-                        // Gated on `canReorder`, not on ownership alone: under
-                        // a computed sort (or an active search) this drag is
-                        // ONLY the add-to-a-sidebar-playlist gesture, and
-                        // claiming a source index would let a release inside
-                        // the list commit a move against an order that is not
-                        // the stored one.
-                        if (root.canReorder) {
-                            root.reorderFrom = index
-                            root.reorderOver = -1
-                            root.reorderDropPlaylist = ""
+                // Handed to rowsModel: Qt 6.8/6.9 ignore a view's delegate when
+                // the model is an external DelegateModel (zero rows).
+                Component {
+                    id: trackDelegate
+                    TrackRow {
+                        kioskHost: true
+                        required property var modelData
+                        required property int index
+                        width: parent ? parent.width : 0
+                        item: modelData
+                        number: index + 1
+                        showArtwork: false
+                        showSource: root.isLocal || !root.online
+                        showAlbum: false
+                        artistLink: true
+                        showDownload: true
+                        // Alternating row tint, like the local album page
+                        // (LocalAlbumView.qml). TrackRow already owns the stripe —
+                        // it paints `#07ffffff` on even `number`s — so this is the
+                        // whole change.
+                        zebra: true
+                        selectMode: root.multiSelect
+                        checked: root.selected[item.id] === true
+                        onToggleSelect: function (mods) { root.toggleSelected(item.id, mods) }
+                        menuShowRemove: root.isOwner
+                        // Reorder chevrons (owner findings 5 + 8). `index` is the
+                        // index into `root.tracks`, which under `canReorder` is
+                        // the unfiltered document — the empty-search term of that
+                        // predicate is what guarantees it.
+                        showReorder: root.canReorder
+                        canMoveUp: index > 0
+                        canMoveDown: index < root.tracks.length - 1
+                        onMoveUpRequested: QbzBridge.playlistMoveRow(String(item.id), -1)
+                        onMoveDownRequested: QbzBridge.playlistMoveRow(String(item.id), 1)
+                        onPlayRequested: QbzBridge.playlistPlayTrack(item.id)
+                        onEnqueueRequested: function (m) { QbzBridge.playlistEnqueueTrack(item.id, m) }
+                        // The DISPLAY row id, as a string. For a Qobuz row it IS
+                        // the membership id (`playlist_qt.rs:363-364` sets both
+                        // from `track.id`); for a LOCAL row `playlistTrackId` is a
+                        // queue id — or 0 on an unresolved one — and the removal
+                        // has to be keyed on the id the position map knows.
+                        onRemoveRequested: QbzBridge.playlistRemoveTrack(String(item.id))
+                        // "Find available version" (contract §6.1) — the ONE
+                        // surface that offers it, and the gate is the reference's:
+                        // a QOBUZ playlist the signed-in user OWNS. Qobuz refuses
+                        // a write to anyone else's playlist, so offering it there
+                        // would be a dead action; a LOCAL playlist's rows are not
+                        // catalog memberships at all, and a mixed local/plex row in
+                        // this same view carries its own `source` word, which is
+                        // why the third term reads the row and not just the doc.
+                        routeReplaceExternally: root.isOwner && !root.isLocal
+                            && (modelData.source || "") === ""
+                        // Everything Rust needs, in ONE JSON object (the
+                        // `QbzMyQbzAdd.open(JSON.stringify(...))` idiom). No row
+                        // INDEX is passed on purpose: `index` here is the index
+                        // into the DISPLAYED list, which under a search filter or a
+                        // non-default sort is not the playlist's own order — the
+                        // reposition step derives the real slot from the
+                        // authoritative playlist it re-fetches anyway.
+                        onReplaceRequested: QbzTrackReplace.open(JSON.stringify({
+                            "playlistId": String(root.doc.id || ""),
+                            "playlistTrackId": String(item.playlistTrackId || item.id),
+                            "trackId": String(item.id),
+                            "title": item.title || "",
+                            "artist": item.artist || "",
+                            "album": item.album || "",
+                            "isrc": item.isrc || "",
+                            "durationSecs": item.durationSecs || 0
+                        }))
+                        // "Add to playlist" — this view serves BOTH a Qobuz
+                        // playlist and a LOCAL one (`local_playlist_qt::load`
+                        // publishes into this same document through
+                        // `playlist_qt::adopt_doc`), so the row's id space is not
+                        // uniform here and the routing reads the row's own
+                        // `source` word ("" = Qobuz, "local" | "plex" = a
+                        // library.db / Plex ref). The local arm hands the DISPLAY
+                        // id to Rust, which resolves it through
+                        // `local_playlist_qt::local_picker_ref_for_row` — a Plex
+                        // row's rating key only exists in the open detail's queue
+                        // snapshot and QML cannot build the ref itself.
+                        routePlaylistAddExternally: modelData.source === "local"
+                            || modelData.source === "plex"
+                        onPlaylistAddRequested: QbzPlaylistPicker.openForLocalRow(item.id)
+                        // MyQBZ "Add to mixtape" — the HOST builds the AddItem
+                        // array (TrackRow does not know itemType/source).
+                        //
+                        // SOURCE comes off the ROW, never a literal: a Qobuz
+                        // playlist's rows carry no `source` and are catalog rows,
+                        // while a LOCAL playlist's rows carry "local" | "plex"
+                        // (playlist_qt.rs PlaylistTrackRow.source). "plex" folds
+                        // into "local" because `AddItem.source` is
+                        // "qobuz" | "local" and `source_from_str`
+                        // (myqbz_add_qt.rs:85-90) maps anything that is not
+                        // "local" back to Qobuz — passing "plex" verbatim would
+                        // store a Plex row under a catalog id again.
+                        onMixtapeRequested: QbzMyQbzAdd.open(JSON.stringify([{
+                            "itemType": "track",
+                            "source": (item.source === "local" || item.source === "plex")
+                                ? "local" : "qobuz",
+                            "sourceItemId": item.id, "title": item.title || "",
+                            "subtitle": item.artist || "", "artworkUrl": item.artUrl || "",
+                            "year": null, "trackCount": null
+                        }]))
+                        onBodyDragStarted: function (n) {
+                            // #589: report the source index BEFORE the shared drag.
+                            // Gated on `canReorder`, not on ownership alone: under
+                            // a computed sort (or an active search) this drag is
+                            // ONLY the add-to-a-sidebar-playlist gesture, and
+                            // claiming a source index would let a release inside
+                            // the list commit a move against an order that is not
+                            // the stored one.
+                            if (root.canReorder) {
+                                root.reorderFrom = index
+                                root.reorderOver = -1
+                                root.reorderDropPlaylist = ""
+                            }
                         }
                     }
                 }
@@ -586,6 +598,6 @@ Rectangle {
         ]
         onPicked:function(a){if(root.selectedCount>0)root.bulkAction(a)}
     }
-    ScrollMemory { target:trackList; scope:"playlist" }
+    ScrollMemory { target:trackList; scope:"playlist"; relativeToOrigin:true }
     QbzScrollBar { target:trackList; anchors.right:parent.right; anchors.top:parent.top; anchors.bottom:parent.bottom }
 }

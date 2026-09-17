@@ -84,6 +84,7 @@ pub struct NowPlayingModel {
     /// OUT of the settings-derived `np_volume_locked` — that one is
     /// republished on every settings/track edge and would clobber this.
     pub remote_volume_locked: bool,
+    pub remote_volume_pending: bool,
     /// Active renderer / cast target name; empty when local.
     pub cast_target: String,
     /// A Chromecast/DLNA session is connected.
@@ -183,6 +184,8 @@ fn publish(m: &NowPlayingModel) {
         b.as_mut()
             .set_np_remote_volume_locked(m.remote_volume_locked);
         b.as_mut()
+            .set_np_remote_volume_pending(m.remote_volume_pending);
+        b.as_mut()
             .set_np_cast_target(QString::from(m.cast_target.as_str()));
         b.as_mut().set_np_cast_active(m.cast_active);
         b.as_mut()
@@ -198,6 +201,7 @@ pub fn publish_current() {
     publish(&snapshot);
     // The layers-glyph preference (see `publish_show_context_icon`).
     publish_show_context_icon();
+    publish_show_skip_ten();
     // Seed the two output LEDs + the volume-lock flag at shell entry too, so
     // the stamp is correct before the first track ever plays (the bridge
     // defaults are the unlit SYST/DEFAULT pair).
@@ -260,6 +264,13 @@ pub fn publish_show_context_icon() {
     crate::player_bridge::ui(move |mut b| b.as_mut().set_show_context_icon(show));
 }
 
+/// The ±10 s buttons preference (ui_prefs `show_skip_ten`), re-published on
+/// shell entry and from the Settings toggle.
+pub fn publish_show_skip_ten() {
+    let show = crate::settings_qt::pref_bool("show_skip_ten", false);
+    crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(show));
+}
+
 // --- Pure-UI toggles (mutate + republish) --------------------------------
 
 pub fn set_volume(volume: f32) {
@@ -294,6 +305,11 @@ pub fn repeat_mode() -> i32 {
 /// base is the Slint base (immersive contract D14).
 pub(crate) fn position() -> (i32, i32) {
     with_model(|m| (m.elapsed_secs, m.duration_secs)).0
+}
+
+/// The published seek lock (`np_seekable_max`, 0.0 = not yet published).
+pub(crate) fn seekable_max() -> f32 {
+    with_model(|m| m.seekable_max).0
 }
 
 /// (artist_id, title) of the current track — the read the immersive
@@ -451,6 +467,7 @@ pub fn clear_track() {
             seekable_max: 1.0,
             is_remote: m.is_remote,
             remote_volume_locked: m.remote_volume_locked,
+            remote_volume_pending: m.remote_volume_pending,
             cast_target: m.cast_target.clone(),
             cast_active: m.cast_active,
             cast_protocol: m.cast_protocol.clone(),
@@ -543,7 +560,31 @@ pub(crate) fn remote_volume_locked() -> bool {
 /// disconnect tail — publish onto `QbzPlayer.np_remote_volume_locked` (never
 /// folded into the settings-derived `np_volume_locked`).
 pub fn set_remote_volume_locked(locked: bool) {
-    mutate(|m| m.remote_volume_locked = locked);
+    mutate(|m| {
+        m.remote_volume_locked = locked;
+        if !locked {
+            m.remote_volume_pending = false;
+        }
+    });
+}
+
+/// Publish ownership, level and lock together so controls never briefly use
+/// the previous device's level during a handoff.
+pub fn set_remote_volume_state(
+    target: &str,
+    volume: f32,
+    muted: bool,
+    locked: bool,
+    pending: bool,
+) {
+    mutate(|m| {
+        m.is_remote = true;
+        m.cast_target = target.to_string();
+        m.volume = volume.clamp(0.0, 1.0);
+        m.muted = muted;
+        m.remote_volume_locked = locked;
+        m.remote_volume_pending = pending;
+    });
 }
 
 /// The DELIVERED quality measured by a cast session, which the local poll

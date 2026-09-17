@@ -276,7 +276,14 @@ pub fn open(artist_id: String, artist_name: String, release_type: String) {
     // The route is a TWO-FILE contract (nav_qt.rs:9-16): this records the id,
     // AppShell.qml's Loader ternary mounts it. `QbzShell.navigateTo` is NOT
     // usable — it carries no payload and clears LAST_DETAIL (main.rs:1607).
-    crate::nav_qt::record("artistreleases");
+    crate::nav_qt::record_with(
+        "artistreleases",
+        serde_json::json!({
+            "artistId": &artist_id,
+            "artistName": &artist_name,
+            "releaseType": &release_type
+        }),
+    );
     publish();
     fetch(generation, artist_id, release_type, 0, true);
 }

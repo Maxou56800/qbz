@@ -355,7 +355,7 @@ Rectangle {
                             required property var modelData
                             width: Math.max(96, kioskTabLabel.implicitWidth + 24)
                             height: 64
-                            color: root.tab === modelData.id ? theme.surfaceElevated : "transparent"
+                            color: root.tab === modelData.id ? (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated) : "transparent"
                             Text { id: kioskTabLabel; anchors.centerIn: parent; text: parent.modelData.label; color: theme.textPrimary; font.pixelSize: 18 }
                             MouseArea { anchors.fill: parent; onClicked: QbzPurchases.setTab(parent.modelData.id) }
                         }
@@ -446,7 +446,7 @@ Rectangle {
                     height: 32
                     radius: 6
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: retryArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: retryArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     border.width: 1
                     border.color: theme.borderSubtle
                     Text {

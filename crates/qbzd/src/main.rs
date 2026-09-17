@@ -35,7 +35,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Run the daemon in the foreground (systemd ExecStart)
-    Run,
+    Run {
+        /// Enable the experimental Orbit library API
+        #[arg(long, hide = true)]
+        orbit: bool,
+    },
+    /// Experimental host-owned local library (requires run --orbit)
+    #[command(hide = true)]
+    Library { #[command(subcommand)] cmd: LibraryCmd },
     /// Log in to Qobuz (one-shot browser listener; --paste; --token)
     Login {
         #[arg(long)] callback_host: Option<String>,
@@ -155,6 +162,24 @@ enum Cmd {
 }
 
 #[derive(Subcommand)]
+enum LibraryCmd {
+    /// Inspect this host's file library
+    Info,
+    /// List directories registered on the target host
+    Folders,
+    /// Register an existing absolute directory on the target host
+    Add { path: String },
+    /// Queue a scan of one directory or the whole library
+    Scan { #[arg(long)] folder: Option<i64> },
+    /// Read scan progress and its current job id
+    Jobs,
+    /// Cancel this specific job (never a newer one)
+    Cancel { job: u64 },
+    /// Search the target host's indexed files
+    Search { query: String, #[arg(long, default_value_t = 25)] limit: u32 },
+}
+
+#[derive(Subcommand)]
 enum QueueCmd {
     List  { #[arg(long)] json: bool },
     Add   { track_id: u64, #[arg(long)] next: bool },
@@ -228,7 +253,7 @@ enum SettingsCmd {
     Show { #[arg(long)] json: bool },
     /// List canonical ALSA playback-volume controls for the selected route
     MixerControls { #[arg(long)] json: bool },
-    Set  { key: String, value: String },
+    Set  { key: String, #[arg(allow_negative_numbers = true)] value: String },
 }
 
 #[derive(Subcommand)]
@@ -282,7 +307,7 @@ async fn main() {
                                     &mut std::io::stdout());
             0
         }
-        Cmd::Run => {
+        Cmd::Run { orbit } => {
             // Phase 1: resolve the config root and load qbzd.toml. The config's
             // `data_root` (a container override) can redirect the data/cache
             // roots, so resolve those in phase 2 once it is known.
@@ -302,13 +327,17 @@ async fn main() {
                 None,
                 data_root.as_deref().map(std::path::Path::new),
             );
-            match daemon::run(roots, cfg, warns).await {
+            match daemon::run(roots, cfg, warns, orbit).await {
                 Ok(code) => code,
                 Err(e) => {
                     eprintln!("{e}");
                     1
                 }
             }
+        }
+        Cmd::Library { cmd } => {
+            let roots = login_roots();
+            cli::library::run(cli.host, &roots, cmd).await
         }
         Cmd::Login {
             callback_host,
@@ -581,4 +610,24 @@ fn login_roots() -> paths::ProfileRoots {
         .ok()
         .and_then(|(c, _)| c.data_root);
     paths::ProfileRoots::resolve(None, data_root.as_deref().map(std::path::Path::new))
+}
+
+#[cfg(test)]
+mod command_line_tests {
+    use super::*;
+
+    #[test]
+    fn settings_accepts_negative_numbers_without_swallowing_options() {
+        for value in ["-14", "-14.5", "0", "true"] {
+            let cli = Cli::try_parse_from([
+                "qbzd", "settings", "set", "audio.normalization_target_lufs", value,
+            ]).unwrap();
+            assert!(matches!(cli.cmd, Cmd::Settings {
+                cmd: SettingsCmd::Set { value: parsed, .. }
+            } if parsed == value));
+        }
+        assert!(Cli::try_parse_from([
+            "qbzd", "settings", "set", "audio.normalization_target_lufs", "--typo",
+        ]).is_err());
+    }
 }

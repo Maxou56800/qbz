@@ -1,5 +1,7 @@
 # CI for the crates/ workspace on the integration branch.
 #
+# Playback memory presets: shared persistence/migration, live budgets and growth;
+# Qt profile descriptions/selection are covered by the shared QML runtime gate.
 # Three jobs, three economies:
 #   test      — validate all eight gettext catalogs, then `cargo test` on
 #               every crate that needs no Qt (scripts/cargo-test.sh:
@@ -34,7 +36,31 @@
 # pre-release
 # integration so regressions land before a release cut.
 
+# Shared cargo-test.sh requires the renderer capability wire fixture and
+# volume/mute rejection before renderer execution or reporting.
+# It also requires qbzd's actual sink/engine locked and software volume tests
+# and the matching daemon capability advertisement (D5-qbzd).
+# Shared cargo-test.sh also gates signed updater verification, version selection
+# and preference preservation; qt-runtime-gate.sh covers the update UI.
+# Shared cargo-test.sh also gates Orbit HTTP host isolation, library profiles
+# and the SSE public-identity projection. No separate test command to drift.
+# Shared cargo-test.sh also gates the 2026-09 static-review regressions: image-cache
+# LRU eviction, loudness-cache degrade, live-writer log rotation lock, URL-free
+# CDN fetch errors + signed-param redaction, and the link-resolver timeout.
+# Loudness (2026-09): absolute-LUFS cache with ranked sources, full-track scan,
+# one-shot live gain with a 400 ms glide, and the player's start-gain plan.
+# Qt runtime gate includes Library source/count regressions and the Rust
+# playlist-deletion/creation/offline-gapless and maintenance retry regressions.
+# The shared library service gate preserves manual scan feedback while keeping
+# background completions silent, including coalesced work and unavailable roots.
+# Watcher read-feedback and no-op content invalidation are in cargo-test.sh;
+# Library folders status/action layout and tooltips are in qt-runtime-gate.sh.
 name: test-crates
+
+# Shared playback-cache gate covers #774 sealed buffers, Hi-Res decode continuity,
+# memory policy admission/pressure, persistence and qbzd settings round trips.
+# Purchases navigation placement matrix; missing-root watcher retry/recovery.
+# Disk-backed streaming, 24/192 seek, cache reader leases and cancelled prefetch.
 
 on:
   pull_request:
@@ -44,6 +70,10 @@ on:
     paths:
       - "crates/**"
       - "scripts/cargo-test.sh"
+      - "scripts/install.sh"
+      - "scripts/test-installer.py"
+      - "scripts/test_qt_library.mjs"
+      - "scripts/test_qt_purchases_navigation.mjs"
       - "scripts/qt-*.py"
       - "scripts/qt-*.sh"
       - "scripts/test_qt_build_gates.py"
@@ -52,6 +82,25 @@ on:
       - "scripts/packaging/smoke_release.py"
       - "scripts/packaging/test_smoke_release.py"
       - "scripts/qml-audits/**"
+      - "scripts/qml-tests/**"
+      - "scripts/test-search-local-qml.sh"
+      - "scripts/test-orbit-qml.sh"
+      - "scripts/test-updates-qml.sh"
+      - "scripts/test-playback-cache-qml.sh"
+      - "scripts/test-text-edit-menu-qml.sh"
+      - "scripts/test-compact-seek-qml.sh"
+      - "scripts/test-library-folders-qml.sh"
+      - "scripts/test-array-model-qml.sh"
+      - "scripts/test-keyed-model-qml.sh"
+      - "scripts/test-multi-select-qml.sh"
+      - "scripts/test-track-row-click-qml.sh"
+      - "scripts/test-settings-fieldset-qml.sh"
+      - "scripts/test-remote-volume-qml.sh"
+      - "scripts/test-miniplayer-qml.sh"
+      - "scripts/test_qt_window_lifecycle.mjs"
+      - "scripts/test-wallpaper-field-qml.sh"
+      - "scripts/test-card-menu-qml.sh"
+      - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   push:
     # Integration branch only — never main (a push to main is a release merge).
@@ -59,6 +108,10 @@ on:
     paths:
       - "crates/**"
       - "scripts/cargo-test.sh"
+      - "scripts/install.sh"
+      - "scripts/test-installer.py"
+      - "scripts/test_qt_library.mjs"
+      - "scripts/test_qt_purchases_navigation.mjs"
       - "scripts/qt-*.py"
       - "scripts/qt-*.sh"
       - "scripts/test_qt_build_gates.py"
@@ -67,6 +120,25 @@ on:
       - "scripts/packaging/smoke_release.py"
       - "scripts/packaging/test_smoke_release.py"
       - "scripts/qml-audits/**"
+      - "scripts/qml-tests/**"
+      - "scripts/test-search-local-qml.sh"
+      - "scripts/test-orbit-qml.sh"
+      - "scripts/test-updates-qml.sh"
+      - "scripts/test-playback-cache-qml.sh"
+      - "scripts/test-text-edit-menu-qml.sh"
+      - "scripts/test-compact-seek-qml.sh"
+      - "scripts/test-library-folders-qml.sh"
+      - "scripts/test-array-model-qml.sh"
+      - "scripts/test-keyed-model-qml.sh"
+      - "scripts/test-multi-select-qml.sh"
+      - "scripts/test-track-row-click-qml.sh"
+      - "scripts/test-settings-fieldset-qml.sh"
+      - "scripts/test-remote-volume-qml.sh"
+      - "scripts/test-miniplayer-qml.sh"
+      - "scripts/test_qt_window_lifecycle.mjs"
+      - "scripts/test-wallpaper-field-qml.sh"
+      - "scripts/test-card-menu-qml.sh"
+      - "scripts/test-orbit-daemon.py"
       - ".github/workflows/test-crates.yml"
   workflow_dispatch:
 
@@ -99,7 +171,7 @@ jobs:
           # OpenSSL (reqwest).
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config gettext \
+            build-essential pkg-config gettext dbus-daemon desktop-file-utils \
             libasound2-dev libjack-jackd2-dev \
             libdbus-1-dev libssl-dev
 
@@ -114,6 +186,11 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/pre-release' }}
 
+      # The shared script also gates handoff execution, PCM partial progress,
+      # cache acquisition provenance and bounded CMAF assembly regressions.
+      # Requires ALSA sink recovery coverage for first-open and EBUSY paths.
+      # Includes successful-request vs available-master reuse, explicit lower
+      # quality fallback and conservative v1 playback sidecars.
       - name: cargo test (scripts/cargo-test.sh — the local mirror)
         env:
           CARGO_TERM_COLOR: always
@@ -214,7 +291,8 @@ jobs:
       # The exact QT=1 half of scripts/cargo-test.sh, minus its `test` job
       # (already run above) and its shader gate (the shader-gate job, so qsb
       # is never on PATH while cargo runs here): dep-graph gate, cargo test
-      # -p qbz-qt, Local Library/Kiosk artwork/navigation regressions, debug/release
+      # -p qbz-qt, QConnect volume handoff, Local Library/Kiosk artwork/navigation
+      # and federated-search view/activation regressions, debug/release
       # offscreen boot. One shared runtime script.
       - name: qt gates (scripts/cargo-test.sh QT=1, without the workspace test)
         env:

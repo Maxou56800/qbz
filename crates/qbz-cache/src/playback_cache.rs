@@ -10,6 +10,38 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+/// The sidecar is valid only for the exact atomically published audio file.
+/// Readers compare against their open handle, so a concurrent replacement
+/// cannot lend the old file the new acquisition ceiling (or vice versa).
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct FileIdentity {
+    size: u64,
+    modified_ns: u128,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+}
+impl FileIdentity {
+    fn read(file: &fs::File) -> Option<Self> {
+        let meta = file.metadata().ok()?;
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+        Some(Self {
+            size: meta.len(),
+            modified_ns: meta.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_nanos(),
+            #[cfg(unix)] device: meta.dev(),
+            #[cfg(unix)] inode: meta.ino(),
+        })
+    }
+}
+#[derive(serde::Serialize, serde::Deserialize)]
+struct QualityRecord {
+    version: u8,
+    file: FileIdentity,
+    quality: crate::CacheQuality,
+}
+
 /// Entry metadata for tracking cache usage
 #[derive(Debug, Clone)]
 struct CacheEntry {
@@ -33,6 +65,8 @@ struct PlaybackCacheState {
 /// Files are named `{track_id}.audio` in the cache directory.
 pub struct PlaybackCache {
     state: Mutex<PlaybackCacheState>,
+    // Serialize admission with eviction so parallel oversized streams respect L2.
+    writes: Mutex<()>,
     /// Cache directory path
     cache_dir: PathBuf,
     /// Maximum cache size in bytes
@@ -59,6 +93,7 @@ impl PlaybackCache {
             .map_err(|e| format!("Failed to create playback cache directory: {}", e))?;
 
         let cache = Self {
+            writes: Mutex::new(()),
             state: Mutex::new(PlaybackCacheState {
                 entries: HashMap::new(),
                 current_size: 0,
@@ -69,6 +104,9 @@ impl PlaybackCache {
 
         // Scan existing files to rebuild state
         cache.rebuild_state();
+        if !cache.evict_if_needed(0) {
+            log::warn!("Playback cache remains above its budget; further admission is blocked");
+        }
 
         log::info!(
             "Playback cache initialized at {:?} (max {} MB)",
@@ -131,6 +169,61 @@ impl PlaybackCache {
         self.state.lock().unwrap().entries.contains_key(&track_id)
     }
 
+    /// Open an immutable cache entry without allocating its contents. Cache
+    /// replacement is atomic so active decoder handles keep the original file.
+    pub fn open(&self, track_id: u64) -> Option<fs::File> {
+        let file = fs::File::open(self.track_path(track_id)).ok()?;
+        let mut state = self.state.lock().ok()?;
+        if let Some(entry) = state.entries.get_mut(&track_id) {
+            entry.last_accessed = SystemTime::now();
+        }
+        Some(file)
+    }
+
+    pub fn open_with_quality(&self, track_id: u64) -> Option<(fs::File, Option<crate::CacheQuality>)> {
+        let file = self.open(track_id)?;
+        let quality = (|| {
+            let identity = FileIdentity::read(&file)?;
+            let mut bytes = Vec::new();
+            fs::File::open(self.quality_path(track_id)).ok()?.take(4096).read_to_end(&mut bytes).ok()?;
+            let record: QualityRecord = serde_json::from_slice(&bytes).ok()?;
+            if record.file != identity { return None; }
+            match record.version {
+                // v1 did not record the successful request. Never infer it
+                // from the preference or from a response's available format.
+                1 => crate::CacheQuality::from_resolved(record.quality.requested, record.quality.resolved.id()),
+                2 => Some(record.quality),
+                _ => None,
+            }
+        })();
+        Some((file, quality))
+    }
+
+    fn quality_path(&self, track_id: u64) -> PathBuf {
+        self.cache_dir.join(format!("{track_id}.quality.json"))
+    }
+
+    fn publish_quality(&self, track_id: u64, quality: Option<crate::CacheQuality>) {
+        let path = self.quality_path(track_id);
+        let published = (|| -> Option<()> {
+            let quality = quality?;
+            let file = fs::File::open(self.track_path(track_id)).ok()?;
+            let record = QualityRecord { version: 2, file: FileIdentity::read(&file)?, quality };
+            let bytes = serde_json::to_vec(&record).ok()?;
+            let mut pending = tempfile::NamedTempFile::new_in(&self.cache_dir).ok()?;
+            pending.write_all(&bytes).ok()?;
+            pending.persist(&path).ok()?;
+            Some(())
+        })();
+        if published.is_none() { let _ = fs::remove_file(path); }
+    }
+
+    /// Temporary playback spools live on the cache disk, never the system /tmp
+    /// (commonly tmpfs on streamers). They disappear with their last file handle.
+    pub fn create_spool(&self) -> std::io::Result<fs::File> {
+        tempfile::tempfile_in(&self.cache_dir)
+    }
+
     /// Get a track from the cache
     pub fn get(&self, track_id: u64) -> Option<Vec<u8>> {
         let path = self.track_path(track_id);
@@ -181,7 +274,12 @@ impl PlaybackCache {
     }
 
     /// Insert a track into the cache (called when evicting from memory cache)
-    pub fn insert(&self, track_id: u64, data: &[u8]) {
+    pub fn insert(&self, track_id: u64, data: &[u8]) -> bool {
+        self.insert_with_quality(track_id, data, None)
+    }
+
+    pub fn insert_with_quality(&self, track_id: u64, data: &[u8], quality: Option<crate::CacheQuality>) -> bool {
+        let _write = self.writes.lock().unwrap();
         let size = data.len() as u64;
 
         // Don't cache if larger than max size
@@ -192,18 +290,28 @@ impl PlaybackCache {
                 size / (1024 * 1024),
                 self.max_size_bytes / (1024 * 1024)
             );
-            return;
+            return false;
         }
 
         // Evict old entries if needed
-        self.evict_if_needed(size);
+        if !self.evict_if_needed(size) { return false; }
 
         let path = self.track_path(track_id);
+        let pending = path.with_extension(format!("audio.{}.tmp", std::process::id()));
 
         // Write file
-        match fs::File::create(&path) {
+        match fs::File::create(&pending) {
             Ok(mut file) => {
                 if file.write_all(data).is_ok() {
+                    drop(file);
+                    if let Err(error) = fs::rename(&pending, &path) {
+                        log::warn!(
+                            "Failed to publish playback cache file for track {track_id}: {error}"
+                        );
+                        let _ = fs::remove_file(&pending);
+                        return false;
+                    }
+                    self.publish_quality(track_id, quality);
                     let mut state = self.state.lock().unwrap();
 
                     // Remove old entry if exists
@@ -229,9 +337,10 @@ impl PlaybackCache {
                         state.current_size / (1024 * 1024),
                         self.max_size_bytes / (1024 * 1024)
                     );
+                    return true;
                 } else {
                     log::warn!("Failed to write playback cache file for track {}", track_id);
-                    let _ = fs::remove_file(&path);
+                    let _ = fs::remove_file(&pending);
                 }
             }
             Err(e) => {
@@ -242,6 +351,7 @@ impl PlaybackCache {
                 );
             }
         }
+        false
     }
 
     /// Insert a track whose bytes are streamed in by `fill` rather than
@@ -253,113 +363,104 @@ impl PlaybackCache {
     /// `size_hint` is the expected byte count: it drives the too-large
     /// rejection and pre-write eviction; the entry records the actual bytes
     /// written.
-    pub fn insert_from<F>(&self, track_id: u64, size_hint: u64, fill: F)
+    pub fn insert_from<F>(&self, track_id: u64, size_hint: u64, fill: F) -> bool
     where
         F: FnOnce(&mut fs::File) -> std::io::Result<usize>,
     {
-        // Don't cache if larger than max size
+        self.insert_from_with_quality(track_id, size_hint, None, fill)
+    }
+
+    pub fn insert_from_with_quality<F>(&self, track_id: u64, size_hint: u64, quality: Option<crate::CacheQuality>, fill: F) -> bool
+    where
+        F: FnOnce(&mut fs::File) -> std::io::Result<usize>,
+    {
+        let _write = self.writes.lock().unwrap();
         if size_hint > self.max_size_bytes {
-            log::debug!(
-                "Track {} too large for playback cache ({} MB > {} MB)",
-                track_id,
-                size_hint / (1024 * 1024),
-                self.max_size_bytes / (1024 * 1024)
-            );
-            return;
+            return false;
         }
-
-        // Evict old entries if needed
-        self.evict_if_needed(size_hint);
-
-        let path = self.track_path(track_id);
-
-        match fs::File::create(&path) {
-            Ok(mut file) => match fill(&mut file) {
-                Ok(written) => {
-                    let size = written as u64;
-                    let mut state = self.state.lock().unwrap();
-
-                    // Remove old entry if exists
-                    if let Some(old) = state.entries.remove(&track_id) {
-                        state.current_size = state.current_size.saturating_sub(old.size_bytes);
-                    }
-
-                    state.entries.insert(
-                        track_id,
-                        CacheEntry {
-                            track_id,
-                            size_bytes: size,
-                            last_accessed: SystemTime::now(),
-                        },
-                    );
-                    state.current_size += size;
-
-                    log::info!(
-                        "Saved track {} to playback cache ({} KB). Total: {} MB / {} MB",
-                        track_id,
-                        size / 1024,
-                        state.current_size / (1024 * 1024),
-                        self.max_size_bytes / (1024 * 1024)
-                    );
+        // Build a separate inode. Replacing a cached id must not truncate the
+        // open file of an active decoder, and failed writes must not publish.
+        let pending = self
+            .cache_dir
+            .join(format!("{track_id}.stream.{}.tmp", std::process::id()));
+        let result = (|| -> std::io::Result<u64> {
+            let mut file = fs::File::create(&pending)?;
+            let written = fill(&mut file)? as u64;
+            if written > self.max_size_bytes || file.metadata()?.len() != written {
+                return Err(std::io::Error::other(
+                    "invalid playback cache streamed size",
+                ));
+            }
+            drop(file);
+            if !self.evict_if_needed(written) {
+                return Err(std::io::Error::other("playback cache budget could not be reclaimed"));
+            }
+            fs::rename(&pending, self.track_path(track_id))?;
+            Ok(written)
+        })();
+        match result {
+            Ok(size) => {
+                self.publish_quality(track_id, quality);
+                let mut state = self.state.lock().unwrap();
+                if let Some(old) = state.entries.remove(&track_id) {
+                    state.current_size = state.current_size.saturating_sub(old.size_bytes);
                 }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to stream playback cache file for track {}: {}",
-                        track_id,
-                        e
-                    );
-                    let _ = fs::remove_file(&path);
-                }
-            },
-            Err(e) => {
-                log::warn!(
-                    "Failed to create playback cache file for track {}: {}",
+                state.entries.insert(
                     track_id,
-                    e
+                    CacheEntry {
+                        track_id,
+                        size_bytes: size,
+                        last_accessed: SystemTime::now(),
+                    },
                 );
+                state.current_size += size;
+                log::info!("Saved track {track_id} to playback disk cache ({size} bytes)");
+                true
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&pending);
+                log::warn!("Failed to stream playback cache track {track_id}: {error}");
+                false
             }
         }
     }
 
     /// Evict oldest entries to make room for new data
-    fn evict_if_needed(&self, needed_bytes: u64) {
+    fn evict_if_needed(&self, needed_bytes: u64) -> bool {
         let mut state = self.state.lock().unwrap();
-
-        while state.current_size + needed_bytes > self.max_size_bytes && !state.entries.is_empty() {
-            // Find oldest entry
-            let oldest_id = state
-                .entries
-                .iter()
-                .min_by_key(|(_, e)| e.last_accessed)
-                .map(|(id, _)| *id);
-
-            if let Some(track_id) = oldest_id {
-                if let Some(entry) = state.entries.remove(&track_id) {
-                    state.current_size = state.current_size.saturating_sub(entry.size_bytes);
-
-                    // Delete file
-                    let path = self.cache_dir.join(format!("{}.audio", track_id));
-                    if let Err(e) = fs::remove_file(&path) {
-                        log::debug!("Failed to delete playback cache file: {}", e);
-                    } else {
-                        log::debug!(
-                            "Evicted track {} from playback cache ({} KB)",
-                            track_id,
-                            entry.size_bytes / 1024
-                        );
-                    }
-                }
-            } else {
+        let mut candidates: Vec<_> = state.entries.values()
+            .map(|entry| (entry.track_id, entry.last_accessed)).collect();
+        candidates.sort_by_key(|(_, accessed)| *accessed);
+        for (track_id, _) in candidates {
+            if state.current_size <= self.max_size_bytes.saturating_sub(needed_bytes) {
                 break;
             }
+            match fs::remove_file(self.track_path(track_id)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    // Keep accounting for files we failed to remove. Try the
+                    // remaining entries once, never loop on the failed oldest.
+                    log::warn!("Cannot evict playback cache track {track_id}: {error}");
+                    continue;
+                }
+            }
+            let _ = fs::remove_file(self.quality_path(track_id));
+            if let Some(entry) = state.entries.remove(&track_id) {
+                state.current_size = state.current_size.saturating_sub(entry.size_bytes);
+            }
         }
+        needed_bytes <= self.max_size_bytes
+            && state.current_size <= self.max_size_bytes - needed_bytes
     }
 
     /// Clear the entire cache
     pub fn clear(&self) {
+        let _write = self.writes.lock().unwrap();
         let mut state = self.state.lock().unwrap();
 
         for track_id in state.entries.keys() {
+            let _ = fs::remove_file(self.quality_path(*track_id));
             let path = self.cache_dir.join(format!("{}.audio", track_id));
             let _ = fs::remove_file(&path);
         }
@@ -392,4 +493,146 @@ pub struct PlaybackCacheStats {
     pub cached_tracks: usize,
     pub current_size_bytes: u64,
     pub max_size_bytes: u64,
+}
+
+#[cfg(test)]
+mod disk_reader_tests {
+    use super::*;
+
+    #[test]
+    fn failed_eviction_preserves_accounting_and_rejects_admission() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 4).unwrap();
+        assert!(cache.insert(1, b"full"));
+        fs::remove_file(cache.track_path(1)).unwrap();
+        // A directory cannot be unlinked as a cache file, even as root.
+        fs::create_dir(cache.track_path(1)).unwrap();
+        assert!(!cache.insert(2, b"new"));
+        assert_eq!(cache.stats().current_size_bytes, 4);
+        assert!(!cache.contains(2));
+        fs::remove_dir(cache.track_path(1)).unwrap();
+        assert!(cache.insert(2, b"new"));
+        assert_eq!(cache.stats().current_size_bytes, 3);
+    }
+
+    #[test]
+    fn acquisition_survives_reopen_and_cannot_attach_to_replaced_bytes() {
+        use qbz_models::Quality;
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        let quality = crate::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::UltraHiRes, 7);
+        assert!(cache.insert_with_quality(7, b"first", quality));
+        let record = fs::read(cache.quality_path(7)).unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, quality);
+        drop(cache);
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, quality);
+        assert!(cache.insert(7, b"other")); // same length, new inode
+        fs::write(cache.quality_path(7), record).unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, None);
+        fs::write(cache.quality_path(7), b"invalid metadata").unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, None);
+        let mut file = cache.open(7).unwrap();
+        let mut bytes = Vec::new(); file.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"other");
+    }
+
+    #[test]
+    fn l1_spill_keeps_acquisition_paired_with_its_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let disk = std::sync::Arc::new(PlaybackCache::with_path(temp.path().into(), 1024).unwrap());
+        let memory = crate::AudioCache::with_playback_cache(5, disk.clone());
+        let quality = crate::CacheQuality::from_acquisition(qbz_models::Quality::UltraHiRes, qbz_models::Quality::UltraHiRes, 6);
+        memory.insert_with_quality(1, b"first".to_vec(), quality);
+        assert_eq!(memory.get(1).unwrap().quality, quality);
+        memory.insert(2, b"other".to_vec());
+        assert!(memory.get(1).is_none());
+        assert_eq!(disk.open_with_quality(1).unwrap().1, quality);
+        assert_eq!(disk.get(1).unwrap(), b"first");
+    }
+
+    #[test]
+    fn successful_request_sidecar_version_controls_trust() {
+        use qbz_models::Quality;
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        let quality = crate::CacheQuality::from_acquisition(Quality::UltraHiRes, Quality::UltraHiRes, 6);
+        assert!(cache.insert_with_quality(7, b"complete audio", quality));
+        let path = cache.quality_path(7);
+        let mut record: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(record["version"], 2);
+        assert!(cache.open_with_quality(7).unwrap().1.unwrap().satisfies(Quality::UltraHiRes));
+        // Even a stray new field in an old record cannot grant new trust.
+        record["version"] = 1.into();
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+        let old = cache.open_with_quality(7).unwrap().1.unwrap();
+        assert!(!old.satisfies(Quality::UltraHiRes));
+        assert!(old.satisfies(Quality::Lossless));
+        record["version"] = 99.into();
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+        assert_eq!(cache.open_with_quality(7).unwrap().1, None);
+        assert_eq!(cache.get(7).unwrap(), b"complete audio");
+    }
+
+    #[test]
+    fn startup_enforces_reduced_budget_and_preserves_unowned_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert!(cache.insert(1, b"older"));
+        assert!(cache.insert(2, b"newer"));
+        filetime::set_file_atime(&temp.path().join("1.audio"), filetime::FileTime::from_unix_time(1, 0)).unwrap();
+        filetime::set_file_atime(&temp.path().join("2.audio"), filetime::FileTime::from_unix_time(2, 0)).unwrap();
+        fs::write(temp.path().join("offline.flac"), b"keep").unwrap();
+        drop(cache);
+        let cache = PlaybackCache::with_path(temp.path().into(), 5).unwrap();
+        assert!(!cache.contains(1));
+        assert_eq!(cache.get(2).unwrap(), b"newer");
+        assert_eq!(fs::read(temp.path().join("offline.flac")).unwrap(), b"keep");
+        drop(cache);
+        let cache = PlaybackCache::with_path(temp.path().into(), 0).unwrap();
+        assert!(!cache.contains(2));
+        assert!(temp.path().join("offline.flac").exists());
+    }
+
+    #[test]
+    fn open_reader_survives_replacement_and_eviction() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert!(cache.insert(1, b"original bytes"));
+        let mut original = cache.open(1).unwrap();
+        assert!(cache.insert_from(1, 11, |file| {
+            file.write_all(b"replacement")?;
+            Ok(11)
+        }));
+        assert_eq!(cache.get(1).unwrap(), b"replacement");
+        cache.clear();
+        let mut bytes = Vec::new();
+        original.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original bytes");
+    }
+
+    #[test]
+    fn failed_stream_write_does_not_publish_or_damage_existing_track() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 1024).unwrap();
+        assert!(cache.insert(1, b"original"));
+        assert!(!cache.insert_from(1, 10, |file| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("fixture disk failure"))
+        }));
+        assert_eq!(cache.get(1).unwrap(), b"original");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn understated_stream_size_cannot_exceed_disk_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = PlaybackCache::with_path(temp.path().into(), 8).unwrap();
+        assert!(!cache.insert_from(1, 1, |file| {
+            file.write_all(&[0; 9])?;
+            Ok(9)
+        }));
+        assert!(cache.open(1).is_none());
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+    }
 }

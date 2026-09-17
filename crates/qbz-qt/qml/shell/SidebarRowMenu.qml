@@ -89,6 +89,10 @@ QbzContextMenu {
 
     readonly property bool isFolder: root.entry !== null && root.entry.kind === "folder"
     readonly property bool isLocal: root.entry !== null && root.entry.isLocal === true
+    /// The signed-in user owns the Qobuz playlist (sidebar_qt stamps it);
+    /// a local playlist is always the user's own.
+    readonly property bool isOwner: root.entry !== null
+        && (root.entry.isLocal === true || root.entry.isOwner === true)
     readonly property string entryId: root.entry !== null ? String(root.entry.id) : ""
     readonly property string entryFolderId:
         (root.entry !== null && root.entry.folderId) ? String(root.entry.folderId) : ""
@@ -261,6 +265,19 @@ QbzContextMenu {
         }
     }
     // Divider before the move-to-folder section — Qobuz only.
+    // Delete (2026-09-13): the fast path the editor's danger button already
+    // offers, one click from the row, behind the shell-level confirmation
+    // (PlaylistDeleteConfirm.qml). Owned Qobuz playlists and local ones only;
+    // a followed playlist keeps its Unfollow elsewhere.
+    MenuRow {
+        visible: !root.isFolder && root.isOwner
+        icon: "trash-2"
+        label: QbzSession.tr("Delete playlist", QbzSession.trRev)
+        onActivated: {
+            root.close()
+            QbzPlaylistEdit.askDelete(root.entryId, String(root.entry.name))
+        }
+    }
     Item {
         visible: !root.isFolder && !root.isLocal
         width: parent ? parent.width : 0

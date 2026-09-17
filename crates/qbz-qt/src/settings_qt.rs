@@ -47,6 +47,8 @@ use serde::Serialize;
 pub mod devtools;
 pub mod import_export;
 pub mod library;
+mod appearance_profile;
+mod playback_storage;
 pub mod offline;
 
 // ---------------------------------------------------------------------------
@@ -94,6 +96,14 @@ fn with_audio<T>(f: impl FnOnce(&AudioSettingsStore) -> Result<T, String>) -> Re
 /// enumeration + integrations) and is far too heavy for a track change.
 pub fn audio_settings() -> qbz_audio::settings::AudioSettings {
     with_audio(|s| s.get_settings()).unwrap_or_default()
+}
+
+/// Remote control cannot assume a software mixer when settings are unavailable.
+/// Keep this policy shared by capability advertisement and inbound execution.
+pub fn allows_remote_volume() -> bool {
+    with_audio(|store| store.get_settings())
+        .map(|settings| !crate::output_labels::volume_locked(&settings))
+        .unwrap_or(false)
 }
 
 /// Re-probe the local output device and refresh the #638 fix-3 cap cache.
@@ -663,6 +673,30 @@ pub fn app_background_mode() -> i32 {
         .unwrap_or(0) as i32
 }
 
+/// The Wallpaper mode's blur, in MultiEffect's own units: Qt documents
+/// `blur` from 0.0 (no blur) to 1.0 (full blur), reached at the field's
+/// `blurMax` of 64 (shell/WallpaperField.qml). 0.75 is the look the mode
+/// shipped with and stays the default; Settings > Appearance edits it as
+/// 0-100 %.
+pub const WALLPAPER_BLUR_DEFAULT: f32 = 0.75;
+
+pub fn wallpaper_blur() -> f32 {
+    clamp_wallpaper_blur(pref_f32("wallpaper_blur", WALLPAPER_BLUR_DEFAULT))
+}
+
+/// Qt's range, whatever a hand-edited ui_prefs.json holds; NaN is the default.
+fn clamp_wallpaper_blur(value: f32) -> f32 {
+    if value.is_nan() {
+        return WALLPAPER_BLUR_DEFAULT;
+    }
+    value.clamp(0.0, 1.0)
+}
+
+/// The Settings slider's 0-100 % step as the stored Qt value.
+fn wallpaper_blur_from_percent(percent: i32) -> f32 {
+    percent.clamp(0, 100) as f32 / 100.0
+}
+
 /// Live-tuning knobs (Slint AppearanceState defaults; the QBZ_BG_* envs are
 /// the same dev knobs the Slint seeds at startup).
 pub fn ambient_dim() -> f32 {
@@ -776,6 +810,34 @@ pub fn ambient_bar_alpha() -> f32 {
 /// Same one-document rule as `toggle_system_title_bar`: the current key is
 /// read inside the write closure, so a torn read can no longer make the app
 /// commit "ambient" over a user who had just turned it off (or the reverse).
+/// Settings > Appearance > Background image > "Choose image…": the user's
+/// own picture behind the wallpaper modes, outranking the desktop's.
+pub fn pick_background_image() {
+    crate::spawn(async {
+        let Some(file) = rfd::AsyncFileDialog::new()
+            .set_title(qbz_i18n::t("Background image"))
+            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "avif"])
+            .pick_file()
+            .await
+        else {
+            return;
+        };
+        let path = file.path().to_string_lossy().to_string();
+        save_pref("app_background_image", serde_json::json!(path));
+        publish_snapshot().await;
+        crate::wallpaper_qt::refresh();
+    });
+}
+
+/// "System wallpaper": drop the user's own picture.
+pub fn clear_background_image() {
+    save_pref("app_background_image", serde_json::json!(""));
+    crate::spawn(async {
+        publish_snapshot().await;
+        crate::wallpaper_qt::refresh();
+    });
+}
+
 pub fn toggle_ambient_background() -> i32 {
     edit_prefs(|doc| {
         let current = doc
@@ -1500,6 +1562,9 @@ pub(crate) fn read_pref(key: &str) -> Option<serde_json::Value> {
 /// atomic rename and its refusal to rebuild an unparsable document.
 pub fn save_pref(key: &str, value: serde_json::Value) {
     update_prefs(|doc| {
+        if appearance_profile::managed(key) && doc.get(key) != Some(&value) {
+            doc.insert("appearance_profile".into(), serde_json::json!("custom"));
+        }
         doc.insert(key.to_string(), value);
         true
     });
@@ -1595,6 +1660,21 @@ fn save_myqbz_label(label: &str) {
 pub const STREAMING_QUALITY_KEYS: &[&str] = &["mp3", "cd", "hires", "hires_plus"];
 pub const STREAMING_QUALITY_LABELS: &[&str] = &["MP3", "CD Quality", "Hi-Res", "Hi-Res+"];
 
+/// Target loudness presets (label msgid, LUFS). Index 1 is the store default.
+pub(crate) const NORMALIZATION_TARGETS: &[(&str, f32)] = &[
+    ("-11 LUFS · Loud", -11.0),
+    ("-14 LUFS · Streaming (default)", -14.0),
+    ("-16 LUFS · Apple Music", -16.0),
+    ("-18 LUFS · ReplayGain", -18.0),
+    ("-23 LUFS · Broadcast (EBU R128)", -23.0),
+];
+
+fn normalization_target_index(lufs: f32) -> Option<usize> {
+    NORMALIZATION_TARGETS
+        .iter()
+        .position(|(_, v)| (v - lufs).abs() < 0.01)
+}
+
 // ---------------------------------------------------------------------------
 // Snapshot
 // ---------------------------------------------------------------------------
@@ -1623,8 +1703,10 @@ const QCONNECT_CONFLICT_POLICY_LABELS: &[&str] = &[
     "Continue local playback and replace the Qobuz Connect queue",
 ];
 // Appearance option tables (AppearanceSettings.slint / ui_prefs.rs).
-const APP_BACKGROUND_LABELS: &[&str] = &["Off", "Ambient", "Blurred art"];
-const APP_BACKGROUND_VALUES: &[&str] = &["off", "ambient", "blurred"];
+// 3 and 4 paint the desktop wallpaper (wallpaper_qt.rs): behind the window,
+// or through the Blurred-art atmosphere pass.
+const APP_BACKGROUND_LABELS: &[&str] = &["Off", "Ambient", "Blurred art", "Wallpaper", "Wallpaper, blurred"];
+const APP_BACKGROUND_VALUES: &[&str] = &["off", "ambient", "blurred", "wallpaper", "wallpaper-blurred"];
 const LANGUAGE_LABELS: &[&str] = &[
     "Auto",
     "English",
@@ -2079,6 +2161,15 @@ pub struct SettingsDoc {
     /// Settable via settingsBool("normalization", …) but never published
     /// back, so both now-playing bars had to shadow the toggle locally.
     pub normalization: bool,
+    /// Target loudness presets (translated labels) + the selected index; a
+    /// value outside the presets (qbzd CLI, an import) shows as a trailing
+    /// "Custom (N LUFS)" entry rather than being silently re-mapped.
+    #[serde(rename = "normalizationTargets")]
+    pub normalization_targets: Vec<String>,
+    #[serde(rename = "normalizationTargetIndex")]
+    pub normalization_target_index: i32,
+    #[serde(rename = "normalizationPreventClipping")]
+    pub normalization_prevent_clipping: bool,
     #[serde(rename = "persistSession")]
     pub persist_session: bool,
     #[serde(rename = "resumePosition")]
@@ -2089,6 +2180,18 @@ pub struct SettingsDoc {
     pub buffer_seconds: i32,
     #[serde(rename = "streamingOnly")]
     pub streaming_only: bool,
+    #[serde(rename = "playbackCache")]
+    pub playback_cache: qbz_models::playback_cache::PlaybackCacheSettings,
+    #[serde(rename = "playbackMemoryProfile")]
+    pub playback_memory_profile: String,
+    #[serde(rename = "appearanceProfile")]
+    pub appearance_profile: String,
+    #[serde(rename = "playbackMemoryApplyBusy")]
+    pub playback_memory_apply_busy: bool,
+    #[serde(rename = "playbackStorage")]
+    pub playback_storage: playback_storage::Snapshot,
+    #[serde(rename = "playbackCacheUsage")]
+    pub playback_cache_usage: Option<qbz_cache::CacheStats>,
     #[serde(rename = "retryBehaviors")]
     pub retry_behaviors: Vec<String>,
     #[serde(rename = "retryBehaviorIndex")]
@@ -2114,6 +2217,18 @@ pub struct SettingsDoc {
     pub app_background_modes: Vec<String>,
     #[serde(rename = "appBackgroundIndex")]
     pub app_background_index: i32,
+    /// The user's own background image ("" = the desktop wallpaper).
+    #[serde(rename = "appBackgroundImage")]
+    pub app_background_image: String,
+    /// Persisted fieldset state of the Appearance > Theme groups (default
+    /// expanded): the Custom theme editor, the Auto theme rows, and the
+    /// options of the selected dynamic background.
+    #[serde(rename = "themeCustomCollapsed")]
+    pub theme_custom_collapsed: bool,
+    #[serde(rename = "themeAutoCollapsed")]
+    pub theme_auto_collapsed: bool,
+    #[serde(rename = "ambientOptionsCollapsed")]
+    pub ambient_options_collapsed: bool,
     #[serde(rename = "autoThemeSources")]
     pub auto_theme_sources: Vec<String>,
     #[serde(rename = "autoThemeSourceIndex")]
@@ -2179,6 +2294,8 @@ pub struct SettingsDoc {
     pub library_track_artwork: bool,
     #[serde(rename = "localLibraryTrackArtwork")]
     pub local_library_track_artwork: bool,
+    #[serde(rename = "showFeaturedArtists")]
+    pub show_featured_artists: bool,
     #[serde(rename = "playIndicatorAnimation")]
     pub play_indicator_animation: bool,
     #[serde(rename = "seekbarWaveform")]
@@ -2201,6 +2318,8 @@ pub struct SettingsDoc {
     pub wc_position_index: i32,
     #[serde(rename = "showWindowControls")]
     pub show_window_controls: bool,
+    #[serde(rename = "showSkipTen")]
+    pub show_skip_ten: bool,
     #[serde(rename = "showVolumeSteppers")]
     pub show_volume_steppers: bool,
     #[serde(rename = "miniDefaultViews")]
@@ -2213,8 +2332,6 @@ pub struct SettingsDoc {
     pub startup_page_index: i32,
     #[serde(rename = "showPurchases")]
     pub show_purchases: bool,
-    #[serde(rename = "navTbPurchases")]
-    pub nav_tb_purchases: bool,
     /// Opt-in: a click on a top-level section row (Discover / Library / Local
     /// Library / My QBZ) also NAVIGATES, landing on that section's first entry.
     /// Off by default, which is the behaviour that shipped: a click only opens
@@ -2613,11 +2730,35 @@ pub async fn publish_snapshot() {
             show_context_icon: prefs.show_context_icon,
             gapless: audio_settings.gapless_enabled,
             normalization: audio_settings.normalization_enabled,
+            normalization_targets: {
+                let mut v: Vec<String> = NORMALIZATION_TARGETS
+                    .iter()
+                    .map(|(l, _)| qbz_i18n::t(l))
+                    .collect();
+                if normalization_target_index(audio_settings.normalization_target_lufs).is_none() {
+                    v.push(qbz_i18n::t_args(
+                        "Custom ({} LUFS)",
+                        &[&format!("{:.0}", audio_settings.normalization_target_lufs)],
+                    ));
+                }
+                v
+            },
+            normalization_target_index: normalization_target_index(
+                audio_settings.normalization_target_lufs,
+            )
+            .unwrap_or(NORMALIZATION_TARGETS.len()) as i32,
+            normalization_prevent_clipping: audio_settings.normalization_prevent_clipping,
             persist_session: prefs.persist_session,
             resume_position: prefs.resume_playback_position,
             stream_uncached: audio_settings.stream_first_track,
             buffer_seconds: audio_settings.stream_buffer_seconds as i32,
             streaming_only: audio_settings.streaming_only,
+            playback_cache: audio_settings.playback_cache.clone(),
+            playback_memory_profile: audio_settings.playback_cache.selected_profile().as_str().into(),
+            appearance_profile: appearance_profile::selected(),
+            playback_memory_apply_busy: crate::playback_qt::memory_apply_busy(),
+            playback_storage: playback_storage::snapshot(),
+            playback_cache_usage: crate::APP.get().map(|r| r.core().player().playback_cache_stats()),
             retry_behaviors: RETRY_BEHAVIOR_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -2647,6 +2788,10 @@ pub async fn publish_snapshot() {
                 .iter()
                 .position(|v| *v == pref_str("app_background", "off"))
                 .unwrap_or(0) as i32,
+            app_background_image: pref_str("app_background_image", ""),
+            theme_custom_collapsed: pref_bool("theme_custom_collapsed", false),
+            theme_auto_collapsed: pref_bool("theme_auto_collapsed", false),
+            ambient_options_collapsed: pref_bool("ambient_options_collapsed", false),
             auto_theme_sources: AUTO_THEME_SOURCE_LABELS
                 .iter()
                 .map(|l| qbz_i18n::t(l))
@@ -2716,6 +2861,7 @@ pub async fn publish_snapshot() {
             library_track_artwork: pref_bool("library_track_artwork", false),
             local_library_track_artwork: pref_bool("local_library_track_artwork", false),
             play_indicator_animation: pref_bool("play_indicator_animation", false),
+            show_featured_artists: pref_bool("show_featured_artists", true),
             seekbar_waveform: seekbar_waveform(),
             invert_swipe_navigation: pref_bool("invert_swipe_navigation", false),
             in_app_toasts: pref_bool("in_app_toasts", true),
@@ -2727,6 +2873,7 @@ pub async fn publish_snapshot() {
             wc_position_index: index_of(WC_POSITION_VALUES, &pref_str("wc_position", "right"), 1),
             show_window_controls: pref_bool("show_window_controls", true),
             show_volume_steppers: pref_bool("show_volume_steppers", false),
+            show_skip_ten: pref_bool("show_skip_ten", false),
             mini_default_views: MINI_VIEW_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             mini_default_view_index: index_of(
                 MINI_VIEW_VALUES,
@@ -2736,7 +2883,6 @@ pub async fn publish_snapshot() {
             startup_pages: STARTUP_PAGE_LABELS.iter().map(|l| qbz_i18n::t(l)).collect(),
             startup_page_index: index_of(STARTUP_PAGE_VALUES, &pref_str("startup_page", "home"), 0),
             show_purchases: pref_bool("show_purchases", false),
-            nav_tb_purchases: pref_bool("nav_tb_purchases", false),
             nav_click_first_tab: pref_bool("nav_click_first_tab", false),
             local_tab_order: local_tab_order(),
             genre_filters_position: local_genre_filters_position(),
@@ -3124,6 +3270,13 @@ fn apply_audio_with_owner(runtime: &Arc<AppRuntime<LoggingAdapter>>, apply: Appl
         }
     }
     log::info!("[qbz-qt] audio settings applied to player (reinit={reinit})");
+    if let Some(service) = crate::qconnect_qt::service() {
+        crate::spawn(async move {
+            if let Err(error) = service.report_device_info().await {
+                log::warn!("[QConnect] output capabilities update failed: {error}");
+            }
+        });
+    }
     // Republish the document. Without this a change made from the now-playing
     // bars' audio flyout persisted and took effect but NEVER reached the QML,
     // so the flyout's own switch snapped back to the stale value the next time
@@ -3417,6 +3570,12 @@ pub(crate) async fn reconcile_alsa_hardware_volume(
 // ---------------------------------------------------------------------------
 
 pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str, value: bool) {
+    if key == "playback-cache-dynamic" {
+        update_playback_cache(|p| { p.make_custom(); p.dynamic = value; Ok(()) });
+        publish_snapshot().await;
+        return;
+    }
+
     // Hardware-volume toggles can await a physical mixer write, seed the live
     // Player and reinitialize its output. Admit before the first persistence or
     // cascade so a rejected delegated action is a complete no-op.
@@ -3439,11 +3598,6 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         }
         "dac-passthrough" => {
             if with_audio(|s| s.set_pw_force_bitperfect(false)).is_ok() {
-                cascaded = true;
-            }
-        }
-        "streaming-only" if value => {
-            if with_audio(|s| s.set_gapless_enabled(false)).is_ok() {
                 cascaded = true;
             }
         }
@@ -3473,6 +3627,9 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "gapless" => with_audio(|s| s.set_gapless_enabled(value)).map(|_| Apply::Reload),
         "normalization" => {
             with_audio(|s| s.set_normalization_enabled(value)).map(|_| Apply::Reload)
+        }
+        "normalization-prevent-clipping" => {
+            with_audio(|s| s.set_normalization_prevent_clipping(value)).map(|_| Apply::Reload)
         }
         "stream-uncached" => with_audio(|s| s.set_stream_first_track(value)).map(|_| Apply::Reload),
         "streaming-only" => with_audio(|s| s.set_streaming_only(value)).map(|_| Apply::Reload),
@@ -3583,6 +3740,19 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             save_pref("myqbz_collections_collapsed", serde_json::json!(value));
             Ok(Apply::None)
         }
+        // Appearance > Theme fieldsets, read back from settingsJson.
+        "theme-custom-collapsed" => {
+            save_pref("theme_custom_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "theme-auto-collapsed" => {
+            save_pref("theme_auto_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
+        "ambient-options-collapsed" => {
+            save_pref("ambient_options_collapsed", serde_json::json!(value));
+            Ok(Apply::None)
+        }
         "sidebar-playlist-collage" => {
             save_pref("sidebar_playlist_collage", serde_json::json!(value));
             // LIVE: the sidebar rows swap collage <-> list-music glyph off the
@@ -3607,6 +3777,10 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             // Republish so the local lists repaint live; the bridge property is
             // read at boot otherwise and the toggle would need a restart.
             crate::local_album_actions::publish_track_artwork();
+            Ok(Apply::None)
+        }
+        "show-featured-artists" => {
+            save_pref("show_featured_artists", serde_json::json!(value));
             Ok(Apply::None)
         }
         "play-indicator-animation" => {
@@ -3663,16 +3837,19 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
             crate::shell_bridge::ui(move |mut b| b.as_mut().set_show_window_controls(value));
             Ok(Apply::None)
         }
+        "show-skip-ten" => {
+            save_pref("show_skip_ten", serde_json::json!(value));
+            // Live mirror on the domain bridge (the §5.6 pattern): the bar
+            // reads QbzPlayer.showSkipTen, not the settings document.
+            crate::player_bridge::ui(move |mut b| b.as_mut().set_show_skip_ten(value));
+            Ok(Apply::None)
+        }
         "show-volume-steppers" => {
             save_pref("show_volume_steppers", serde_json::json!(value));
             Ok(Apply::None)
         }
         "show-purchases" => {
             save_pref("show_purchases", serde_json::json!(value));
-            Ok(Apply::None)
-        }
-        "nav-tb-purchases" => {
-            save_pref("nav_tb_purchases", serde_json::json!(value));
             Ok(Apply::None)
         }
         // Read by BOTH nav hosts off `settingsJson` (shell/NavFlyout.qml), so
@@ -3715,7 +3892,12 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "tray-mac-hide-dock" => tray()
             .set_mac_hide_dock(value)
             .map_err(|e| e.to_string())
-            .map(|_| Apply::None),
+            .map(|_| {
+                crate::tray_bridge::ui(|t| {
+                    crate::tray_qt::refresh_mac_dock_policy(*t.as_ref().tray_live());
+                });
+                Apply::None
+            }),
         // --- Integrations (phase 19) --------------------------------------
         "show-recommendations" => {
             crate::integrations_qt::set_show_recommendations(value).map(|_| Apply::None)
@@ -3993,6 +4175,8 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
                 // release and raced its own re-enumeration.
                 if let Err(error) = release_output_device_with_owner(runtime).await {
                     report_release_failure(&error);
+                    publish_snapshot().await;
+                    return;
                 }
             }
             if let Err(e) = with_audio(|s| s.set_backend_type(Some(backend))) {
@@ -4106,6 +4290,16 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             }
             apply_audio(runtime, Apply::Reload);
         }
+        "normalization-target" => {
+            let Some((_, lufs)) = NORMALIZATION_TARGETS.get(index) else {
+                return; // the trailing "Custom" entry is display-only
+            };
+            if let Err(e) = with_audio(|s| s.set_normalization_target_lufs(*lufs)) {
+                log::error!("[qbz-qt] persist normalization target failed: {e}");
+                return;
+            }
+            apply_audio(runtime, Apply::Reload);
+        }
         "qconnect-startup" => {
             let Some(mode) = QCONNECT_STARTUP_VALUES.get(index) else {
                 return;
@@ -4136,6 +4330,8 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
             // ImmersiveAtmosphere for 2, exactly like AppShell.slint:213-231).
             let ambient = index as i32;
             crate::shell_bridge::ui(move |mut b| b.as_mut().set_ambient_mode(ambient));
+            // The wallpaper modes need their image (a no-op for the others).
+            crate::wallpaper_qt::refresh();
         }
         "language" => {
             let Some(lang) = LANGUAGE_VALUES.get(index) else {
@@ -4205,6 +4401,14 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
                 return;
             };
             save_pref("startup_page", serde_json::json!(v));
+        }
+        "image-cache-max" => {
+            let Some(mb) = offline::IMAGE_CACHE_MB.get(index) else {
+                return;
+            };
+            save_pref("image_cache_max_mb", serde_json::json!(mb));
+            // A smaller budget applies right away, not at the next boot.
+            crate::artwork_qt::trim_shared_now();
         }
         "genre-filters-position" => {
             let Some(v) = LOCAL_GENRE_FILTER_POSITION_VALUES.get(index) else {
@@ -4276,6 +4480,15 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
 }
 
 pub async fn settings_slider(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str, value: i32) {
+    if key == "wallpaper-blur" {
+        // Persisted on the slider's release; the drag itself already moved
+        // QbzShell.wallpaperBlur for the live preview.
+        let blur = wallpaper_blur_from_percent(value);
+        // Written from the whole percent as f64: an f32 widened on the way to
+        // JSON would store 0.62 as 0.6200000047683716.
+        save_pref("wallpaper_blur", serde_json::json!(f64::from(value.clamp(0, 100)) / 100.0));
+        crate::shell_bridge::ui(move |mut b| b.as_mut().set_wallpaper_blur(blur));
+    }
     if key == "buffer-seconds" {
         let seconds = value.clamp(1, 10) as u8;
         match with_audio(|s| s.set_stream_buffer_seconds(seconds)) {
@@ -4286,12 +4499,56 @@ pub async fn settings_slider(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
     publish_snapshot().await;
 }
 
+fn update_playback_cache(change: impl FnOnce(&mut qbz_models::playback_cache::PlaybackCacheSettings) -> Result<(), String>) {
+    let result = with_audio(|store| {
+        let mut settings = store.get_settings()?;
+        change(&mut settings.playback_cache)?;
+        store.set_playback_cache(&settings.playback_cache)?;
+        if let Some(runtime) = crate::APP.get() {
+            runtime.core().player().configure_playback_cache(settings.playback_cache)?;
+        }
+        Ok(())
+    });
+    if let Err(error) = result {
+        log::warn!("Playback cache setting rejected: {error}");
+        crate::toast_qt::error(qbz_i18n::t(&error));
+    }
+}
+
 /// String-payload handler. Also the ACTION channel for the sections whose
 /// affordances are buttons rather than settings (Local Library folders and
 /// scans, the caches, the developer tools): the payload is the action's
 /// argument ("" when it takes none).
 pub async fn settings_string(key: &str, value: String) {
     match key {
+        "playback-memory-profile" => update_playback_cache(|policy| {
+            policy.select_profile(qbz_models::playback_cache::PlaybackMemoryProfile::parse(&value)?);
+            Ok(())
+        }),
+        "playback-cache-min" | "playback-cache-max" => {
+            update_playback_cache(|policy| {
+                let limit = if value.trim().is_empty() { None } else {
+                    Some(value.trim().parse::<u32>().map_err(|_| "Playback cache limits must be between 16 and 16384 MiB".to_string())?)
+                };
+                policy.make_custom();
+                if key == "playback-cache-min" { policy.min_mib = limit; } else { policy.max_mib = limit; }
+                Ok(())
+            });
+        }
+        "playback-cache-reset" => update_playback_cache(|policy| {
+            policy.select_profile(qbz_models::playback_cache::PlaybackMemoryProfile::Auto); Ok(())
+        }),
+        "playback-cache-refresh" => {},
+        "appearance-profile" => appearance_profile::apply(&value),
+        "playback-storage-folder" => playback_storage::set(value).await,
+        "playback-storage-browse" => playback_storage::browse().await,
+        "playback-cache-apply" => {
+            if let Err(error) = crate::playback_qt::apply_playback_memory(&value).await {
+                log::warn!("[playback-memory] Apply failed: {error}");
+                crate::toast_qt::error(qbz_i18n::t(&error));
+            }
+        },
+
         "qconnect-device-name" => {
             let trimmed = value.trim().to_string();
             let stored = (!trimmed.is_empty()).then_some(trimmed);
@@ -4411,8 +4668,7 @@ pub async fn settings_string(key: &str, value: String) {
             crate::nav_qt::record("libraryfolders");
         }
         "library-pick-folder" => {
-            // Native chooser, then the SAME add path as the typed field —
-            // the picker only supplies the string.
+            // Native chooser fills the field; Add confirms registration.
             library::pick_and_add_folder().await;
         }
         "library-remove-folders" => {
@@ -4449,6 +4705,7 @@ pub async fn settings_string(key: &str, value: String) {
         "plex-clear-cache" => library::plex_clear_cache().await,
         // --- Offline --------------------------------------------------------
         "lyrics-cache-clear" => offline::clear_lyrics_cache().await,
+        "image-cache-clear" => offline::clear_image_cache().await,
         // Offline > "Check now": nudge the connectivity actor. The status it
         // publishes flows back through offline_fwd's forwarder, so there is
         // nothing to await and nothing to republish here.
@@ -4475,6 +4732,10 @@ pub async fn settings_reset(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     let Some(_owner_action) = begin_audio_owner_action("reset live audio settings", false) else {
         return;
     };
+    if let Err(error) = release_output_device_with_owner(runtime).await {
+        report_release_failure(&error);
+        return;
+    }
     if let Err(e) = with_audio(|s| s.reset_all().map(|_| ())) {
         log::error!("[qbz-qt] audio settings reset failed: {e}");
     }
@@ -4507,6 +4768,9 @@ pub async fn refresh_devices(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     if let Err(error) = release_output_device_with_owner(runtime).await {
         report_release_failure(&error);
     }
+    // As in Slint's release button, allow WirePlumber to recreate the sink
+    // after PCM/reservation release before publishing the fresh device list.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     invalidate_device_cache();
     // #638 fix 3, trigger 6 — Qt-only, and the easiest of the six to miss.
     // This button exists precisely for hotplug: the hardware behind the
@@ -4706,8 +4970,67 @@ mod local_tab_order_tests {
 }
 
 #[cfg(test)]
+mod wallpaper_blur_tests {
+    use super::*;
+
+    #[test]
+    fn the_slider_percent_maps_onto_qts_blur_range() {
+        assert_eq!(wallpaper_blur_from_percent(0), 0.0);
+        assert_eq!(wallpaper_blur_from_percent(75), 0.75);
+        assert_eq!(wallpaper_blur_from_percent(100), 1.0);
+        assert_eq!(wallpaper_blur_from_percent(-20), 0.0);
+        assert_eq!(wallpaper_blur_from_percent(250), 1.0);
+    }
+
+    #[test]
+    fn a_hand_edited_value_is_held_to_qts_range() {
+        assert_eq!(clamp_wallpaper_blur(1.7), 1.0);
+        assert_eq!(clamp_wallpaper_blur(-0.2), 0.0);
+        assert_eq!(clamp_wallpaper_blur(0.4), 0.4);
+        assert_eq!(clamp_wallpaper_blur(f32::NAN), WALLPAPER_BLUR_DEFAULT);
+    }
+}
+
+#[cfg(test)]
+mod theme_fieldset_doc_tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_document_names_the_fieldset_states_for_qml() {
+        let doc = SettingsDoc {
+            theme_custom_collapsed: true,
+            ambient_options_collapsed: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&doc).expect("settings document serializes");
+        assert_eq!(json["themeCustomCollapsed"], true);
+        assert_eq!(json["themeAutoCollapsed"], false);
+        assert_eq!(json["ambientOptionsCollapsed"], true);
+    }
+}
+
+#[cfg(test)]
 mod exclusive_gate_tests {
     use super::*;
+
+    #[test]
+    fn memory_and_appearance_documents_use_the_qml_field_names() {
+        let doc = SettingsDoc {
+            playback_memory_profile: "low".into(),
+            appearance_profile: "custom".into(),
+            playback_memory_apply_busy: true,
+            playback_storage: playback_storage::Snapshot {
+                candidate: "/mnt/music".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_value(doc).unwrap();
+        assert_eq!(json["playbackMemoryProfile"], "low");
+        assert_eq!(json["appearanceProfile"], "custom");
+        assert_eq!(json["playbackMemoryApplyBusy"], true);
+        assert_eq!(json["playbackStorage"]["candidate"], "/mnt/music");
+    }
 
     #[test]
     fn settings_doc_publishes_backend_is_coreaudio_under_the_name_qml_reads() {

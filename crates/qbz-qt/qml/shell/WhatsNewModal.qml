@@ -39,6 +39,7 @@
 // No pills (ADR-008): the TOC chips are bordered radiusSm rows.
 
 import QtQuick
+import QtQuick.Window
 import com.blitzfc.qbz
 import "../theme"
 
@@ -53,6 +54,25 @@ Item {
         }
     }
 
+    // ── THE DECK ───────────────────────────────────────────────────────────
+    //
+    // `doc.deck` is the version's curated cards (whats_new_qt.rs `deck_for`),
+    // empty for a version that has none. The release-notes body this file has
+    // always rendered becomes the LAST card, so nothing is lost and a version
+    // without a deck opens straight into it, exactly as before.
+    //
+    // Card changes are INSTANT on purpose. Qt Quick has no partial redraws, so
+    // a continuous transition would present the whole window every frame for
+    // its duration (the shell's GPU bill is presents/s); the repaint-pulse
+    // contract keeps continuous motion on QbzShell.pulseMs, and a modal that
+    // is open for ten seconds does not earn an exception. There is also no
+    // auto-advance timer, for the same reason.
+    readonly property var deck: root.doc.deck || []
+    property int cardIndex: 0
+    readonly property bool showingNotes: root.deck.length === 0 || root.cardIndex >= root.deck.length
+    readonly property int cardCount: root.deck.length + 1
+    readonly property var card: root.showingNotes ? null : root.deck[root.cardIndex]
+
     anchors.fill: parent
     z: 3000
     visible: root.doc.open === true
@@ -61,14 +81,41 @@ Item {
     QbzTheme { id: theme }
 
     onVisibleChanged: {
-        if (visible)
+        if (visible) {
+            root.cardIndex = 0
             keyScope.forceActiveFocus()
+        }
     }
 
     FocusScope {
         id: keyScope
         anchors.fill: parent
         Keys.onEscapePressed: QbzAbout.whatsNewClose()
+        Keys.onLeftPressed: root.goBack()
+        Keys.onRightPressed: root.goNext()
+    }
+
+    function goBack() {
+        if (root.cardIndex > 0)
+            root.cardIndex -= 1
+    }
+
+    function goNext() {
+        if (root.cardIndex < root.cardCount - 1)
+            root.cardIndex += 1
+        else
+            QbzAbout.whatsNewClose()
+    }
+
+    // A card's button lands the user ON the setting it just described. The
+    // section is applied through the bridge and never by assigning
+    // SettingsView.section, which would destroy that binding (see the note in
+    // SettingsView.qml); -1 opens Settings without choosing a section.
+    function openCardTarget(section) {
+        QbzAbout.whatsNewClose()
+        if (section >= 0)
+            QbzBridge.settingsSetSection(section)
+        QbzShell.navigateTo("settings")
     }
 
     Rectangle {
@@ -95,8 +142,14 @@ Item {
     Rectangle {
         id: panel
         anchors.centerIn: parent
-        // 820x700 capped, minus an 80px window margin — WhatsNewModal.slint:36-37.
-        width: Math.min(root.width - 80, 820)
+        // 700 tall capped, minus an 80px window margin — WhatsNewModal.slint:36-37.
+        // WIDER than the Slint original's 820: the card art is 16:9 and the
+        // image covers its box (PreserveAspectCrop), so at 820 the box sat at
+        // ~1.34 and Qt cropped roughly a quarter of the frame's width — taking
+        // with it what the right edge of a screenshot is there to show (the
+        // renderer name on the iOS capture). At 1040 the box lands near 1.72
+        // and the crop all but disappears.
+        width: Math.min(root.width - 80, 1040)
         height: Math.min(root.height - 80, 700)
         radius: theme.radiusMd
         color: theme.surfaceCard
@@ -132,6 +185,12 @@ Item {
                         if (v === "")
                             return QbzSession.tr("What's new", QbzSession.trRev)
                         var d = root.doc.date || ""
+                        // `date` is the release's civil date as written
+                        // (YYYY-MM-DD); render it in the user's locale.
+                        var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
+                        if (m)
+                            d = Qt.formatDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+                                              Locale.LongFormat)
                         return QbzSession.tr("What's new in v{}", QbzSession.trRev).replace("{}", v)
                             + (d === "" ? "" : " (" + d + ")")
                     }
@@ -173,10 +232,118 @@ Item {
                 anchors.bottom: footerRow.top
                 anchors.bottomMargin: 16
 
+                // ---- The deck's card -------------------------------------
+                Item {
+                    id: cardBox
+                    anchors.fill: parent
+                    visible: !root.showingNotes
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: theme.radiusSm
+                        color: theme.surfaceElevated
+                        clip: true
+
+                        Image {
+                            id: cardArt
+                            anchors.fill: parent
+                            source: root.card ? root.card.image : ""
+                            // The art is 1600x900 (@2x of the card box); ask
+                            // for the painted size so the decoded pixmap is
+                            // not held at twice the memory it needs.
+                            sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+                            sourceSize.height: Math.round(height * Screen.devicePixelRatio)
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: true
+                        }
+
+                        // The scrim is painted HERE and not baked into the
+                        // artwork: one set of images then reads correctly in
+                        // both themes, and the text keeps its contrast even
+                        // where a card's left half is lighter than planned.
+                        // The art brief reserves that half for exactly this.
+                        Rectangle {
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.88) }
+                                GradientStop { position: 0.48; color: Qt.rgba(0, 0, 0, 0.62) }
+                                GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.12) }
+                            }
+                        }
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 28
+                            anchors.right: parent.horizontalCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+
+                            Text {
+                                text: QbzSession.tr("New in {}", QbzSession.trRev)
+                                    .replace("{}", root.doc.version || "")
+                                color: theme.accent
+                                font.pixelSize: 11
+                                font.weight: theme.weightBold
+                                font.letterSpacing: 1.2
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: root.card ? root.card.title : ""
+                                color: "#ffffff"
+                                font.pixelSize: 26
+                                font.weight: theme.weightBold
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                width: parent.width
+                                text: root.card ? root.card.body : ""
+                                // Not theme.textSecondary: this sits on the
+                                // artwork, not on a themed surface.
+                                color: Qt.rgba(1, 1, 1, 0.82)
+                                font.pixelSize: 14
+                                lineHeight: 1.35
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Item { width: 1; height: 4; visible: cardAction.visible }
+
+                            Rectangle {
+                                id: cardAction
+                                visible: root.card !== null && (root.card.actionLabel || "") !== ""
+                                height: 34
+                                width: cardActionLabel.implicitWidth + 32
+                                radius: theme.radiusSm
+                                color: cardActionArea.containsMouse ? theme.accentHover : theme.accent
+                                Text {
+                                    id: cardActionLabel
+                                    anchors.centerIn: parent
+                                    text: root.card ? (root.card.actionLabel || "") : ""
+                                    color: theme.accentGlyphColor
+                                    font.pixelSize: 13
+                                    font.weight: theme.weightMedium
+                                }
+                                MouseArea {
+                                    id: cardActionArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.openCardTarget(
+                                        root.card ? (root.card.actionSection === undefined
+                                            ? -1 : root.card.actionSection) : -1)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Loading state.
                 Text {
                     anchors.centerIn: parent
-                    visible: root.doc.loading === true
+                    visible: root.showingNotes && root.doc.loading === true
                     text: QbzSession.tr("Loading…", QbzSession.trRev)
                     color: theme.textMuted
                     font.pixelSize: theme.fontBody
@@ -187,7 +354,7 @@ Item {
                 // prerelease tag (whats_new_qt.rs), by design.
                 Text {
                     anchors.centerIn: parent
-                    visible: root.doc.loading !== true && root.doc.hasBody !== true
+                    visible: root.showingNotes && root.doc.loading !== true && root.doc.hasBody !== true
                     width: Math.min(parent.width, 360)
                     text: QbzSession.tr("Release notes are not available.", QbzSession.trRev)
                     color: theme.textMuted
@@ -200,7 +367,7 @@ Item {
                 Flickable {
                     id: flick
                     anchors.fill: parent
-                    visible: root.doc.loading !== true && root.doc.hasBody === true
+                    visible: root.showingNotes && root.doc.loading !== true && root.doc.hasBody === true
                     clip: true
                     contentWidth: width
                     contentHeight: bodyCol.height
@@ -208,7 +375,13 @@ Item {
 
                     Column {
                         id: bodyCol
-                        width: flick.width
+                        // The panel widened for the card art (see `panel`),
+                        // and release notes are prose: a line that spans the
+                        // whole 1040 is measurably harder to read than the
+                        // same text at a book measure. Cap the column and
+                        // centre it; narrow windows keep the full width.
+                        width: Math.min(flick.width, 720)
+                        x: Math.round((flick.width - width) / 2)
 
                         // ---- TOC: the level-0 headings as a bordered index.
                         // Stacked, not wrapped, and NOT clickable — see the
@@ -333,7 +506,7 @@ Item {
                 }
             }
 
-            // ---- Footer: the accent Close button ----------------------
+            // ---- Footer: dots, Back, and the accent Next/Close --------
             Item {
                 id: footerRow
                 anchors.bottom: parent.bottom
@@ -341,7 +514,63 @@ Item {
                 anchors.right: parent.right
                 height: 36
 
+                // Position dots. Bordered circles, not filled pills: the
+                // inactive ones read as an outline, ADR-008 untouched.
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 7
+                    visible: root.deck.length > 0
+
+                    Repeater {
+                        model: root.cardCount
+                        Rectangle {
+                            width: 7
+                            height: 7
+                            radius: 3.5
+                            color: index === root.cardIndex ? theme.accent : "transparent"
+                            border.width: 1
+                            border.color: index === root.cardIndex ? theme.accent : theme.borderSubtle
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.cardIndex = index
+                            }
+                        }
+                    }
+                }
+
                 Rectangle {
+                    id: backButton
+                    anchors.right: primaryButton.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.deck.length > 0 && root.cardIndex > 0
+                    height: 36
+                    width: backLabel.implicitWidth + 32
+                    radius: theme.radiusSm
+                    color: backArea.containsMouse ? theme.elevatedHoverFill : "transparent"
+                    border.width: 1
+                    border.color: theme.borderSubtle
+                    Text {
+                        id: backLabel
+                        anchors.centerIn: parent
+                        text: QbzSession.tr("Back", QbzSession.trRev)
+                        color: theme.textSecondary
+                        font.pixelSize: 14
+                        font.weight: theme.weightMedium
+                    }
+                    MouseArea {
+                        id: backArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.goBack()
+                    }
+                }
+
+                Rectangle {
+                    id: primaryButton
                     anchors.right: parent.right
                     height: 36
                     width: closeLabel.implicitWidth + 36
@@ -350,7 +579,13 @@ Item {
                     Text {
                         id: closeLabel
                         anchors.centerIn: parent
-                        text: QbzSession.tr("Close", QbzSession.trRev)
+                        // One button, three jobs: advance the deck, open the
+                        // notes as its last card, and close from there.
+                        text: root.showingNotes
+                            ? QbzSession.tr("Close", QbzSession.trRev)
+                            : (root.cardIndex === root.deck.length - 1
+                                ? QbzSession.tr("Release notes", QbzSession.trRev)
+                                : QbzSession.tr("Next", QbzSession.trRev))
                         // The measured on-accent selector, not a raw
                         // accent-text (theme/QbzTheme.qml, "ON AN ACCENT
                         // FILL") — the port-wide rule for a label on an accent
@@ -365,7 +600,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: QbzAbout.whatsNewClose()
+                        onClicked: root.showingNotes ? QbzAbout.whatsNewClose() : root.goNext()
                     }
                 }
             }

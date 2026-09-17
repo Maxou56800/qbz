@@ -20,10 +20,10 @@
 //! ([`pick_and_add_folder`]). Kept as a record because the note was load
 //! bearing: it justified a downgrade for weeks after its premise expired.
 
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 
-use qbz_library::{LibraryDatabase, ScanEvent};
+use qbz_library::LibraryDatabase;
 use serde::Serialize;
 
 // ---------------------------------------------------------------------------
@@ -42,8 +42,9 @@ pub struct FolderRow {
     pub enabled: bool,
     #[serde(rename = "isNetwork")]
     pub is_network: bool,
-    /// Network folders only: whether the mount answers right now.
-    pub accessible: bool,
+    /// None until probed; local and network folders share the same status.
+    pub accessible: Option<bool>,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -116,6 +117,7 @@ pub struct MediaServerFields {
 #[derive(Clone, Default, Serialize)]
 pub struct Snapshot {
     pub folders: Vec<FolderRow>,
+    pub picked_path: String,
     pub scanning: bool,
     pub processed: i32,
     pub total: i32,
@@ -212,67 +214,12 @@ fn fs_type_index(label: Option<&str>) -> i32 {
 // Live state
 // ---------------------------------------------------------------------------
 
-static SCANNING: AtomicBool = AtomicBool::new(false);
-static CANCEL: AtomicBool = AtomicBool::new(false);
-static PROCESSED: AtomicU32 = AtomicU32::new(0);
-static TOTAL: AtomicU32 = AtomicU32::new(0);
-static SOURCE_PROCESSED: AtomicU32 = AtomicU32::new(0);
-static SOURCE_TOTAL: AtomicU32 = AtomicU32::new(0);
-static SOURCE_BASE: AtomicU32 = AtomicU32::new(0);
-static CURRENT_ROOT_ID: AtomicI64 = AtomicI64::new(0);
-static SOURCE_INDEX: AtomicU32 = AtomicU32::new(0);
-static SOURCE_COUNT: AtomicU32 = AtomicU32::new(0);
-static CURRENT_FILE: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 static CLEANING: AtomicBool = AtomicBool::new(false);
 static CLEANUP_STATUS: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 static CLEARING: AtomicBool = AtomicBool::new(false);
 static STATUS: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
-#[derive(Default)]
-struct PendingScans {
-    all: bool,
-    folder_ids: std::collections::BTreeSet<i64>,
-}
-
-enum PendingScan {
-    All,
-    Folder(i64),
-}
-
-impl PendingScans {
-    fn push(&mut self, folder_id: Option<i64>) {
-        match folder_id {
-            None => {
-                self.all = true;
-                self.folder_ids.clear();
-            }
-            Some(id) if !self.all => {
-                self.folder_ids.insert(id);
-            }
-            Some(_) => {}
-        }
-    }
-
-    fn pop(&mut self) -> Option<PendingScan> {
-        if self.all {
-            self.all = false;
-            self.folder_ids.clear();
-            Some(PendingScan::All)
-        } else {
-            self.folder_ids.pop_first().map(PendingScan::Folder)
-        }
-    }
-
-    fn clear(&mut self) {
-        self.all = false;
-        self.folder_ids.clear();
-    }
-}
-
-static PENDING_SCANS: LazyLock<Mutex<PendingScans>> =
-    LazyLock::new(|| Mutex::new(PendingScans::default()));
-
-/// Last known accessibility per NETWORK folder id, filled by
+/// Last known accessibility per folder id and path, filled by
 /// [`spawn_accessibility_probes`].
 ///
 /// It exists because the probe cannot run where it used to. `snapshot()` is
@@ -283,8 +230,34 @@ static PENDING_SCANS: LazyLock<Mutex<PendingScans>> =
 /// reference never had that: it publishes `accessible: true` optimistically
 /// and updates each row from a spawned probe with a 6 s ceiling
 /// (`crates/qbz/src/local_library_settings.rs:212-236`).
-static ACCESSIBLE: LazyLock<Mutex<std::collections::HashMap<i64, bool>>> =
+static ACCESSIBLE: LazyLock<Mutex<std::collections::HashMap<(i64, String), FolderAccess>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FolderAccess { Available, Missing, Disconnected, Denied, Unavailable }
+impl FolderAccess {
+    fn from_error(error: std::io::ErrorKind) -> Self {
+        use std::io::ErrorKind::*;
+        match error {
+            NotFound | NotADirectory => Self::Missing,
+            PermissionDenied => Self::Denied,
+            NotConnected | ConnectionAborted | ConnectionReset | ConnectionRefused
+                | NetworkUnreachable | HostUnreachable => Self::Disconnected,
+            _ => Self::Unavailable,
+        }
+    }
+    fn label(self, enabled: bool) -> &'static str {
+        match self {
+            Self::Available if enabled => "active",
+            Self::Available => "hidden",
+            Self::Missing => "missing",
+            Self::Disconnected => "disconnected",
+            Self::Denied => "denied",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+static PICKED_PATH: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 fn set_status(text: String) {
     *STATUS.lock().unwrap_or_else(|e| e.into_inner()) = text;
@@ -297,11 +270,8 @@ fn set_status(text: String) {
 /// FIRST folder is exactly the case that has to create it, so this module
 /// owns a creating opener.
 fn open_db() -> Option<LibraryDatabase> {
-    let path = crate::local_state::db_path()?;
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match LibraryDatabase::open(&path) {
+    let store = qbz_library::LibraryStore::new(crate::local_state::db_path()?);
+    match store.open_or_create() {
         Ok(db) => Some(db),
         Err(e) => {
             log::error!("[qbz-qt] library db open failed: {e}");
@@ -326,20 +296,10 @@ pub fn snapshot() -> Snapshot {
         .unwrap_or_default()
         .into_iter()
         .map(|f| {
-            // Cache lookup only — NEVER touch the filesystem here. Unknown
-            // (not probed yet) reads as accessible, so a fresh publish shows
-            // the folder as fine and the probe demotes it a moment later
-            // rather than flashing a false "unavailable" on every open.
-            let accessible = if f.is_network {
-                ACCESSIBLE
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(&f.id)
-                    .copied()
-                    .unwrap_or(true)
-            } else {
-                true
-            };
+            // Do not block settings publication on filesystem I/O. Unknown
+            // paths remain visibly unchecked until the background probe finishes.
+            let accessible = ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner())
+                .get(&(f.id, f.path.clone())).copied();
             FolderRow {
                 display_name: match f.alias.as_deref() {
                     Some(a) if !a.is_empty() => a.to_string(),
@@ -350,26 +310,32 @@ pub fn snapshot() -> Snapshot {
                 last_scan: f.last_scan.unwrap_or(0),
                 enabled: f.enabled,
                 is_network: f.is_network,
-                accessible,
+                accessible: accessible.map(|a| a == FolderAccess::Available),
+                status: accessible.map(|a| a.label(f.enabled)).unwrap_or("checking"),
             }
         })
         .collect();
 
+    let progress = crate::local_service_qt::current()
+        .map(|h| h.service.snapshot().progress)
+        .unwrap_or_default();
     let plex_cfg = crate::local_plex::settings();
     Snapshot {
         folders,
-        scanning: SCANNING.load(Ordering::SeqCst),
-        processed: PROCESSED.load(Ordering::SeqCst) as i32,
-        total: TOTAL.load(Ordering::SeqCst) as i32,
-        source_processed: SOURCE_PROCESSED.load(Ordering::SeqCst) as i32,
-        source_total: SOURCE_TOTAL.load(Ordering::SeqCst) as i32,
-        current_root_id: CURRENT_ROOT_ID.load(Ordering::SeqCst),
-        source_index: SOURCE_INDEX.load(Ordering::SeqCst) as i32,
-        source_count: SOURCE_COUNT.load(Ordering::SeqCst) as i32,
-        file: CURRENT_FILE
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone(),
+        picked_path: PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        scanning: progress.running,
+        processed: progress.processed as i32,
+        total: progress.total as i32,
+        source_processed: progress.source_processed as i32,
+        source_total: progress.source_total as i32,
+        current_root_id: progress.current_root_id,
+        source_index: progress.source_index as i32,
+        source_count: progress.source_count as i32,
+        file: if progress.cleaning {
+            qbz_i18n::t("Cleaning up missing files...")
+        } else {
+            progress.file
+        },
         cleaning: CLEANING.load(Ordering::SeqCst),
         cleanup_status: CLEANUP_STATUS
             .lock()
@@ -445,30 +411,25 @@ pub async fn open_folder_edit(id: i64) {
         if !st.open || st.folder_id != id {
             return;
         }
-        st.accessible = accessible;
+        st.accessible = accessible == FolderAccess::Available;
         st.checking_accessible = false;
     }
-    record_accessible(id, accessible);
+    record_accessible(id, &path, accessible);
     super::publish_snapshot().await;
 }
 
-/// The shared probe: `exists()` first, then a `read_dir` under a 6 s ceiling,
-/// falling back to `exists()` on timeout (a slow mount that IS there must not
-/// be reported dead).
-async fn probe_path(path: &str) -> bool {
-    if !std::path::Path::new(path).exists() {
-        return false;
-    }
-    let p = path.to_string();
-    let res = tokio::time::timeout(
+/// All filesystem access stays on the blocking pool, including local paths
+/// that may actually sit on a stale mount. Failure/timeout means unavailable
+/// now, never proof that a folder should be removed from the library.
+async fn probe_path(path: &str) -> FolderAccess {
+    let path = path.to_owned();
+    match tokio::time::timeout(
         std::time::Duration::from_secs(6),
-        tokio::task::spawn_blocking(move || std::fs::read_dir(&p).is_ok()),
-    )
-    .await;
-    match res {
-        Ok(Ok(ok)) => ok,
-        Ok(Err(_)) => false,
-        Err(_) => std::path::Path::new(path).exists(),
+        tokio::task::spawn_blocking(move || std::fs::read_dir(path).map(|_| ())),
+    ).await {
+        Ok(Ok(Ok(()))) => FolderAccess::Available,
+        Ok(Ok(Err(error))) => FolderAccess::from_error(error.kind()),
+        _ => FolderAccess::Unavailable,
     }
 }
 
@@ -570,10 +531,11 @@ pub async fn change_folder_path(id: i64) {
 
     let path = EDIT.lock().unwrap_or_else(|e| e.into_inner()).path.clone();
     let accessible = probe_path(&path).await;
+    record_accessible(id, &path, accessible);
     {
         let mut st = EDIT.lock().unwrap_or_else(|e| e.into_inner());
         if st.open && st.folder_id == id {
-            st.accessible = accessible;
+            st.accessible = accessible == FolderAccess::Available;
             st.checking_accessible = false;
         }
     }
@@ -585,17 +547,8 @@ pub async fn change_folder_path(id: i64) {
 // Folder CRUD
 // ---------------------------------------------------------------------------
 
-/// Probe every NETWORK folder's mount off the publish path and republish if
-/// anything changed.
-///
-/// Shape taken from the reference's `check_accessible`: an `exists()`
-/// shortcut first (cheap, and a missing mount point answers immediately),
-/// then a `read_dir` on the blocking pool under a 6 s timeout. A timeout is
-/// NOT automatically "inaccessible" — it falls back to `exists()`, because a
-/// slow mount that is genuinely there should not be marked dead.
-///
-/// Only republishes when a value actually moved, so the common case (nothing
-/// changed) costs one publish less than an unconditional refresh.
+/// Probe every configured folder off the publish path. Keep missing rows
+/// so the user can reconnect storage, change the path or explicitly remove it.
 pub async fn spawn_accessibility_probes() {
     let folders = tokio::task::spawn_blocking(|| {
         crate::local_state::with_db(|db| db.get_folders_with_metadata()).unwrap_or_default()
@@ -603,40 +556,22 @@ pub async fn spawn_accessibility_probes() {
     .await
     .unwrap_or_default();
 
-    let mut changed = false;
-    for f in folders.into_iter().filter(|f| f.is_network) {
-        let path = f.path.clone();
-        if !std::path::Path::new(&path).exists() {
-            changed |= record_accessible(f.id, false);
-            continue;
+    for f in folders {
+        let accessible = probe_path(&f.path).await;
+        if record_accessible(f.id, &f.path, accessible) {
+            super::publish_snapshot().await;
         }
-        let p = path.clone();
-        let res = tokio::time::timeout(
-            std::time::Duration::from_secs(6),
-            tokio::task::spawn_blocking(move || std::fs::read_dir(&p).is_ok()),
-        )
-        .await;
-        let accessible = match res {
-            Ok(Ok(ok)) => ok,
-            Ok(Err(_)) => false,
-            Err(_) => std::path::Path::new(&path).exists(),
-        };
-        changed |= record_accessible(f.id, accessible);
-    }
-    if changed {
-        super::publish_snapshot().await;
     }
 }
 
 /// Store one probe result; `true` when it differs from what was cached.
-fn record_accessible(id: i64, accessible: bool) -> bool {
+fn record_accessible(id: i64, path: &str, accessible: FolderAccess) -> bool {
     let mut map = ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner());
-    map.insert(id, accessible) != Some(accessible)
+    map.insert((id, path.to_owned()), accessible) != Some(accessible)
 }
 
-/// The folder BUTTON next to the path field: raise the native chooser and
-/// feed whatever comes back into [`add_folder`], so both routes share one
-/// validation, one network probe and one insert.
+/// The folder button fills the draft path. Both typed and browsed paths are
+/// registered only when Add is pressed.
 ///
 /// The reference does the same thing with the same crate
 /// (`crates/qbz/src/local_library_settings.rs` -> `rfd::AsyncFileDialog`).
@@ -651,12 +586,14 @@ pub async fn pick_and_add_folder() {
     else {
         return;
     };
-    add_folder(dir.path().to_string_lossy().to_string()).await;
+    *PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()) = dir.path().to_string_lossy().to_string();
+    super::publish_snapshot().await;
 }
 
 /// "Add folder": canonicalize once and let Local Library decide whether to
 /// add, refresh, reuse an ancestor, or reject an overlap.
 pub async fn add_folder(path: String) {
+    PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let path = path.trim().to_string();
     if path.is_empty() {
         return;
@@ -685,6 +622,7 @@ pub async fn add_folder(path: String) {
     })
     .await;
     refresh_browse();
+    spawn_accessibility_probes().await;
 }
 
 /// Remove folders (their indexed tracks go with them — `remove_folder_with_tracks`).
@@ -756,230 +694,136 @@ pub async fn toggle_folder_enabled(id: i64) {
 // Scan
 // ---------------------------------------------------------------------------
 
-/// Scan every enabled folder (`None`) or exactly one (`Some(id)`). A request
-/// arriving during an active scan is coalesced and run afterwards.
-///
-/// Progress rides the statics; a short ticker republishes the settings document
-/// while the scan runs (the document is the only transport this port has, and
-/// republishing per FILE would rebuild the whole snapshot thousands of times).
+/// Queue work on the captured host. Qt only translates/publishes its snapshot;
+/// all scheduling, cancellation and progress now belong to qbz-library.
 pub fn scan(folder_id: Option<i64>) -> bool {
-    if SCANNING.swap(true, Ordering::SeqCst) {
-        PENDING_SCANS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(folder_id);
-        return true;
+    let Some(host) = crate::local_service_qt::current() else {
+        return false;
+    };
+    scan_for(host, folder_id, false)
+}
+
+/// Background observers carry the same captured binding as their root IDs.
+/// A profile switch can close this host, but can never retarget the request.
+pub(crate) fn scan_for(
+    host: std::sync::Arc<crate::local_service_qt::DesktopLibrary>,
+    folder_id: Option<i64>,
+    background: bool,
+) -> bool {
+    if !crate::local_service_qt::is_current(&host) {
+        return false;
     }
-    CANCEL.store(false, Ordering::SeqCst);
-    PROCESSED.store(0, Ordering::SeqCst);
-    TOTAL.store(0, Ordering::SeqCst);
-    SOURCE_PROCESSED.store(0, Ordering::SeqCst);
-    SOURCE_TOTAL.store(0, Ordering::SeqCst);
-    SOURCE_BASE.store(0, Ordering::SeqCst);
-    CURRENT_ROOT_ID.store(0, Ordering::SeqCst);
-    SOURCE_INDEX.store(0, Ordering::SeqCst);
-    SOURCE_COUNT.store(0, Ordering::SeqCst);
-    *CURRENT_FILE.lock().unwrap_or_else(|e| e.into_inner()) = String::new();
-
-    crate::spawn(async move {
-        // Paint the scanning state immediately. The ticker deliberately stays
-        // independent of per-file events so a large library never turns QML
-        // publication into work proportional to its track count.
-        super::publish_snapshot().await;
-        // Progress ticker.
-        crate::spawn(async {
-            while SCANNING.load(Ordering::SeqCst) {
-                tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-                super::publish_snapshot().await;
-            }
-        });
-
-        let _ = tokio::task::spawn_blocking(move || {
-            let Some(db) = open_db() else {
-                return;
-            };
-            let cache = qbz_library::get_artwork_cache_dir();
-            let ids = folder_id.map(|id| vec![id]);
-            let source_count = db
-                .get_folders_with_metadata()
-                .map(|folders| {
-                    folders
-                        .into_iter()
-                        .filter(|folder| {
-                            folder.enabled
-                                && ids
-                                    .as_ref()
-                                    .map_or(true, |wanted| wanted.contains(&folder.id))
-                        })
-                        .count()
-                })
-                .unwrap_or(0);
-            SOURCE_COUNT.store(source_count.min(u32::MAX as usize) as u32, Ordering::SeqCst);
-            let on_event = move |event: ScanEvent| match event {
-                ScanEvent::TotalsAdded { total } => {
-                    TOTAL.store(total, Ordering::SeqCst);
-                    SOURCE_TOTAL.store(
-                        total.saturating_sub(SOURCE_BASE.load(Ordering::SeqCst)),
-                        Ordering::SeqCst,
-                    );
-                }
-                ScanEvent::FileStarted { path } => {
-                    let name = basename(&path);
-                    *CURRENT_FILE.lock().unwrap_or_else(|e| e.into_inner()) = name;
-                }
-                ScanEvent::FileDone { processed, total } => {
-                    PROCESSED.store(processed, Ordering::SeqCst);
-                    TOTAL.store(total, Ordering::SeqCst);
-                    let base = SOURCE_BASE.load(Ordering::SeqCst);
-                    SOURCE_PROCESSED.store(processed.saturating_sub(base), Ordering::SeqCst);
-                    SOURCE_TOTAL.store(total.saturating_sub(base), Ordering::SeqCst);
-                }
-                ScanEvent::RootStarted { root_id, .. } => {
-                    CURRENT_ROOT_ID.store(root_id, Ordering::SeqCst);
-                    // `TOTAL`, rather than processed, is the next root's
-                    // streaming offset even when a malformed file in the
-                    // previous root was discovered but could not be emitted.
-                    SOURCE_BASE.store(TOTAL.load(Ordering::SeqCst), Ordering::SeqCst);
-                    SOURCE_PROCESSED.store(0, Ordering::SeqCst);
-                    SOURCE_TOTAL.store(0, Ordering::SeqCst);
-                    SOURCE_INDEX.fetch_add(1, Ordering::SeqCst);
-                }
-                ScanEvent::RootFinished {
-                    root_id,
-                    discovered,
-                    ..
-                } => {
-                    // An unavailable root finishes without `RootStarted`
-                    // (the scanner cannot prepare a generation for it). Keep
-                    // the source ordinal/name honest instead of leaving the
-                    // previous folder painted for this slot.
-                    if CURRENT_ROOT_ID.load(Ordering::SeqCst) != root_id {
-                        CURRENT_ROOT_ID.store(root_id, Ordering::SeqCst);
-                        SOURCE_BASE.store(TOTAL.load(Ordering::SeqCst), Ordering::SeqCst);
-                        SOURCE_INDEX.fetch_add(1, Ordering::SeqCst);
-                    }
-                    let value = discovered.min(u32::MAX as u64) as u32;
-                    SOURCE_PROCESSED.store(value, Ordering::SeqCst);
-                    SOURCE_TOTAL.store(value, Ordering::SeqCst);
-                }
-                // The missing-file cleanup phase. The reference puts it in the
-                // SAME slot the per-file name occupies, so the progress line
-                // keeps saying something while no file name is flowing
-                // (local_library_settings.rs:738-743). This port dropped the
-                // variant, so the scan looked stalled on its last filename
-                // for the whole cleanup.
-                ScanEvent::Cleanup => {
-                    *CURRENT_FILE.lock().unwrap_or_else(|e| e.into_inner()) =
-                        qbz_i18n::t("Cleaning up missing files...");
-                }
-                // Terminal. Until 2026-08-04 this only logged, so a scan that
-                // failed or was cancelled looked exactly like one that worked.
-                // Same three outcomes and the same strings as the reference
-                // (:744-775).
-                ScanEvent::Finished { status, errors } => {
-                    let n = errors.len();
-                    if CLEANING.load(Ordering::SeqCst) {
-                        *CLEANUP_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = match &status {
-                            qbz_library::ScanStatus::Complete => qbz_i18n::t("Scan complete"),
-                            qbz_library::ScanStatus::Cancelled => qbz_i18n::t("Scan cancelled"),
-                            _ => qbz_i18n::t("Cleanup failed."),
-                        };
-                    }
-                    match status {
-                        qbz_library::ScanStatus::Complete if n > 0 => {
-                            log::warn!("[qbz-qt] library scan finished with {n} errors");
-                            crate::toast_qt::success(qbz_i18n::tf(
-                                "Scan complete ({} file skipped)",
-                                "Scan complete ({} files skipped)",
-                                n as i64,
-                                &[&n.to_string()],
-                            ));
-                        }
-                        qbz_library::ScanStatus::Complete => {
-                            crate::toast_qt::success(qbz_i18n::t("Scan complete"));
-                        }
-                        qbz_library::ScanStatus::Cancelled => {
-                            crate::toast_qt::success(qbz_i18n::t("Scan cancelled"));
-                        }
-                        _ => {
-                            log::error!("[qbz-qt] library scan failed ({n} errors)");
-                            crate::toast_qt::error(qbz_i18n::t("Scan failed"));
-                        }
-                    }
-                    *CURRENT_FILE.lock().unwrap_or_else(|e| e.into_inner()) = String::new();
-                }
-                _ => {}
-            };
-            if let Err(e) =
-                qbz_library::scan_with_progress(&db, ids.as_deref(), &cache, &CANCEL, &on_event)
-            {
-                log::error!("[qbz-qt] library scan failed: {e}");
-                if CLEANING.load(Ordering::SeqCst) {
-                    *CLEANUP_STATUS.lock().unwrap_or_else(|e| e.into_inner()) =
-                        qbz_i18n::t("Cleanup failed.");
-                }
+    let before = host.service.snapshot();
+    let requested = if background {
+        host.service.scan_background(folder_id)
+    } else {
+        host.service.scan(folder_id)
+    };
+    match requested {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(error) => {
+            log::error!("[qbz-qt] library scan start failed: {error}");
+            if !background {
                 set_status(qbz_i18n::t("Scan failed."));
             }
-        })
-        .await;
-
-        SCANNING.store(false, Ordering::SeqCst);
-        CLEANING.store(false, Ordering::SeqCst);
-        *CURRENT_FILE.lock().unwrap_or_else(|e| e.into_inner()) = String::new();
-        crate::local_catalog_qt::request_catch_up();
-        refresh_browse();
-        super::publish_snapshot().await;
-
-        let pending = PENDING_SCANS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .pop();
-        match pending {
-            Some(PendingScan::All) => {
-                scan(None);
-            }
-            Some(PendingScan::Folder(id)) => {
-                scan(Some(id));
-            }
-            None => {}
+            return false;
         }
+    }
+    if !host.begin_observing() {
+        return true;
+    }
+    crate::spawn(async move {
+        let mut revision = before.content_revision;
+        let mut completed = before.last_requested_scan.map(|s| s.job).unwrap_or(0);
+        loop {
+            if !crate::local_service_qt::is_current(&host) {
+                break;
+            }
+            let snapshot = host.service.snapshot();
+            if let Some(result) = snapshot
+                .last_requested_scan
+                .as_ref()
+                .filter(|s| s.job > completed)
+            {
+                completed = result.job;
+                scan_finished(result);
+            }
+            if snapshot.content_revision != revision {
+                revision = snapshot.content_revision;
+                crate::local_catalog_qt::request_catch_up();
+                refresh_browse();
+            }
+            if !snapshot.progress.running {
+                CLEANING.store(false, Ordering::SeqCst);
+            }
+            super::publish_snapshot().await;
+            if !snapshot.progress.running {
+                host.stop_observing();
+                // A request may arrive as this observer exits. Either it owns
+                // the next ticker or this ticker resumes; no progress is lost.
+                if !host.service.snapshot().progress.running || !host.begin_observing() {
+                    return;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+        }
+        host.stop_observing();
     });
     true
 }
 
-/// "Stop" — checked at every file boundary by the shared engine.
+fn scan_finished(result: &qbz_library::service::ScanCompletion) {
+    use qbz_library::service::ScanOutcome;
+    if result.background {
+        log::debug!(
+            "[local-scan] background job {} settled: {:?}, {} skipped",
+            result.job,
+            result.outcome,
+            result.skipped
+        );
+        return;
+    }
+    if CLEANING.load(Ordering::SeqCst) {
+        *CLEANUP_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = match result.outcome {
+            ScanOutcome::Complete => qbz_i18n::t("Scan complete"),
+            ScanOutcome::Cancelled => qbz_i18n::t("Scan cancelled"),
+            ScanOutcome::Failed => qbz_i18n::t("Cleanup failed."),
+        };
+    }
+    match result.outcome {
+        ScanOutcome::Complete if result.skipped > 0 => crate::toast_qt::success(qbz_i18n::tf(
+            "Scan complete ({} file skipped)",
+            "Scan complete ({} files skipped)",
+            result.skipped as i64,
+            &[&result.skipped.to_string()],
+        )),
+        ScanOutcome::Complete => crate::toast_qt::success(qbz_i18n::t("Scan complete")),
+        ScanOutcome::Cancelled => crate::toast_qt::success(qbz_i18n::t("Scan cancelled")),
+        ScanOutcome::Failed => {
+            set_status(qbz_i18n::t("Scan failed."));
+            crate::toast_qt::error(qbz_i18n::t("Scan failed"));
+        }
+    }
+}
+
 pub fn stop_scan() {
-    CANCEL.store(true, Ordering::SeqCst);
-    PENDING_SCANS
+    if let Some(host) = crate::local_service_qt::current() {
+        host.service.cancel_scan();
+    }
+}
+
+pub fn reset_profile_state() {
+    CLEANING.store(false, Ordering::SeqCst);
+    CLEARING.store(false, Ordering::SeqCst);
+    CLEANUP_STATUS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
-}
-
-#[cfg(test)]
-mod pending_scan_tests {
-    use super::{PendingScan, PendingScans};
-
-    #[test]
-    fn directed_scans_are_deduplicated_and_kept() {
-        let mut queue = PendingScans::default();
-        queue.push(Some(9));
-        queue.push(Some(9));
-        queue.push(Some(4));
-        assert!(matches!(queue.pop(), Some(PendingScan::Folder(4))));
-        assert!(matches!(queue.pop(), Some(PendingScan::Folder(9))));
-        assert!(queue.pop().is_none());
-    }
-
-    #[test]
-    fn full_scan_coalesces_every_directed_refresh() {
-        let mut queue = PendingScans::default();
-        queue.push(Some(1));
-        queue.push(None);
-        queue.push(Some(2));
-        assert!(matches!(queue.pop(), Some(PendingScan::All)));
-        assert!(queue.pop().is_none());
-    }
+    STATUS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    ACCESSIBLE.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    PICKED_PATH.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    *EDIT.lock().unwrap_or_else(|e| e.into_inner()) = FolderEdit::default();
 }
 
 // ---------------------------------------------------------------------------

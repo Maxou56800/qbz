@@ -905,18 +905,24 @@ impl<A: FrontendAdapter + Send + Sync + 'static> QbzCore<A> {
         sink: Option<&qbz_offline_cache::CacheEventSink>,
         start_position_secs: u64,
     ) -> Result<(), String> {
+        self.play_track_resolved_with_state(track_id, quality, offline, sink, start_position_secs, true).await
+    }
+
+    pub async fn play_track_resolved_with_state(
+        &self,
+        track_id: u64,
+        quality: Quality,
+        offline: Option<&qbz_offline_cache::OfflineCacheState>,
+        sink: Option<&qbz_offline_cache::CacheEventSink>,
+        start_position_secs: u64,
+        playing: bool,
+    ) -> Result<(), String> {
         if let Some(off) = offline {
             if let Some(bytes) =
                 crate::offline_resolve::resolve_offline_bytes(track_id, off, sink).await
             {
                 log::info!("[Core] track {} served from OFFLINE cache", track_id);
-                let r = self.player.play_data(bytes, track_id);
-                // Offline-cached bytes play from memory; honor a session-resume
-                // position with a best-effort seek (0 = from the start).
-                if r.is_ok() && start_position_secs > 0 {
-                    let _ = self.player.seek(start_position_secs);
-                }
-                return r;
+                return self.player.play_data_at(bytes, track_id, start_position_secs, playing);
             }
         }
         let guard = self.client.read().await;
@@ -924,7 +930,7 @@ impl<A: FrontendAdapter + Send + Sync + 'static> QbzCore<A> {
             .as_ref()
             .ok_or_else(|| "No Qobuz client available".to_string())?;
         self.player
-            .play_track(client, track_id, quality, start_position_secs)
+            .play_track_with_state(client, track_id, quality, start_position_secs, playing)
             .await
     }
 
@@ -3862,6 +3868,8 @@ mod tests {
         }))
         .collect();
         Album {
+            favorited_at: None,
+            purchasable: None,
             id: String::new(),
             title: String::new(),
             artist: Artist {
@@ -3898,6 +3906,8 @@ mod tests {
 
     fn track_with(performer_id: Option<u64>, composer_id: Option<u64>) -> Track {
         Track {
+            favorited_at: None,
+            purchasable: None,
             id: 0,
             title: String::new(),
             version: None,

@@ -35,7 +35,7 @@ Rectangle {
     width: 160
     height: 150
     radius: 10
-    color: cardArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+    color: cardArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
     opacity: (root.folder.isHidden === true) ? 0.6 : 1.0
 
     // padding 16 / spacing 8 / centred column.

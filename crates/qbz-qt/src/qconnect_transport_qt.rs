@@ -167,6 +167,7 @@ pub fn resolve_qconnect_friendly_name(custom_name: Option<&str>) -> String {
 pub const AUDIO_QUALITY_MP3: i32 = 1;
 pub const AUDIO_QUALITY_HIRES_LEVEL2: i32 = 4;
 const VOLUME_REMOTE_CONTROL_ALLOWED: i32 = 2;
+const VOLUME_REMOTE_CONTROL_NOT_ALLOWED: i32 = 1;
 /// Renderer buffer-state wire value for OK/ready (mirrors the Tauri adapter).
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -293,6 +294,10 @@ pub fn default_qconnect_device_info() -> QconnectDeviceInfoPayload {
 pub fn default_qconnect_device_info_with_name(
     custom_name: Option<&str>,
 ) -> QconnectDeviceInfoPayload {
+    device_info_with_volume_policy(custom_name, crate::settings_qt::allows_remote_volume())
+}
+
+fn device_info_with_volume_policy(custom_name: Option<&str>, allows_volume: bool) -> QconnectDeviceInfoPayload {
     QconnectDeviceInfoPayload {
         device_uuid: Some(resolve_qconnect_device_uuid()),
         friendly_name: Some(resolve_qconnect_friendly_name(custom_name)),
@@ -303,9 +308,57 @@ pub fn default_qconnect_device_info_with_name(
         capabilities: Some(QconnectDeviceCapabilitiesPayload {
             min_audio_quality: Some(AUDIO_QUALITY_MP3),
             max_audio_quality: Some(AUDIO_QUALITY_HIRES_LEVEL2),
-            volume_remote_control: Some(VOLUME_REMOTE_CONTROL_ALLOWED),
+            volume_remote_control: Some(if allows_volume {
+                VOLUME_REMOTE_CONTROL_ALLOWED
+            } else {
+                VOLUME_REMOTE_CONTROL_NOT_ALLOWED
+            }),
         }),
         software_version: Some(resolve_qconnect_software_version()),
+    }
+}
+
+#[cfg(test)]
+mod volume_tests {
+    use super::*;
+    use qbz_audio::{backend::{AlsaPlugin, AudioBackendType}, settings::AudioSettings};
+
+    #[test]
+    fn peer_volume_advertisement_follows_the_local_output_route() {
+        let mut audio = AudioSettings::default();
+        audio.backend_type = Some(AudioBackendType::SystemDefault);
+        assert_advertisement(&audio, 2);
+        audio.backend_type = Some(AudioBackendType::WasapiExclusive);
+        audio.output_device = Some("test-device".into());
+        assert_advertisement(&audio, 1);
+        audio.output_device = None;
+        assert_advertisement(&audio, 2);
+    }
+
+    fn assert_advertisement(audio: &AudioSettings, expected: i32) {
+        let info = device_info_with_volume_policy(Some("test-renderer"), !crate::output_labels::volume_locked(audio));
+        assert_eq!(info.capabilities.unwrap().volume_remote_control, Some(expected));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn alsa_front_hw_and_plughw_lock_unless_hardware_volume_is_enabled() {
+        let mut audio = AudioSettings::default();
+        audio.backend_type = Some(AudioBackendType::Alsa);
+        audio.exclusive_mode = true;
+        for route in ["front:CARD=ZH3,DEV=0", "hw:CARD=ZH3,DEV=0", "plughw:CARD=ZH3,DEV=0"] {
+            audio.output_device = Some(route.into());
+            for plugin in [AlsaPlugin::Hw, AlsaPlugin::PlugHw] {
+                audio.alsa_plugin = Some(plugin);
+                audio.alsa_hardware_volume = false;
+                assert_advertisement(&audio, 1);
+                audio.alsa_hardware_volume = true;
+                assert_advertisement(&audio, 2);
+            }
+            audio.alsa_hardware_volume = false;
+            audio.alsa_plugin = Some(AlsaPlugin::Pcm);
+            assert_advertisement(&audio, 2);
+        }
     }
 }
 

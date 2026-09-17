@@ -11,6 +11,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 mdns-sd = "0.21"
+reqwest = { workspace = true }
 socket2 = "0.6"
 url = "2"
 zeroize = "1"
@@ -22,7 +23,6 @@ qbz-qobuz = { path = "../qbz-qobuz" }
 qconnect-core = { path = "../qconnect-core" }
 qconnect-protocol = { path = "../qconnect-protocol" }
 qconnect-transport-ws = { path = "../qconnect-transport-ws" }
-reqwest = { workspace = true }
 rustls = { version = "0.23", features = ["aws_lc_rs"] }
 tokio = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

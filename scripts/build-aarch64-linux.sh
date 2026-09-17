@@ -89,8 +89,11 @@ case "$arch" in
     else jobs="$(nproc)"; fi
     say "RAM ${mem_mb} MB -> CARGO_BUILD_JOBS=${jobs}"
     # No RUSTFLAGS, no mold, stable: same cache rule as qt-run.sh.
+    # The target qt-cargo.py builds in (scripts/qt-target.py), resolved once.
+    CARGO_TARGET_DIR="$(python3 scripts/qt-target.py resolve)"
+    export CARGO_TARGET_DIR
     CARGO_BUILD_JOBS="$jobs" CARGO_INCREMENTAL=0 python3 scripts/qt-cargo.py build --release --manifest-path crates/Cargo.toml -p qbz-qt
-    install -Dm755 "crates/target/release/qbz" "$OUT"
+    install -Dm755 "$CARGO_TARGET_DIR/release/qbz" "$OUT"
     ;;
   x86_64 | amd64)
     die "CROSS mode is not supported for the Qt binary (see the header: cxx-qt \

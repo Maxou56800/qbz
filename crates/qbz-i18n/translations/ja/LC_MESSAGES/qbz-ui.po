@@ -4106,9 +4106,6 @@ msgstr "最小化、最大化、閉じるボタンをタイトルバーに表示
 msgid "Add discrete plus and minus buttons next to the volume slider in the player bar."
 msgstr "プレーヤーバーの音量スライダーの横に、独立したプラスとマイナスのボタンを追加します。"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "購入した音楽の閲覧とダウンロードのために、サイドバーに購入済みセクションを表示します"
-
 msgid "Keep playing in the menu bar instead of quitting when you close the window"
 msgstr "ウィンドウを閉じたときに終了せず、メニューバーで再生を続けます"
 
@@ -4324,17 +4321,11 @@ msgstr "Qobuzリンクを開く"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Qobuz、Spotify、Apple Music、Tidal、Deezer、song.linkのURLを貼り付けてください"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "購入をサイドバーではなくカスタムタイトルバーに表示します"
-
 msgid "Press keys…"
 msgstr "キーを押してください…"
 
 msgid "Purchases"
 msgstr "購入"
-
-msgid "Purchases in title bar"
-msgstr "タイトルバーに購入を表示"
 
 msgid "RENDERER"
 msgstr "レンダラー"
@@ -4448,8 +4439,9 @@ msgstr "タイトルバーモードを変更しました — 適用するにはQ
 msgid "Compact header navigation"
 msgstr "ヘッダーのコンパクトナビゲーション"
 
-msgid "Use the icon-only section navigation in the header even while the sidebar is open."
-msgstr "サイドバーが開いていても、ヘッダーにアイコンのみのセクションナビゲーションを使用します。"
+#: crates/qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Always use the icon-only section navigation in the header. When off, the text tabs turn into icons only when they no longer fit next to the search box."
+msgstr "ヘッダーのセクションナビゲーションを常にアイコンのみで表示します。オフの場合、テキストタブは検索ボックスの横に収まらなくなったときだけアイコンに切り替わります。"
 
 # DSD support Phase 1 (2026-07-03)
 msgid "DSD: {}"
@@ -4626,10 +4618,6 @@ msgstr "追加が古い順"
 msgid "Random"
 msgstr "ランダム"
 
-
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "キャッシュデータを解放します。ダウンロード済みのアルバムは保持されます。削除は上のオフラインマネージャーから行ってください。"
 
 msgid "Couldn't clear the cache"
 msgstr "キャッシュを削除できませんでした"
@@ -7053,3 +7041,727 @@ msgstr "名前（Z-A）"
 
 msgid "Search My QBZ"
 msgstr "My QBZ を検索"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Access key"
+msgstr "アクセスキー"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Connection lost. Remote controls are unavailable."
+msgstr "接続が失われました。リモート操作は利用できません。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Controlling {}"
+msgstr "{} を操作中"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Copy access key"
+msgstr "アクセスキーをコピー"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Could not start the Orbit listener."
+msgstr "Orbitサーバーを起動できませんでした。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Could not verify the host."
+msgstr "ホストを確認できませんでした。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Enter a valid host address."
+msgstr "有効なホストアドレスを入力してください。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Host address"
+msgstr "ホストアドレス"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Host verified"
+msgstr "ホストを確認しました"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Library unavailable"
+msgstr "ライブラリを利用できません"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Listening address"
+msgstr "待ち受けアドレス"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Local files"
+msgstr "ローカルファイル"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Orbit is experimental. Verifying a host does not switch playback or settings."
+msgstr "Orbitは実験的な機能です。ホストを確認しても、再生や設定の対象は切り替わりません。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Share this library"
+msgstr "このライブラリを共有"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "The host changed. Verify it again."
+msgstr "ホストが変更されました。もう一度確認してください。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "This host does not support library inspection."
+msgstr "このホストはライブラリの参照に対応していません。"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Verify host"
+msgstr "ホストを確認"
+
+
+#: qbz-qt updates
+msgid "A new version of QBZ is available."
+msgstr "QBZの新しいバージョンが利用可能です。"
+
+
+#: qbz-qt updates
+msgid "Cancel download"
+msgstr "ダウンロードをキャンセル"
+
+
+#: qbz-qt updates
+msgid "Check for new releases on launch"
+msgstr "起動時に新しいバージョンを確認"
+
+
+#: qbz-qt updates
+msgid "Check for updates now"
+msgstr "今すぐ更新を確認"
+
+
+#: qbz-qt updates
+msgid "Checking for updates..."
+msgstr "更新を確認中..."
+
+
+#: qbz-qt updates
+msgid "Current version"
+msgstr "現在のバージョン"
+
+
+#: qbz-qt updates
+msgid "Download and install"
+msgstr "ダウンロードしてインストール"
+
+
+#: qbz-qt updates
+msgid "Downloading update..."
+msgstr "更新をダウンロード中..."
+
+
+#: qbz-qt updates
+msgid "Installation"
+msgstr "インストール方法"
+
+
+#: qbz-qt updates
+msgid "Installing update..."
+msgstr "更新をインストール中..."
+
+
+#: qbz-qt updates
+msgid "Show changelog for current version"
+msgstr "現在のバージョンの変更履歴を表示"
+
+
+#: qbz-qt updates
+msgid "Skip this version"
+msgstr "このバージョンをスキップ"
+
+
+#: qbz-qt updates
+msgid "The update could not be completed. Please try again."
+msgstr "更新を完了できませんでした。もう一度お試しください。"
+
+
+#: qbz-qt updates
+msgid "Update QBZ through your installation source. Packages may become available after the GitHub release."
+msgstr "インストール元からQBZを更新してください。パッケージはGitHubでのリリース後に利用可能になる場合があります。"
+
+
+#: qbz-qt updates
+msgid "Update cancelled."
+msgstr "更新をキャンセルしました。"
+
+
+#: qbz-qt updates
+msgid "Update installed. Close and reopen QBZ to use the new version."
+msgstr "更新をインストールしました。新しいバージョンを使うにはQBZを閉じて再度開いてください。"
+
+
+#: qbz-qt updates
+msgid "Updates"
+msgstr "更新"
+
+
+#: qbz-qt updates
+msgid "Verifying update signature..."
+msgstr "更新の署名を検証中..."
+
+
+#: qbz-qt updates
+msgid "Visit release page"
+msgstr "リリースページを開く"
+
+
+#: qbz-qt updates
+msgid "You are using the latest version of QBZ."
+msgstr "最新バージョンのQBZを使用しています。"
+
+
+#: qbz-qt updates
+msgid "System / manual"
+msgstr "システム / 手動"
+
+#: qbz-qt/qml/shell/UpdatesModal.qml
+msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
+msgstr "更新の準備ができました。QBZ を終了するとインストールが完了し、自動的に再起動します。"
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "再生キャッシュ"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "メモリに余裕がある場合にキャッシュを拡張"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "任意設定です。長いハイレゾ曲におすすめします。通常は既定の固定容量を推奨します。"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "キャッシュの最小容量（MiB）"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "RAMを予約する設定ではありません。メモリ不足時は縮小されます。空欄で推奨値を使用します。"
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "キャッシュの最大容量（MiB）"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "拡張の上限です。空きメモリによってさらに制限される場合があります。空欄で自動設定になります。"
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "メモリキャッシュの使用量"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "使用量 / 現在の容量：%1 / %2 MiB。デコーダーのメモリとオフラインダウンロードは含みません。"
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "キャッシュの推奨設定"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "既定値に戻す"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "再生キャッシュの容量は16〜16384 MiBで指定してください"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "再生キャッシュの最小容量は最大容量以下にしてください"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "再生メモリプロファイル"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — 推奨"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — 動的"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — Pi向け"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "AutoはコンピューターのRAMに応じてDesktopまたはLowを選択します。キャッシュ容量は固定で、動的拡張は無効です。推奨の初期設定です。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "Highは400 MiBのキャッシュ容量から開始し、空きメモリがある場合に最大1600 MiBまで拡張します。非アクティブ時やメモリ不足時には縮小します。長いHi-Res曲やRAMに余裕のあるコンピューター向けです。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktopは400 MiBの固定キャッシュ容量と通常の先読みを使用します。大きな曲にはディスク上のバッファを使用します。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Lowは50 MiBのキャッシュ容量、小さな開始バッファ、少ない先読みを使用します。大きな曲にはディスクを使用し、Hi-Resの事前読み込みは省略します。Raspberry PiやRAMの節約に適しています。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "カスタムは以下のキャッシュ上限と拡張設定を使用します。先読みは検出されたメモリクラスに従います。プリセットを編集するとカスタムに切り替わります。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "すべてのプロファイルで同じ音質"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "プロファイルは再生メモリを制御し、音質やアプリ全体のRAMは変更しません。ストリーミングのみのモードを除き、ディスクキャッシュは有効です。変更は新しいバッファに適用され、現在の曲は再生を続けます。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "RAMに余裕がある場合、指定した上限までキャッシュを拡張します。Highでは自動的に有効になります。この設定を編集するとカスタムに切り替わります。"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "不明な再生メモリプロファイルです"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "再生メモリプリセットとカスタムキャッシュ上限が矛盾しています"
+
+msgid "Apply playback memory profile?"
+msgstr "再生メモリプロファイルを適用しますか？"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "再生バッファを解放します。再生中の曲は停止し、最初から再生し直します。一時停止中の場合は、0:00で停止したままになります。キューとディスクキャッシュは保持されます。"
+
+msgid "Apply & free memory"
+msgstr "適用してメモリを解放"
+
+msgid "Rebuild playback buffers"
+msgstr "再生バッファを再構築"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "プロファイルはすでに新しいバッファに適用されています。今すぐ適用すると、既存の再生バッファとメモリキャッシュを解放します。再生を続けると、メモリ使用量が再び増えることがあります。"
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "メモリプロファイルは、このデバイスでの再生にのみ適用できます。"
+
+msgid "Playback is not ready yet."
+msgstr "再生の準備がまだできていません。"
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "再生処理が進行中です。メモリプロファイルの適用をもう一度お試しください。"
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "再生内容が変わりました。現在の曲を確認して、もう一度適用してください。"
+
+msgid "Visual resource profile"
+msgstr "表示リソースプロファイル"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Lowは小型プレーヤーとコンパクトなヘッダーを使い、動的背景、グラデーション、スペクトラム、再生アニメーション、コラージュ、任意の曲の画像を無効にします。Defaultで標準値に戻り、対象設定を変更するとCustomになります。音質と再生メモリは独立しています。"
+
+msgid "Compare memory profiles"
+msgstr "メモリプロファイルを比較"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto：RAM容量に応じて400 MiBまたは50 MiBに固定。大きな曲はディスクを使用します。"
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High：400～1600 MiBで可変。大きな曲をRAMに保持しやすくなり、ディスクバッファの必要性が減ります。"
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop：400 MiB固定。RAMを使い、大きな曲はディスクで再生します。"
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low：50 MiB固定で先読みを抑制。RAM使用量は減りますが、大きな曲ではディスクの読み書きが増えます。"
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom：RAMの上限と拡張設定に応じてディスクを使用します。"
+
+msgid "RAM and storage trade-off"
+msgstr "RAMとストレージのバランス"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "どのプロファイルも音質を維持し、ディスクキャッシュを使用できます。RAMが少ないほどストレージ速度や書き込みへの依存が増え、RAMを増やすと負荷を減らせます。ディスクにキャッシュ済みの曲はHighでもディスクから読みます。用途に合うストレージを選んでください。"
+
+msgid "Playback storage folder"
+msgstr "再生ストレージのフォルダー"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "使用するドライブの既存フォルダーを選びます。QBZはqbz-playbackサブフォルダーに再生キャッシュと一時バッファを保存します。オフラインダウンロードは別です。空欄なら標準の場所を使います。"
+
+msgid "Current playback storage"
+msgstr "現在の再生ストレージ"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "フォルダーの変更はQBZの再起動後に反映されます。既存のキャッシュは元の場所に残り、自動で移動や削除はされません。"
+
+msgid "Could not use this playback storage folder:"
+msgstr "この再生ストレージフォルダーを使用できませんでした："
+
+msgid "Folder access"
+msgstr "フォルダーへのアクセス"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "サンドボックスがフォルダーをブロックする場合、ホストの端末で下のコマンドを実行し、QBZを再起動して再度選んでください。使用するフォルダーだけにアクセスを許可してください。"
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snapは対応するホームフォルダーと/mnt、/media、/run/media配下の外部ストレージにアクセスできます。外部ストレージでは下のインターフェースを接続して再試行してください。Flatpakのようなoverrideで任意のフォルダーを許可することはできません。"
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "再生ストレージの絶対パスを指定してください。"
+
+msgid "The folder is accessible and visible in the library."
+msgstr "フォルダーにアクセスでき、ライブラリに表示されます。"
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "フォルダーにアクセスできますが、設定により非表示です。"
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "フォルダーのパスが存在しません。再接続するか、パスを変更するか、ライブラリから削除してください。"
+
+msgid "A connection failure prevents access to this storage."
+msgstr "接続エラーにより、このストレージにアクセスできません。"
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "QBZにはこのフォルダーへのアクセス権がありません。"
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "フォルダーにアクセスできませんでした。確認がタイムアウトしたか、別のアクセスエラーが発生しました。"
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "フォルダーへのアクセスを確認中、またはまだ未確認です。"
+
+msgid "Local folder"
+msgstr "ローカルフォルダー"
+
+msgid "Access denied"
+msgstr "アクセス拒否"
+
+msgid "Missing"
+msgstr "見つかりません"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Low"
+msgstr "低"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "「ストリーミングのみ」が有効な間、これらの設定は適用されません。無効にすると、再生メモリプロファイルを選択して変更を適用できます。"
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "公式クライアントと同様のストリーミング動作でメモリ使用量を抑えます。再生キャッシュとそのネットワーク中断への保護を無効にします。QBZのキャッシュは次の音声を事前に用意し、より安定した再生と即座のリプレイを可能にします。"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "トラック行にフィーチャリングアーティストを表示"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "10秒スキップボタンを表示"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "プレーヤーバーの「前へ」「次へ」の横に ±10 秒ボタンを追加します。"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "10秒戻る"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "10秒進む"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "ループの開始点を設定 (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "ループの終了点を設定 (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "ループを解除"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "ARTWORK CACHE"
+msgstr "アートワークキャッシュ"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Maximum size"
+msgstr "最大サイズ"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
+msgstr "アルバムとアーティストの画像はこの上限までディスクに保持され、最も長く表示されていないものから削除されます（使用中および起動時）。"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Clear artwork cache"
+msgstr "アートワークキャッシュを消去"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "{} images using {}"
+msgstr "{} 件の画像、使用量 {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Qobuz のトラック行のアーティスト欄に、フィーチャリングされた演奏者を「feat. …」として追加します。既定ではオフです。"
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "ストレージ"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "PLEX キャッシュ"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Qobuz のトラック行で、メインアーティストの後にフィーチャリングされた演奏者をカンマ区切りで表示します。各名前はリンクです。既定ではオンです。"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "サイズ上限を適用"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "キャッシュフォルダーを開く"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "オフラインキャッシュをすべて削除…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "オフラインキャッシュを削除しますか？"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "オフライン再生用に保存したものをすべて削除します（{}、{}）。ミュージックフォルダー内の購入済みダウンロードは残ります。削除したものをオフラインで再生するには、再度ダウンロードが必要です。"
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "詳細"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "ラウドネス"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "音量ノーマライズ"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "目標ラウドネス"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "各トラックを揃えるラウドネス。-14 LUFS はストリーミングサービスの基準、-18 LUFS は ReplayGain の基準です。"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "クリッピングを防止"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "最大ピークがフルスケールを超えないようブーストを制限します。オフにすると、ピークがクリップしても静かなトラックが目標に達します。"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · 大きめ"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · ストリーミング（既定）"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · 放送 (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "カスタム（{} LUFS）"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "購入セクションを他のセクションと同じ場所（サイドバーまたはヘッダー）に表示し、購入した音楽を閲覧・ダウンロードできます"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "On this network"
+msgstr "このネットワーク上"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "Pair"
+msgstr "ペアリング"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "プレイリストを削除"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "プレイリストを削除しますか？"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "「{}」を削除します。この操作は取り消せません。"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy basic data"
+msgstr "基本情報をコピー"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy full"
+msgstr "すべてコピー"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "View label"
+msgstr "レーベルを見る"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Buy on Qobuz"
+msgstr "Qobuzで購入"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release isn't sold on Qobuz."
+msgstr "このリリースはQobuzでは販売されていません。"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't check the store for this release."
+msgstr "このリリースのストア情報を確認できませんでした。"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Could not open the browser"
+msgstr "ブラウザーを開けませんでした"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track name"
+msgstr "トラック名"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track - Album - Artist"
+msgstr "トラック - アルバム - アーティスト"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release is no longer available on Qobuz."
+msgstr "このリリースはQobuzで利用できなくなりました。"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "You might be interested in these instead"
+msgstr "代わりにこちらはいかがでしょうか"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't load this release."
+msgstr "このリリースを読み込めませんでした。"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Looking for other versions…"
+msgstr "他のバージョンを探しています…"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release"
+msgstr "このリリース"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper"
+msgstr "壁紙"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper, blurred"
+msgstr "ぼかし壁紙"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Background image"
+msgstr "背景画像"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "The system wallpaper. Choose an image of your own instead."
+msgstr "システムの壁紙。代わりに自分の画像を選ぶこともできます。"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Choose image…"
+msgstr "画像を選択…"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "System wallpaper"
+msgstr "システムの壁紙"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "{} 曲をこのプレイリストから削除します。"
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper blur"
+msgstr "壁紙のぼかし"
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur."
+msgstr "ウィンドウの背後に見える壁紙のぼかしの強さ。0% でくっきり、100% で最も強くぼかします。"
+
+msgid "This renderer does not allow remote volume control."
+msgstr "このレンダラーは音量のリモート操作を許可していません。"
+
+msgid "Waiting for the renderer's volume…"
+msgstr "レンダラーの音量を待機中…"
+
+msgid "This audio output does not support volume control."
+msgstr "この音声出力は音量調整に対応していません。"
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "リリースノート"
+
+msgid "New in {}"
+msgstr "{} の新機能"
+
+msgid "Open settings"
+msgstr "設定を開く"
+
+msgid "Open playback"
+msgstr "再生設定を開く"
+
+msgid "Open audio"
+msgstr "オーディオ設定を開く"
+
+msgid "Reorganised settings"
+msgstr "設定の再構成"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "聴き方の習慣も好みも、音楽の趣味と同じくらい人それぞれだと思います。そこで項目を整理し直し、あまり使わないものは隠しました。設定のセクションを見て、好みに合わせて調整してください。"
+
+msgid "Cache profiles"
+msgstr "キャッシュのプロファイル"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "キャッシュの扱いは製品側が決めるものではなくなりました。好みやパソコンの性能に応じて、キャッシュ、メモリ、ストレージのどれが担当するかを選べます。"
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "この機能は完全に書き直しました。Qobuz が提供する LUFS の情報を使い、業界標準に沿ったプロファイルを実装しています。"
+
+msgid "Quality of Life"
+msgstr "使い心地の改善"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "フロントエンドの移行で失われた機能が戻りました。まとめ操作も増えて使いやすくなり、再生コントロールも追加されています（シークバーでの 10 秒送り戻し、ループ再生など）。"
+
+msgid "QConnect hardening"
+msgstr "QConnect の強化"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "動作がより安定しました。不具合の修正、公式クライアントと同じ形の実装を妨げていた問題、一致しないキュー、クラッシュへの対応です。この機能は継続的に改善しています。"

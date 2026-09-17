@@ -95,6 +95,8 @@ Item {
         root.draftPreset = root.doc.iconPreset || "folder"
         root.draftColor = root.doc.iconColor || ""
         root.draftHidden = root.doc.isHidden === true
+        // The box as well as the draft (QbzLineEdit.reset()).
+        nameField.reset()
     }
 
     /// Focus the name field. Split out so the host can call it AFTER the panel
@@ -180,7 +182,7 @@ Item {
                         radius: 8
                         color: presetTile.active
                             ? theme.accent
-                            : (presetArea.containsMouse ? theme.surfaceHover
+                            : (presetArea.containsMouse ? theme.surfaceElevatedHover
                                                         : theme.surfaceElevated)
                         QbzIcon {
                             anchors.centerIn: parent
@@ -217,7 +219,7 @@ Item {
                     radius: 8
                     color: imageTile.active
                         ? theme.accent
-                        : (imageArea.containsMouse ? theme.surfaceHover
+                        : (imageArea.containsMouse ? theme.surfaceElevatedHover
                                                    : theme.surfaceElevated)
                     // No `clip: true` — it is a rectangular scissor and does
                     // not follow `radius`. RoundedImage masks its own corners.

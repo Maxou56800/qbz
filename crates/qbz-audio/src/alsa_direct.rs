@@ -79,6 +79,34 @@ fn ensure_exact_rate(hwp: &HwParams<'_>, requested: u32, kind: &str) -> Result<(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn write_pcm_frames(
+    pcm: &PCM, frames: usize, cancel: &AtomicBool,
+    mut write: impl FnMut(usize) -> Result<usize, alsa::Error>,
+) -> Result<usize, crate::backend::DirectWriteError> {
+    crate::pcm_write::write_complete(frames, cancel, std::time::Duration::from_secs(2),
+        |offset| write(offset).map_err(|e| e.errno()),
+        |error| match error {
+            libc::EPIPE => { pcm.prepare().map_err(|e| e.to_string())?; log_pcm_recovery(""); Ok(true) }
+            libc::ESTRPIPE => match pcm.resume() {
+                Ok(()) => Ok(true),
+                Err(e) if e.errno() == libc::EAGAIN => Ok(false),
+                Err(_) => { pcm.prepare().map_err(|e| e.to_string())?; Ok(true) }
+            },
+            libc::EBADFD => {
+                let _ = PCM::drop(pcm);
+                pcm.prepare().map_err(|e| e.to_string())?;
+                Ok(true)
+            }
+            _ => Err(format!("ALSA write failed (errno {error})")),
+        },
+        || match pcm.wait(Some(25)) {
+            Ok(_) => Ok(()),
+            Err(e) if matches!(e.errno(), libc::EINTR | libc::EPIPE | libc::ESTRPIPE) => Ok(()),
+            Err(e) => Err(format!("ALSA wait failed: {e}")),
+        })
+}
+
 /// Direct ALSA PCM stream for hw: devices
 ///
 /// Field order is significant: Rust drops struct fields top-to-bottom, so the
@@ -138,6 +166,12 @@ const PIPEWIRE_VACATE_MARGIN: std::time::Duration = std::time::Duration::from_mi
 impl AlsaDirectStream {
     /// Create new ALSA direct stream
     pub fn new(device_id: &str, sample_rate: u32, channels: u16) -> Result<Self, String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_inner(device_id, sample_rate, channels)
+        })
+    }
+
+    fn new_inner(device_id: &str, sample_rate: u32, channels: u16) -> Result<Self, String> {
         log::info!(
             "[ALSA Direct] Opening device: {} ({}Hz, {}ch)",
             device_id,
@@ -171,7 +205,7 @@ impl AlsaDirectStream {
         }
 
         // Open PCM device
-        let pcm = PCM::new(device_id, Direction::Playback, false)
+        let pcm = PCM::new(device_id, Direction::Playback, true)
             .map_err(|e| format!("Failed to open ALSA device '{}': {}", device_id, e))?;
 
         // Set hardware parameters and auto-detect best format
@@ -279,6 +313,12 @@ impl AlsaDirectStream {
     /// the carrier rate the caller falls back to DSD→PCM conversion.
     /// Mirrors `new()` for reservation / buffer sizing / field order.
     pub fn new_dop(device_id: &str, carrier_rate: u32, channels: u16) -> Result<Self, String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_dop_inner(device_id, carrier_rate, channels)
+        })
+    }
+
+    fn new_dop_inner(device_id: &str, carrier_rate: u32, channels: u16) -> Result<Self, String> {
         log::info!(
             "[ALSA Direct] Opening device for DoP: {} ({}Hz carrier, {}ch, S32_LE)",
             device_id,
@@ -352,6 +392,16 @@ impl AlsaDirectStream {
     /// hasn't granted the device a DSD format (no quirk) — the caller falls
     /// back to DoP/conversion.
     pub fn new_native_dsd(
+        device_id: &str,
+        dsd_rate: u32,
+        channels: u16,
+    ) -> Result<(Self, bool), String> {
+        super::alsa_backend::with_sink_recovery(device_id, || {
+            Self::new_native_dsd_inner(device_id, dsd_rate, channels)
+        })
+    }
+
+    fn new_native_dsd_inner(
         device_id: &str,
         dsd_rate: u32,
         channels: u16,
@@ -467,7 +517,11 @@ impl AlsaDirectStream {
     /// Write audio samples to ALSA (auto-converts from i16 based on detected format)
     pub fn write(&self, samples_i16: &[i16]) -> Result<(), String> {
         let pcm = self.pcm.lock().unwrap();
+        if self.channels == 0 || samples_i16.len() % usize::from(self.channels) != 0 {
+            return Err("PCM input does not contain complete frames".into());
+        }
         let frames = samples_i16.len() / self.channels as usize;
+        let cancel = &AtomicBool::new(false);
 
         match self.format {
             Format::FloatLE => {
@@ -479,25 +533,9 @@ impl AlsaDirectStream {
                     .io_f32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_f32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_f32[offset * (usize::from(self.channels))..])
+                }).map(|_| ()).map_err(|e| e.message)
             }
             Format::S32LE => {
                 // Convert i16 to i32 (bit-perfect: shift left 16 bits)
@@ -507,25 +545,9 @@ impl AlsaDirectStream {
                     .io_i32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_i32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i32[offset * (usize::from(self.channels))..])
+                }).map(|_| ()).map_err(|e| e.message)
             }
             Format::S16LE => {
                 // Direct write (no conversion needed)
@@ -533,25 +555,9 @@ impl AlsaDirectStream {
                     .io_i16()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(samples_i16) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i16[offset * (usize::from(self.channels))..])
+                }).map(|_| ()).map_err(|e| e.message)
             }
             Format::S243LE => {
                 // S24_3LE: 24-bit packed in 3 bytes, little-endian
@@ -571,25 +577,9 @@ impl AlsaDirectStream {
                 // Use raw byte I/O for 3-byte packed format
                 let io = pcm.io_bytes();
 
-                match io.writei(&bytes) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames (S24_3LE)",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "(S24_3LE)") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&bytes[offset * (usize::from(self.channels) * 3)..])
+                }).map(|_| ()).map_err(|e| e.message)
             }
             Format::S24LE => {
                 // S24LE: 24-bit in 32-bit container (padded)
@@ -600,25 +590,9 @@ impl AlsaDirectStream {
                     .io_i32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_i32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i32[offset * (usize::from(self.channels))..])
+                }).map(|_| ()).map_err(|e| e.message)
             }
             _ => Err(format!("Unsupported format: {:?}", self.format)),
         }
@@ -629,6 +603,14 @@ impl AlsaDirectStream {
     /// f32 has 24 bits of significand, so 24-bit audio is preserved losslessly.
     /// This is the primary write path for the f32 pipeline.
     pub fn write_f32(&self, samples_f32: &[f32]) -> Result<(), String> {
+        self.write_f32_with_cancel(samples_f32, &AtomicBool::new(false)).map(|_| ()).map_err(|e| e.message)
+    }
+
+    fn write_f32_with_cancel(&self, samples_f32: &[f32], cancel: &AtomicBool)
+        -> Result<usize, crate::backend::DirectWriteError> {
+        if self.channels == 0 || samples_f32.len() % usize::from(self.channels) != 0 {
+            return Err("PCM input does not contain complete frames".to_string().into());
+        }
         let pcm = self.pcm.lock().unwrap();
         let frames = samples_f32.len() / self.channels as usize;
 
@@ -639,25 +621,9 @@ impl AlsaDirectStream {
                     .io_f32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(samples_f32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_f32[offset * (usize::from(self.channels))..])
+                })
             }
             Format::S32LE => {
                 // f32 [-1.0, 1.0] -> i32 full range
@@ -670,60 +636,25 @@ impl AlsaDirectStream {
                     .io_i32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_i32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i32[offset * (usize::from(self.channels))..])
+                })
             }
             Format::S24LE => {
                 // f32 -> 24-bit in 32-bit container
                 // Clamp to 24-bit range: [-8388608, 8388607]
                 let samples_i32: Vec<i32> = samples_f32
                     .iter()
-                    .map(|&s| {
-                        let scaled = s * 8_388_607.0;
-                        scaled.clamp(-8_388_608.0, 8_388_607.0) as i32
-                    })
+                    .map(|&s| crate::pcm_sample::s24(s))
                     .collect();
 
                 let io = pcm
                     .io_i32()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_i32) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i32[offset * (usize::from(self.channels))..])
+                })
             }
             Format::S243LE => {
                 // S24_3LE: 24-bit packed in 3 bytes, little-endian
@@ -731,71 +662,38 @@ impl AlsaDirectStream {
                 let mut bytes: Vec<u8> = Vec::with_capacity(samples_f32.len() * 3);
 
                 for &sample in samples_f32 {
-                    let scaled = sample * 8_388_607.0;
-                    let s24 = scaled.clamp(-8_388_608.0, 8_388_607.0) as i32;
-                    // Pack as 3 bytes in little-endian order
-                    bytes.push((s24 & 0xFF) as u8); // LSB
-                    bytes.push(((s24 >> 8) & 0xFF) as u8); // Middle
-                    bytes.push(((s24 >> 16) & 0xFF) as u8); // MSB (sign-extended)
+                    bytes.extend_from_slice(&crate::pcm_sample::s24_packed(sample));
                 }
 
                 let io = pcm.io_bytes();
 
-                match io.writei(&bytes) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames (S24_3LE)",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "(S24_3LE)") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&bytes[offset * (usize::from(self.channels) * 3)..])
+                })
             }
             Format::S16LE => {
                 // f32 -> i16
                 let samples_i16: Vec<i16> =
-                    samples_f32.iter().map(|&s| (s * 32_767.0) as i16).collect();
+                    samples_f32.iter().map(|&s| crate::pcm_sample::s16(s)).collect();
 
                 let io = pcm
                     .io_i16()
                     .map_err(|e| format!("Failed to get PCM I/O: {}", e))?;
 
-                match io.writei(&samples_i16) {
-                    Ok(written) => {
-                        if written != frames {
-                            log::warn!(
-                                "[ALSA Direct] Partial write: {} / {} frames",
-                                written,
-                                frames
-                            );
-                        }
-                        Ok(())
-                    }
-                    Err(e) => {
-                        if let Err(msg) = recover_write_error(&pcm, e.errno() as i32, "") {
-                            Err(msg)
-                        } else {
-                            Ok(())
-                        }
-                    }
-                }
+                write_pcm_frames(&pcm, frames, cancel, |offset| {
+                    io.writei(&samples_i16[offset * (usize::from(self.channels))..])
+                })
             }
-            _ => Err(format!("Unsupported format: {:?}", self.format)),
+            _ => Err(format!("Unsupported format: {:?}", self.format).into()),
         }
     }
 
     /// Drain and stop playback
     pub fn drain(&self) -> Result<(), String> {
+        self.drain_with_cancel(&AtomicBool::new(false))
+    }
+
+    fn drain_with_cancel(&self, cancel: &AtomicBool) -> Result<(), String> {
         log::info!("[ALSA Direct] Draining PCM");
         let pcm = self.pcm.lock().unwrap();
         // BOUNDED drain — a bare `snd_pcm_drain` blocks until every queued
@@ -811,6 +709,7 @@ impl AlsaDirectStream {
         const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
         let start = std::time::Instant::now();
         loop {
+            if cancel.load(std::sync::atomic::Ordering::Acquire) { return Ok(()); }
             match pcm.state() {
                 alsa::pcm::State::Running | alsa::pcm::State::Draining => {
                     if start.elapsed() >= DRAIN_DEADLINE {
@@ -1074,6 +973,15 @@ mod tests {
 impl crate::backend::DirectSink for AlsaDirectStream {
     fn write_f32(&self, samples: &[f32]) -> Result<(), String> {
         AlsaDirectStream::write_f32(self, samples)
+    }
+    #[cfg(target_os = "linux")]
+    fn write_f32_interruptible(&self, samples: &[f32], cancel: &AtomicBool)
+        -> Result<usize, crate::backend::DirectWriteError> {
+        self.write_f32_with_cancel(samples, cancel)
+    }
+    #[cfg(target_os = "linux")]
+    fn drain_interruptible(&self, cancel: &AtomicBool) -> Result<(), String> {
+        self.drain_with_cancel(cancel)
     }
     fn drain(&self) -> Result<(), String> {
         AlsaDirectStream::drain(self)

@@ -258,6 +258,8 @@ Item {
                             border.color: searchInput.activeFocus ? theme.accent : theme.borderSubtle
 
                             TextInput {
+
+                                QbzTextEditMenu { }
                                 id: searchInput
                                 anchors.fill: parent
                                 anchors.leftMargin: 12
@@ -315,7 +317,7 @@ Item {
                                 width: 20
                                 height: 20
                                 radius: 10
-                                color: chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                                color: chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                                 QbzIcon {
                                     anchors.centerIn: parent
                                     name: "x"
@@ -359,6 +361,7 @@ Item {
                             border.width: 1
                             border.color: nameInput.activeFocus ? theme.accent : theme.borderSubtle
                             TextInput {
+                                QbzTextEditMenu { }
                                 id: nameInput
                                 anchors.fill: parent
                                 anchors.leftMargin: 12

@@ -47,7 +47,7 @@ Rectangle {
     color: cardArea.containsMouse ? theme.surfaceHover
         : (root.compact ? "transparent" : theme.surfaceCard)
     border.width: root.compact ? 0 : 1
-    border.color: cardArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+    border.color: cardArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
     // `label · meta`, but never a bare " · ": a default/half-built `item` (a
     // standalone instance, or a pre-publish frame) has neither half and would

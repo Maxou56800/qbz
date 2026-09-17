@@ -46,17 +46,24 @@
 //! the documented follow-up. No RGBA decode in Rust: QML `Image` decodes
 //! `file://` asynchronously and natively.
 //!
-//! ## Cache eviction — scaled derivatives only
+//! ## Cache eviction — both directories, once per run
 //!
-//! [`housekeeping`] bounds `~/.cache/qbz/images/scaled` (this module's OWN
-//! derivative directory) at [`MAX_SCALED_BYTES`], LRU by mtime, and does the
-//! one-time `.jpg` orphan sweep the `.png` key change left behind. The PARENT
-//! `~/.cache/qbz/images` is the SHARED cache and keeps its own policy
-//! (`qbz_cache::ImageCacheService`, SQLite `last_accessed` + the Slint app's
-//! 200 MB `evict`) — do NOT add a second one for it from here.
+//! [`housekeeping`] runs on the blocking pool at boot and bounds BOTH caches:
+//! the SHARED `~/.cache/qbz/images` (the full-size originals `store` writes;
+//! `qbz_cache::ImageCacheService`, SQLite `last_accessed` LRU, budget
+//! [`shared_budget_bytes`] (a Settings preference, 200 MB by default), trimmed
+//! at boot and again every [`TRIM_EVERY_BYTES`] of new originals, in
+//! [`EVICT_BATCH_ENTRIES`]-row batches so the
+//! GUI thread is never parked behind a long unlink loop) and this module's
+//! OWN derivative directory `images/scaled` ([`MAX_SCALED_BYTES`], LRU by
+//! mtime, plus the one-time `.jpg` orphan sweep). The shared trim was the
+//! Slint app's `spawn_evict` (v2.0.2); it was retired with that frontend
+//! (69ed61207) and 2.1.0/2.1.1 shipped with NO caller of `evict` at all — the
+//! directory grew without bound.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock, RwLock};
 
 use qbz_cache::ImageCacheService;
@@ -579,6 +586,7 @@ async fn fetch_jobs_with_ready(jobs: Vec<(String, String)>, ready: Option<Artwor
                     }
                 });
             if let Some(path) = stored {
+                note_stored(bytes.len());
                 // Seed the memo so the republish that follows resolves from
                 // RAM instead of re-querying SQLite for every card.
                 memo_put(&key, path.clone());
@@ -918,6 +926,7 @@ async fn download_one(key: String, fetch: String) {
             }
         });
     if let Some(path) = stored {
+        note_stored(bytes.len());
         memo_put(&key, path);
     }
 }
@@ -988,6 +997,19 @@ mod tests {
         download.await.unwrap();
         server.await.unwrap();
         assert!(rx.recv().await.is_none(), "duplicate URLs must emit once");
+    }
+
+    #[test]
+    fn a_trim_is_due_once_the_stored_bytes_cross_the_step() {
+        let counter = AtomicU64::new(0);
+        assert!(!trim_due_after(&counter, TRIM_EVERY_BYTES / 2));
+        assert!(!trim_due_after(&counter, TRIM_EVERY_BYTES / 2 - 1));
+        assert!(trim_due_after(&counter, 1));
+    }
+
+    #[test]
+    fn the_shared_budget_defaults_to_200_mb() {
+        assert_eq!(DEFAULT_SHARED_BUDGET_MB * 1024 * 1024, 200 * 1024 * 1024);
     }
 
     #[test]
@@ -1229,6 +1251,110 @@ pub fn scaled_path(path: &str, w: u32, h: u32) -> Option<std::path::PathBuf> {
 /// order of magnitude under the 260 MB the parent image cache already holds.
 const MAX_SCALED_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Default byte budget for the SHARED cache (`~/.cache/qbz/images`): the
+/// Tauri/Slint default, now a preference (`ui_prefs` `image_cache_max_mb`,
+/// Settings > Offline > Artwork cache).
+pub(crate) const DEFAULT_SHARED_BUDGET_MB: u64 = 200;
+
+/// The budget in bytes, from the preference (0 / absent = the default).
+pub(crate) fn shared_budget_bytes() -> u64 {
+    crate::settings_qt::pref_json("image_cache_max_mb")
+        .and_then(|v| v.as_u64())
+        .filter(|mb| *mb > 0)
+        .unwrap_or(DEFAULT_SHARED_BUDGET_MB)
+        * 1024
+        * 1024
+}
+
+/// Rows deleted per `evict` call; the cache mutex is released between calls.
+const EVICT_BATCH_ENTRIES: usize = 64;
+
+/// Bytes stored since the last trim. The Tauri app evicted after EVERY
+/// store; here a trim runs on the blocking pool once this many new bytes
+/// have landed, so the directory can never sit more than this far above
+/// the budget between the boot trim and the next one (an early release
+/// grew the folder to 1 GB — never again).
+const TRIM_EVERY_BYTES: u64 = 16 * 1024 * 1024;
+static STORED_SINCE_TRIM: AtomicU64 = AtomicU64::new(0);
+static TRIM_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Account for a freshly stored original. Returns true when a trim is due
+/// (the counter is reset by the caller that takes the trim).
+fn trim_due_after(counter: &AtomicU64, stored: u64) -> bool {
+    counter.fetch_add(stored, Ordering::Relaxed) + stored >= TRIM_EVERY_BYTES
+}
+
+fn note_stored(stored: usize) {
+    if !trim_due_after(&STORED_SINCE_TRIM, stored as u64) {
+        return;
+    }
+    STORED_SINCE_TRIM.store(0, Ordering::Relaxed);
+    trim_shared_now();
+}
+
+/// Trim the shared cache to its budget on the blocking pool (a budget
+/// change, or the running counter above); one trim in flight at a time.
+pub(crate) fn trim_shared_now() {
+    if TRIM_IN_FLIGHT.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tokio::task::spawn_blocking(|| {
+        if let Some(freed) = evict_shared(shared_budget_bytes()) {
+            if freed > 0 {
+                log::info!("[qbz-qt][perf] image cache trimmed {freed} B (budget {} B)", shared_budget_bytes());
+            }
+        }
+        TRIM_IN_FLIGHT.store(false, Ordering::SeqCst);
+    });
+}
+
+/// (files, bytes) held by the shared cache, for the Settings stats line.
+pub(crate) fn shared_stats() -> Option<(u64, u64)> {
+    let guard = cache()?.lock().ok()?;
+    let stats = guard.stats().ok()?;
+    Some((stats.file_count, stats.total_bytes))
+}
+
+/// Delete every original in the shared cache (Settings > Clear). Blocking —
+/// call from `spawn_blocking`. The memo is dropped too so no row can keep
+/// serving a path that is gone.
+pub(crate) fn clear_shared() -> Result<u64, String> {
+    let cache = cache().ok_or_else(|| "image cache unavailable".to_string())?;
+    let freed = cache
+        .lock()
+        .map_err(|_| "image cache lock poisoned".to_string())?
+        .clear()?;
+    if let Ok(mut memo) = RESOLVED.write() {
+        memo.clear();
+    }
+    Ok(freed)
+}
+
+/// Trim the shared cache to `max_bytes`, LRU by `last_accessed`, in batches.
+/// Blocking (SQLite + unlinks) — call from `spawn_blocking`. Returns the
+/// bytes freed, `None` when the cache could not be opened (already logged).
+fn evict_shared(max_bytes: u64) -> Option<u64> {
+    let cache = cache()?;
+    let mut freed_total = 0u64;
+    loop {
+        let batch = {
+            let guard = cache.lock().ok()?;
+            match guard.evict(max_bytes, EVICT_BATCH_ENTRIES) {
+                Ok(batch) => batch,
+                Err(e) => {
+                    log::warn!("[qbz-qt] image cache eviction failed: {e}");
+                    return Some(freed_total);
+                }
+            }
+        };
+        freed_total += batch.freed_bytes;
+        if batch.evicted_entries == 0 {
+            return Some(freed_total);
+        }
+        std::thread::yield_now();
+    }
+}
+
 /// Keep `scaled/` bounded: drop the oldest derivatives past
 /// [`MAX_SCALED_BYTES`]. Mtime order, oldest first — the same shape as
 /// `icon_tint_qt::prune`, with one deliberate difference: `prune` caps on a
@@ -1302,16 +1428,31 @@ fn sweep_orphan_scaled(dir: &Path) -> (usize, u64) {
     (n, freed)
 }
 
-/// Boot-time housekeeping for the derivative cache: the one-time `.jpg`
-/// orphan sweep, then the byte cap. Blocking (`read_dir` + unlinks) — call
-/// from `spawn_blocking`.
-///
-/// SCOPE: `images/scaled` ONLY. The parent `~/.cache/qbz/images` (260 MB) is
-/// the SHARED cache owned by `qbz_cache::ImageCacheService` (SQLite
-/// `last_accessed` + the Slint app's 200 MB `evict`); two processes evicting
-/// the same directory on different policies is exactly what the memo at the
-/// top of this file had to be written about.
+/// Boot-time housekeeping for both image caches — see the module doc
+/// "Cache eviction". Blocking; call from `spawn_blocking`.
 pub fn housekeeping() {
+    // 1. The SHARED cache (full-size originals): LRU trim to the budget.
+    let budget = shared_budget_bytes();
+    if let Some(freed) = evict_shared(budget) {
+        if freed > 0 {
+            log::info!("[qbz-qt][perf] image cache evicted {freed} B (budget {budget} B)");
+        }
+    }
+    // 1b. Files the database does not know (a crash mid-store, a lost db):
+    //     never evicted by the LRU, so they are swept here — anything under
+    //     an hour old is left alone in case its store is still in flight.
+    if let Some(cache) = cache() {
+        if let Ok(guard) = cache.lock() {
+            match guard.sweep_orphans(std::time::Duration::from_secs(3_600)) {
+                Ok((files, bytes)) if files > 0 => {
+                    log::info!("[qbz-qt][perf] image cache swept {files} orphan files ({bytes} B)");
+                }
+                Ok(_) => {}
+                Err(e) => log::warn!("[qbz-qt] image cache orphan sweep failed: {e}"),
+            }
+        }
+    }
+    // 2. This module's OWN derivative directory: orphan sweep, then byte cap.
     let Some(dir) = dirs::cache_dir().map(|d| d.join("qbz").join("images").join("scaled")) else {
         return;
     };

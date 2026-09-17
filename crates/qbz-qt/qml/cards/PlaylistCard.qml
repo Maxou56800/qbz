@@ -392,6 +392,11 @@ Rectangle {
         m.push({ "label": t("Make available offline", r), "icon": "cloud-download", "action": "cache" })
         if (root.hasCopyByIdSeam && !owned && root.item.playlistCopied !== true)
             m.push({ "label": t("Copy to your library", r), "icon": "copy", "action": "copy" })
+        // Delete (2026-09-13): the fast path from search / library / browse
+        // cards, behind the shell-level confirmation. Owned playlists only —
+        // a followed one has Unfollow above.
+        if (owned)
+            m.push({ "label": t("Delete playlist", r), "icon": "trash-2", "action": "delete", "danger": true })
         return m
     }
 
@@ -415,5 +420,6 @@ Rectangle {
             }]))
         }
         else if (a === "cache") QbzOffline.cachePlaylist(String(root.item.id))
+        else if (a === "delete") QbzPlaylistEdit.askDelete(String(root.item.id), String(root.item.title || ""))
     }
 }

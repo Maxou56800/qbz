@@ -349,6 +349,15 @@ jobs:
       # installer on the last compatible pre-OSMF toolchain instead of making
       # a CI job accept legal terms on a maintainer's behalf. The committed
       # authoring deliberately stays within WiX 5 syntax.
+      - name: Validate updater helper syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/crates/qbz-updater/src/install-msi.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List; throw 'Invalid updater helper' }
+
       - name: WiX
         run: dotnet tool install --global wix --version 5.0.2 && wix --version
 
@@ -420,6 +429,20 @@ jobs:
         run: |
           & "$(vswhere -latest -find '**\signtool.exe' | Select-Object -First 1)" sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "dist\QBZ_$env:VERSION`_x64.msi"
 
+      # Minisign is the updater signature, separate from optional Authenticode.
+      # Sign the final MSI bytes after Authenticode, with the existing release key.
+      - name: Sign MSI for the QBZ updater
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npx --yes @tauri-apps/cli@^2 signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "dist/QBZ_${VERSION}_x64.msi"
+
       # Portable zip of the same directory (testers without install rights),
       # plus the PDB (MSVC emits it regardless of `strip = "symbols"`).
       - name: Portable zip + symbols
@@ -462,6 +485,7 @@ jobs:
           retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 7 }}
           path: |
             dist/*.msi
+            dist/*.msi.sig
             dist/*.zip
             dist/*.pdb
 
@@ -472,6 +496,7 @@ jobs:
         with:
           files: |
             dist/*.msi
+            dist/*.msi.sig
             dist/*.zip
           prerelease: ${{ steps.release.outputs.prerelease }}
           make_latest: ${{ steps.release.outputs.prerelease == 'true' && 'false' || 'true' }}

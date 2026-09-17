@@ -91,6 +91,13 @@ pub mod qbz_qconnect {
         #[qinvokable]
         fn set_active(self: Pin<&mut QbzQConnect>, renderer_id: i32);
 
+        /// Picker row "On this network": hand the renderer this account's
+        /// delegated credentials so it joins the session (LAN pairing, the
+        /// same step the official apps take). `device_uuid` is the row's
+        /// `lan_uuid`.
+        #[qinvokable]
+        fn pair_lan(self: Pin<&mut QbzQConnect>, device_uuid: QString);
+
         /// Resolve the playback-conflict modal. Values 1..=4 match the visual
         /// order and are validated again by the Rust facade.
         #[qinvokable]
@@ -248,6 +255,23 @@ impl qbz_qconnect::QbzQConnect {
             if let Err(err) = service.set_active_renderer(renderer_id).await {
                 log::warn!("[QConnect] set_active_renderer({renderer_id}) failed: {err}");
                 crate::toast_qt::error("Failed to switch renderer");
+            }
+        });
+    }
+
+    pub fn pair_lan(self: Pin<&mut Self>, device_uuid: QString) {
+        let uuid = device_uuid.to_string();
+        let Some(service) = crate::qconnect_qt::service() else {
+            crate::toast_qt::error("Qobuz Connect is not running");
+            return;
+        };
+        crate::spawn(async move {
+            match service.pair_lan(&uuid).await {
+                Ok(name) => crate::toast_qt::info(format!("Pairing with {name}…")),
+                Err(err) => {
+                    log::warn!("[QConnect LAN] pair_lan({uuid}) failed: {err}");
+                    crate::toast_qt::error("Could not pair with that device");
+                }
             }
         });
     }

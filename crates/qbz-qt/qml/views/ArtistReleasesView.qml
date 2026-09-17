@@ -257,7 +257,7 @@ Rectangle {
                             width: retryLabel.implicitWidth + 32
                             height: 34
                             radius: 6
-                            color: retryArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: retryArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
                             Text {
                                 id: retryLabel

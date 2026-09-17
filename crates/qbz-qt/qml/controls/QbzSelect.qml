@@ -26,7 +26,6 @@ Rectangle {
     // window edge may opt into a lateral list without changing every other
     // QbzSelect instance. Supported values: "below" and "left".
     property string popupPlacement: "below"
-    property bool enabled: true
     property bool searchable: false
     // Bootstrap-style small variant (QbzSelect.slint:74-76). The default is the
     // standard Settings size; TOOLBARS opt in with `sm: true` — 30px tall, r6,
@@ -75,8 +74,8 @@ Rectangle {
     // shows through the control (QbzSelect.slint:110-116). Hover keeps its own
     // token, which is already translucent.
     color: selArea.containsMouse && enabled
-        ? theme.surfaceHover
-        : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+        ? theme.elevatedHoverFill
+        : theme.elevatedFill
     opacity: enabled ? 1.0 : 0.4
     activeFocusOnTab: enabled
     Accessible.role: Accessible.ComboBox
@@ -337,6 +336,7 @@ Rectangle {
                         width: parent.width - 14 - 8
                         height: parent.height
                         TextInput {
+                            QbzTextEditMenu { }
                             id: searchInput
                             anchors.fill: parent
                             color: theme.textPrimary

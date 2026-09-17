@@ -44,7 +44,7 @@ use super::engine::{DaemonRendererEngine, VolumeMode};
 use super::lan::DaemonLanProjectionSlot;
 use super::session::{bootstrap_prepared_owner_presence, DaemonSessionLoopHost};
 use super::sink::{DaemonEventSink, DaemonQconnectApp};
-use super::transport::{default_qconnect_device_info_with_name, resolve_transport_config};
+use super::transport::{device_info_with_volume_mode, resolve_transport_config};
 use super::{
     lock_inner, update_lifecycle_state_if_running, DaemonQconnectInner, DaemonQconnectRuntime,
 };
@@ -580,6 +580,7 @@ impl DelegationHost for DaemonDelegationHost {
             prepared.session_id.as_str(),
             prepared.become_active,
             prepared.common.custom_name.as_deref(),
+            prepared.common.volume_mode,
             current_quality(&self.quality_cap),
         )
         .await?;
@@ -726,8 +727,9 @@ impl DelegationHost for DaemonDelegationHost {
             .wait_for_qws_ready(cancellation.clone())
             .await
             .map_err(|_| DelegationErrorCode::OwnerRestoreFailed)?;
-        bootstrap_prepared_owner_presence(&common.app, common.custom_name.clone())
-            .await
+        bootstrap_prepared_owner_presence(
+            &common.app, common.custom_name.clone(), common.volume_mode,
+        ).await
             .map_err(|_| DelegationErrorCode::OwnerRestoreFailed)?;
         common
             .preflight
@@ -1179,9 +1181,10 @@ async fn send_delegated_join(
     session_id: &str,
     become_active: bool,
     custom_name: Option<&str>,
+    volume_mode: VolumeMode,
     quality: Quality,
 ) -> Result<(), DelegationErrorCode> {
-    let mut device_info = default_qconnect_device_info_with_name(custom_name);
+    let mut device_info = device_info_with_volume_mode(custom_name, volume_mode);
     if let Some(capabilities) = device_info.capabilities.as_mut() {
         capabilities.max_audio_quality = Some(max_audio_quality_from_quality(quality));
     }
@@ -1423,8 +1426,9 @@ async fn handle_delegated_event(
             .await;
         }
         DelegatedRuntimeEventDirective::Rejoin => {
-            if send_delegated_join(app, session_id, true, custom_name, quality)
-                .await
+            if send_delegated_join(
+                app, session_id, true, custom_name, sink.volume_mode(), quality,
+            ).await
                 .is_err()
             {
                 request_restore(coordinator, generation).await;

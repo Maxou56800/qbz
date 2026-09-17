@@ -40,6 +40,9 @@ Rectangle {
     property string title: ""
     property string artist: ""
     property string artistId: ""
+    /// The release's label id when the host knows it (library feed rows do):
+    /// the "View label" menu entry (2026-09-13). "" = no entry.
+    property string labelId: ""
     // Hosts with only a display snapshot (Home's persisted Pinned row) can
     // still make the artist line a link and resolve the destination lazily.
     // Normal catalog cards keep the direct artistId path and pay no lookup.
@@ -210,7 +213,10 @@ Rectangle {
     /// Park the select indicator bottom-right of the art instead of top-right.
     property bool selectMarkBottom: false
     property bool selected: false
-    signal selectToggled()
+    /// `modifiers` rides straight off the click: a grid host turns Shift into
+    /// a range (controls/SelectionModel.qml). Every select-mode target on the
+    /// card — artwork, title, artist line — emits it.
+    signal selectToggled(int modifiers)
 
     // Album blacklist ("Block this album") — LIVE since QbzBlacklist landed
     // (`blockAlbum(id, title, artist, coverUrl)`). Kept as a property, not
@@ -391,6 +397,8 @@ Rectangle {
         }
         // Host tail (see `extraMenuEntries`). `concat` so the host's array is
         // never mutated — it is usually a binding's return value.
+        if (root.labelId !== "")
+            m.push({ "label": t("View label", r), "icon": "tags", "action": "view-label" })
         var extra = root.extraMenuEntries || []
         return extra.length > 0 ? m.concat(extra) : m
     }
@@ -415,6 +423,7 @@ Rectangle {
         // denormalized snapshot and a file:// cache path is dead on any other
         // machine, the same reason the pin payload uses it.
         if (a === "favorite") { root.toggleFavorite(); return }
+        if (a === "view-label") { QbzHome.openLabel(root.labelId); return }
         if (a === "find-release") {
             QbzTrackReplace.openRelease(JSON.stringify({
                 "targetKind": "album",
@@ -555,7 +564,7 @@ Rectangle {
                     }
                     // .slint:169 — in select mode the card click TOGGLES.
                     if (root.selectMode) {
-                        root.selectToggled()
+                        root.selectToggled(mouse.modifiers)
                         return
                     }
                     if (root.pulledDead)
@@ -987,7 +996,7 @@ Rectangle {
                             // .slint:465 — the title carries the SAME target
                             // as the artwork, select mode included.
                             if (root.selectMode) {
-                                root.selectToggled()
+                                root.selectToggled(mouse.modifiers)
                                 return
                             }
                             if (root.pulledDead)
@@ -1003,7 +1012,8 @@ Rectangle {
                     width: parent.width
                     height: 18
                     text: root.artist
-                    color: (root.artistId !== "" || root.hostArtistLink)
+                    color: !root.selectMode
+                        && (root.artistId !== "" || root.hostArtistLink)
                         && artistArea.containsMouse
                         ? theme.textPrimary : theme.textMuted
                     font.pixelSize: theme.fontLink - 1
@@ -1013,9 +1023,15 @@ Rectangle {
                         id: artistArea
                         anchors.fill: parent
                         hoverEnabled: true
-                        cursorShape: root.artistId !== "" || root.hostArtistLink
+                        cursorShape: root.selectMode || root.artistId !== "" || root.hostArtistLink
                             ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: {
+                        onClicked: function (mouse) {
+                            // In select mode the artist line is the card too:
+                            // opening the artist mid-selection would drop it.
+                            if (root.selectMode) {
+                                root.selectToggled(mouse.modifiers)
+                                return
+                            }
                             if (root.artistId !== "")
                                 QbzArtist.openArtist(root.artistId)
                             else if (root.hostArtistLink)

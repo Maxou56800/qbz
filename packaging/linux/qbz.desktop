@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=QBZ
 Comment=Native Qobuz client with hi-res audio support
-Exec=qbz %u
+Exec=/usr/bin/qbz %u
 Icon=qbz
 Terminal=false
 Type=Application
@@ -10,3 +10,7 @@ Keywords=music;audio;qobuz;hifi;streaming;audiophile;flac;
 StartupWMClass=com.blitzfc.qbz
 StartupNotify=true
 MimeType=x-scheme-handler/qobuzapp;
+# KWin hands org_kde_plasma_window_management (where this window is, for the
+# Wallpaper background on Plasma Wayland) only to a binary named by an
+# ABSOLUTE Exec that declares the interface here.
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management

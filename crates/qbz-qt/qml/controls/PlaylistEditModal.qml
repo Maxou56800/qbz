@@ -98,6 +98,25 @@ Item {
     property string draftName: ""
     property string draftDescription: ""
     property bool draftOfflineOnly: false
+    /// The folder the playlist will be filed in on Save ("" = root). Seeded
+    /// from `doc.folderId`; the move rides QbzPlaylistManager.moveToFolder,
+    /// the same verb the sidebar row menu uses (2026-09-13).
+    property string draftFolderId: ""
+    readonly property var folders: {
+        try {
+            var f = JSON.parse(QbzPlaylistManager.foldersJson || "[]")
+            return Array.isArray(f) ? f : []
+        } catch (e) {
+            return []
+        }
+    }
+    readonly property var folderOptions: [root.t("No folder")].concat(
+        root.folders.map(function (f) { return String(f.name) }))
+    readonly property int folderIndex: {
+        for (var i = 0; i < root.folders.length; i++)
+            if (String(root.folders[i].id) === root.draftFolderId) return i + 1
+        return 0
+    }
 
     readonly property bool canSave: root.draftName.trim() !== "" && !root.busy
 
@@ -115,6 +134,12 @@ Item {
             root.draftName = root.doc.name || ""
             root.draftDescription = root.doc.description || ""
             root.draftOfflineOnly = root.doc.offlineOnly === true
+            root.draftFolderId = root.doc.folderId || ""
+            // The boxes, not just the drafts: a seed equal to the previous
+            // one changes nothing above, and a box that was still focused
+            // at close never re-seeded (QbzLineEdit.reset()).
+            nameField.reset()
+            descriptionField.reset()
             scope.forceActiveFocus()
             nameField.focusField()
         }
@@ -138,9 +163,14 @@ Item {
     }
 
     function submit() {
-        if (root.canSave)
-            QbzPlaylistEdit.save(root.draftName, root.draftDescription,
-                                 root.draftOfflineOnly)
+        if (!root.canSave)
+            return
+        // The folder is a separate write (the sidebar's own move verb, with
+        // its optimistic patch); only when it changed.
+        if (root.draftFolderId !== (root.doc.folderId || ""))
+            QbzPlaylistManager.moveToFolder(String(root.doc.id), root.draftFolderId)
+        QbzPlaylistEdit.save(root.draftName, root.draftDescription,
+                             root.draftOfflineOnly)
     }
 
     FocusScope {
@@ -307,6 +337,7 @@ Item {
                         font.pixelSize: theme.fontLegal
                     }
                     QbzTextArea {
+                        id: descriptionField
                         width: parent.width
                         height: 90
                         text: root.draftDescription
@@ -323,6 +354,31 @@ Item {
                 // from its tallest child, so anchoring a child to
                 // `parent.verticalCenter` inside one is a binding loop. Same
                 // shape FolderEditPanel.qml's hidden row uses.
+                // Folder (2026-09-13): the same folders the sidebar and the
+                // manager file playlists into; "No folder" = the root.
+                Column {
+                    width: parent.width
+                    spacing: 6
+                    Text {
+                        text: root.t("Folder")
+                        color: theme.textMuted
+                        font.pixelSize: theme.fontLegal
+                    }
+                    QbzSelect {
+                        menuWidth: 260
+                        // A folder tree grows past what a plain list can
+                        // scan: the filter box, like the ui-control standard's
+                        // searchable dropdown.
+                        searchable: true
+                        options: root.folderOptions
+                        currentIndex: root.folderIndex
+                        enabled: !root.busy
+                        onSelected: function (i) {
+                            root.draftFolderId = i <= 0 ? "" : String(root.folders[i - 1].id)
+                        }
+                    }
+                }
+
                 Item {
                     width: parent.width
                     height: 20

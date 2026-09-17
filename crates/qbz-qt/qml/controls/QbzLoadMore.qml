@@ -181,7 +181,7 @@ Column {
             width: pillText.implicitWidth + 36
             height: 32
             radius: theme.radiusSm
-            color: pillArea.containsMouse ? theme.surfaceElevated : theme.surfaceCard
+            color: pillArea.containsMouse ? theme.surfaceElevated : (theme.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard)
             border.width: 1
             border.color: theme.borderSubtle
             Text {

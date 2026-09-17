@@ -5,13 +5,15 @@
 // (HeaderBar.slint:858 / :974 — the two blocks are mutually exclusive):
 //
 //   navInSidebar ON   -> the sections live in Sidebar.qml. The header shows
-//                        the COMPACT icon nav only while the sidebar is fully
+//                        the section nav only while the sidebar is fully
 //                        closed (state 2), plus the separator + playlists
 //                        flyout button, so nothing is unreachable.
-//   navInSidebar OFF  -> the sections live HERE. Full text tabs while the
-//                        sidebar is not fully closed and navHeaderCompact is
-//                        OFF; the compact icon form when navHeaderCompact is
-//                        ON, or whenever the sidebar is fully closed.
+//   navInSidebar OFF  -> the sections live HERE.
+//   The FORM (2026-09-13) is a fit decision, agnostic of the sidebar state:
+//   full text tabs while they fit beside the search box, the compact icon
+//   form when they do not — or always when navHeaderCompact is ON. A closed
+//   sidebar no longer forces the compact form; it only adds the playlists
+//   button to the row, and that button is part of the measure.
 //
 // The search field gives up 60px whenever the nav is in the header, and
 // re-centers with a 220ms animation (HeaderBar.slint:569).
@@ -61,6 +63,9 @@ Rectangle {
     // HeaderBar.slint's with-alpha(app-background-surface-alpha)).
     color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
     readonly property bool ambientOn: theme.ambientOn
+    /// The fill of an ACTIVE nav item / open button: elevated, at half alpha
+    /// under the ambient field like every other chrome control.
+    readonly property color activeFill: root.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated
 
 
     /// Raised by the app menu's "Report an issue" row; AppShell owns the modal.
@@ -175,35 +180,102 @@ Rectangle {
         try { return JSON.parse(QbzBridge.settingsJson) } catch (e) { return ({}) }
     }
 
-    /// Purchases in the TITLE BAR — the third row of the §7.1 truth table.
-    ///
-    /// This is the EXACT COMPLEMENT of `Sidebar.qml`'s `purchasesVisible`, and
-    /// it has to be, because that property WITHDRAWS the sidebar row for this
-    /// configuration. Until this existed the entry was withdrawn from one host
-    /// and offered by none: with `show_purchases` and `nav_tb_purchases` both on
-    /// and a custom title bar, Purchases simply had no way in.
-    ///
-    /// `nav_tb_purchases` only RELOCATES; `show_purchases` is the master gate.
-    /// Under system chrome or with no title bar there is nowhere to relocate TO,
-    /// so the sidebar keeps it and this stays false.
+    // Purchases FOLLOWS the section nav (2026-09-13): it is up here exactly
+    // when the sections are — the full tabs, or the compact buttons while
+    // the sidebar is closed / "Compact header navigation" is on — and in the
+    // sidebar otherwise (Sidebar.qml `purchasesVisible`).
     readonly property bool purchasesInHeader:
         root.settingsDoc.showPurchases === true
         && !QbzSession.offline
-        && root.settingsDoc.navTbPurchases === true
-        && !QbzShell.systemTitleBar
-        && !QbzShell.hideTitleBar
+        && (root.headerTabsOn || root.headerCompactOn)
 
     // Highlighted section — derived from the live view (see NavFlyout), OR'd
     // in the triggers with "my menu is open" (Slint highlights off
     // HeaderMenuState.open-index).
     readonly property string activeNav: navFlyout.activeSection
 
-    // Which of the two header forms is mounted (mutually exclusive, and both
-    // off while the nav lives in the sidebar and the sidebar is not closed).
-    readonly property bool headerTabsOn: !QbzShell.navInSidebar
-        && QbzShell.sidebarState !== 2 && !QbzShell.navHeaderCompact
-    readonly property bool headerCompactOn: QbzShell.sidebarState === 2
-        || (!QbzShell.navInSidebar && QbzShell.navHeaderCompact)
+    // ---- Full-tab label size (2026-09-13) --------------------------------
+    // 11 px is the floor: the tabs beside the search box at the 1140 px
+    // breakpoint. 12 / 13 px when every label, MEASURED, fits in the room
+    // left of the search box — 13 px is what the sidebar rows and the flyout
+    // entries use, so with space the two hosts read the same. Measured, not
+    // a window-width breakpoint: the labels are translated and their count
+    // changes (offline hides the Qobuz sections, Purchases is opt-in), so no
+    // fixed width would hold for every locale.
+    readonly property string navLabelsJoined: {
+        var parts = []
+        var s = root.navSections || []
+        for (var i = 0; i < s.length; i++)
+            if (!(s[i].qobuz && QbzSession.offline)) parts.push(s[i].label)
+        if (root.purchasesInHeader) parts.push(QbzSession.tr("Purchases", QbzSession.trRev))
+        return parts.join("")
+    }
+    readonly property int navTabCount: {
+        var n = 0
+        var s = root.navSections || []
+        for (var i = 0; i < s.length; i++)
+            if (!(s[i].qobuz && QbzSession.offline)) n++
+        return n + (root.purchasesInHeader ? 1 : 0)
+    }
+    TextMetrics {
+        id: navMetrics13
+        font.pixelSize: 13
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    TextMetrics {
+        id: navMetrics12
+        font.pixelSize: 12
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    // Per-tab chrome around the label: paddings, the 14 px glyph and its
+    // 6 px gap above the 1140 px breakpoint, and the Row's 2 px spacing.
+    readonly property real navTabsChrome:
+        root.navTabCount * ((root.width >= 1140 ? 9 + 14 + 6 : 11) + 11 + 2)
+    TextMetrics {
+        id: navMetrics11
+        font.pixelSize: 11
+        font.weight: theme.weightSemibold
+        text: root.navLabelsJoined
+    }
+    // Where the section nav starts inside leftControls: right after the
+    // third sacred button. Read off that button, not off the tab row itself,
+    // because a Row leaves a hidden child's x wherever it last was — a room
+    // measured from the hidden form would feed the form decision below.
+    readonly property real navOriginX: fwdBtn.x + fwdBtn.width + leftControls.spacing
+    // Room between the tabs' left edge and the (centred) search box.
+    readonly property real navTabsRoom: searchBox.x - (leftControls.x + root.navOriginX) - 16
+    // What trails the tabs in either form (the downloads ring, the playlists
+    // button of a closed sidebar) plus the Row gap before it — measured off
+    // the mounted group, which does not depend on the form.
+    readonly property real navTrailingWidth:
+        navTrailing.visible ? leftControls.spacing + navTrailing.width : 0
+    // The text tabs fit when every label at the 11 px floor, the per-tab
+    // chrome and the trailing group all sit left of the search box.
+    readonly property bool navTabsFit:
+        navMetrics11.advanceWidth + root.navTabsChrome + root.navTrailingWidth <= root.navTabsRoom
+    readonly property int navLabelPx:
+        !root.headerTabsOn ? 11
+        : navMetrics13.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 13
+        : navMetrics12.advanceWidth + root.navTabsChrome <= root.navTabsRoom ? 12
+        : 11
+
+    // Whether the section nav is up here at all: the nav lives in the header,
+    // or it lives in the sidebar and the sidebar is fully closed (so the
+    // sections stay reachable).
+    readonly property bool headerNavOn: !QbzShell.navInSidebar || QbzShell.sidebarState === 2
+
+    // Which of the two header forms is mounted (mutually exclusive). The form
+    // is a FIT decision (2026-09-13), agnostic of the sidebar state: text tabs
+    // while they fit beside the search box, icon-only glyphs when they do not
+    // — or always when "Compact header navigation" is on. A closed sidebar
+    // used to force the compact form by itself; it now only adds the
+    // playlists button to the measure, so a window with room keeps its tabs.
+    readonly property bool headerTabsOn: root.headerNavOn
+        && !QbzShell.navHeaderCompact && root.navTabsFit
+
+    readonly property bool headerCompactOn: root.headerNavOn && !root.headerTabsOn
 
     // Purchases downloading now (see Sidebar.qml's twin block).
     readonly property var activeDownloads: {
@@ -227,8 +299,8 @@ Rectangle {
     }
 
     // Full text tab (HeaderBar.slint NavTab): 30px tall, radius sm, icon 14
-    // (dropped under 1140px), label 11px — semibold + elevated fill when the
-    // section is the current view.
+    // (dropped under 1140px), label 11-13 px (`navLabelPx`) — semibold +
+    // elevated fill when the section is the current view.
     /// The title-bar Purchases entry. Deliberately NOT a `NavTab`: that
     /// component is built around a section object and its click opens the
     /// flyout, while Purchases navigates straight to its route.
@@ -243,7 +315,7 @@ Rectangle {
         height: 30
         width: purchaseRow.implicitWidth
         radius: theme.radiusSm
-        color: purchaseTab.isActive ? theme.surfaceElevated
+        color: purchaseTab.isActive ? root.activeFill
             : purchaseArea.containsMouse ? theme.surfaceHover : "transparent"
 
         Row {
@@ -256,17 +328,17 @@ Rectangle {
                 visible: purchaseTab.showIcon
                 anchors.verticalCenter: parent.verticalCenter
                 name: "shopping-bag"
-                width: 16
-                height: 16
-                tintName: purchaseTab.isActive ? "primary" : "muted"
+                width: purchaseTab.compact ? 16 : 14
+                height: width
+                tintName: purchaseTab.isActive ? "textPrimary" : "secondary"
             }
             Text {
                 visible: !purchaseTab.compact
                 anchors.verticalCenter: parent.verticalCenter
                 text: QbzSession.tr("Purchases", QbzSession.trRev)
-                color: purchaseTab.isActive ? theme.textPrimary : theme.textMuted
-                font.pixelSize: theme.fontLegal
-                font.weight: theme.weightMedium
+                color: theme.textPrimary
+                font.pixelSize: root.navLabelPx
+                font.weight: purchaseTab.isActive ? theme.weightSemibold : theme.weightRegular
             }
         }
 
@@ -294,7 +366,7 @@ Rectangle {
         width: tabRow.implicitWidth
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (tabArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
 
         Row {
@@ -323,7 +395,7 @@ Rectangle {
                 height: parent.height
                 text: navTab.section ? navTab.section.label : ""
                 color: theme.textPrimary
-                font.pixelSize: 11
+                font.pixelSize: root.navLabelPx
                 font.weight: navTab.isActive ? theme.weightSemibold : theme.weightRegular
                 verticalAlignment: Text.AlignVCenter
             }
@@ -370,7 +442,7 @@ Rectangle {
         height: 30
         radius: theme.radiusSm
         opacity: isEnabled ? 1.0 : 0.5
-        color: isActive ? theme.surfaceElevated
+        color: isActive ? root.activeFill
             : (cnbArea.containsMouse && isEnabled) ? theme.surfaceHover : "transparent"
         // Baked glyph, or the section's own raw image when it carries one
         // (My QBZ branding) — see shell/NavSectionGlyph.qml.
@@ -388,7 +460,14 @@ Rectangle {
             cursorShape: Qt.PointingHandCursor
             // Icon-only buttons do NOT name their section, so their dropdown
             // is headed by the section name + hairline (HeaderBar.slint:223).
-            onClicked: navFlyout.openUnder(cnb, cnb.section, true)
+            // The click also lands on the section's first entry under the
+            // same opt-in the text tabs and the sidebar rows honour
+            // (NavFlyout.sectionClicked) — the compact form used to be the
+            // one host that ignored it.
+            onClicked: {
+                navFlyout.openUnder(cnb, cnb.section, true)
+                navFlyout.sectionClicked(cnb.section)
+            }
             onContainsMouseChanged: {
                 if (containsMouse) {
                     navFlyout.triggerHovered = true
@@ -422,16 +501,18 @@ Rectangle {
             onClicked: QbzShell.navigateBack()
         }
         QbzNavButton {
+            id: fwdBtn
             name: "chevron-right"
             anchors.verticalCenter: parent.verticalCenter
             btnEnabled: QbzShell.canForward
             onClicked: QbzShell.navigateForward()
         }
 
-        // Full section nav (text tabs) — nav in the header, sidebar not fully
-        // closed, compact form OFF. Sits AFTER the three sacred buttons so it
+        // Full section nav (text tabs) — the section nav is up here and the
+        // tabs fit (headerTabsOn). Sits AFTER the three sacred buttons so it
         // can never overlap them (HeaderBar.slint:853).
         Row {
+            id: fullTabs
             visible: root.headerTabsOn
             height: parent.height
             spacing: 2
@@ -460,9 +541,9 @@ Rectangle {
             }
         }
 
-        // Compact section nav — while the sidebar is fully closed (so the
-        // sections stay reachable), or always when the nav is in the header
-        // and "Compact header navigation" is ON (HeaderBar.slint:974).
+        // Compact section nav — the icon-only form: when the text tabs do not
+        // fit beside the search box, or always when "Compact header
+        // navigation" is ON (HeaderBar.slint:974).
         Row {
             visible: root.headerCompactOn
             height: parent.height
@@ -485,6 +566,20 @@ Rectangle {
                 compact: true
                 anchors.verticalCenter: parent.verticalCenter
             }
+        }
+
+        // What trails the section nav in EITHER form (2026-09-13): the
+        // downloads ring and, while the sidebar is really closed, the
+        // separator + playlists flyout button. One group, mounted once, so a
+        // closed sidebar with room for text tabs keeps its playlists entry.
+        // Hidden outright when it has nothing to show, so the Row gap before
+        // it (and the fit measure above) only counts when something is there.
+        Row {
+            id: navTrailing
+            visible: root.headerNavOn
+                && (root.activeDownloads.length > 0 || QbzShell.sidebarState === 2)
+            height: parent.height
+            spacing: 2
             // Purchases downloading now, as one ring (the sidebar is closed
             // or the nav lives up here, so there is no row to list them in);
             // the per-album detail is the hover bubble. Absent while idle.
@@ -548,7 +643,7 @@ Rectangle {
                 height: 30
                 radius: theme.radiusSm
                 anchors.verticalCenter: parent.verticalCenter
-                color: plPopup.opened ? theme.surfaceElevated
+                color: plPopup.opened ? root.activeFill
                     : plBtnArea.containsMouse ? theme.surfaceHover : "transparent"
                 QbzIcon {
                     name: "list-music"
@@ -618,6 +713,7 @@ Rectangle {
                                 border.width: 1
                                 border.color: theme.borderSubtle
                                 TextInput {
+                                    QbzTextEditMenu { }
                                     id: plSearch
                                     anchors.fill: parent
                                     anchors.leftMargin: 6
@@ -849,15 +945,39 @@ Rectangle {
     function focusSearch() {
         searchInput.forceActiveFocus()
     }
+    // FOCUS RETENTION (2026-09-13, every search box): after an edit, once the
+    // event loop settles, reclaim the keyboard unless another text input took
+    // it — the dropdown opening or closing must never steal it mid-word.
+    property bool _searchReclaim: false
+    function _reclaimSearchFocus() {
+        if (!root._searchReclaim)
+            return
+        root._searchReclaim = false
+        if (searchInput.activeFocus)
+            return
+        var win = root.Window.window
+        var current = win ? win.activeFocusItem : null
+        if (current instanceof TextInput || current instanceof TextEdit)
+            return
+        console.log("[HeaderBar] search lost focus after an edit; reclaimed (holder was "
+                    + (current ? current.toString() : "none") + ")")
+        searchInput.forceActiveFocus()
+    }
 
     Rectangle {
         id: searchBox
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        // 80% of the prior search width; gives up 60px to the section nav
-        // whenever that nav lives in the header (HeaderBar.slint:569). The
-        // width animates and `x` re-centers with it.
-        width: (root.width < 960 ? 179 : 256) - (QbzShell.navInSidebar ? 0 : 60)
+        // Grows with the window from 960px up (a quarter of it), between the
+        // 256px the layout was designed around and a 480px cap: wide enough
+        // to read a query on a 1720px window, never half the screen. Small
+        // windows keep the fixed 179px. The section nav still takes its 60px
+        // whenever it lives in the header (HeaderBar.slint:569); the fit rule
+        // reads this box's real edge, so the nav goes compact by itself when
+        // the wider box leaves it no room. The width animates and `x`
+        // re-centers with it.
+        width: (root.width < 960 ? 179 : Math.round(Math.max(256, Math.min(root.width * 0.24, 480))))
+            - (QbzShell.navInSidebar ? 0 : 60)
         height: 32
         Behavior on width {
             NumberAnimation { duration: 220; easing.type: Easing.InOutQuad }
@@ -880,11 +1000,16 @@ Rectangle {
             tintName: "muted"
         }
         TextInput {
+            QbzTextEditMenu { }
             id: searchInput
             anchors.left: parent.left
-            anchors.right: parent.right
+            // Stop short of whatever sits at the right end (the clear cross,
+            // the Enter glyph while the cortinilla is open): TextInput scrolls
+            // its text within its own width, so nothing hides under them.
+            anchors.right: clearCross.visible ? clearCross.left
+                : (enterHint.visible ? enterHint.left : parent.right)
             anchors.leftMargin: 30
-            anchors.rightMargin: 8
+            anchors.rightMargin: (clearCross.visible || enterHint.visible) ? 2 : 8
             height: parent.height
             color: theme.textPrimary
             font.pixelSize: 13
@@ -898,10 +1023,8 @@ Rectangle {
             // the reference opens on the FIRST keystroke >= 2 chars and
             // debounces only the LOAD. Rust's version guard is what discards
             // the superseded loads.
-            // Shared by keyboard edits (onTextEdited) and the edit menu's
-            // cut/paste, which are PROGRAMMATIC changes — TextInput only
-            // emits textEdited for user input, so a menu paste would
-            // otherwise change the text without ever driving the cortinilla.
+            // The shared edit menu dispatches the same textEdited callback
+            // as typing, once, including on Qt versions where paste does not.
             function applyLiveQuery() {
                 if (text.trim().length < 2) {
                     QbzSearch.cortinillaDismiss()
@@ -909,38 +1032,10 @@ Rectangle {
                     QbzSearch.searchLive(text)
                 }
             }
-            onTextEdited: applyLiveQuery()
-
-            // QoL round: clipboard access by pointer, not only Ctrl+C/X/V —
-            // QML TextInput has no system edit menu of its own. RightButton
-            // only, so left clicks keep placing the cursor.
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    searchEditMenu.openAtCursor(searchInput, mouse.x, mouse.y)
-                }
-            }
-            CardMenu {
-                id: searchEditMenu
-                menuWidth: 160
-                entries: {
-                    var t = QbzSession.tr
-                    var r = QbzSession.trRev
-                    var hasSel = searchInput.selectedText !== ""
-                    return [
-                        { "label": t("Cut", r), "icon": "scissors", "action": "cut", "enabled": hasSel },
-                        { "label": t("Copy", r), "icon": "copy", "action": "copy", "enabled": hasSel },
-                        { "label": t("Paste", r), "icon": "clipboard", "action": "paste", "enabled": searchInput.canPaste },
-                        { "label": t("Select all", r), "icon": "square-check-big", "action": "select-all", "enabled": searchInput.text !== "" },
-                    ]
-                }
-                onPicked: function (a) {
-                    if (a === "cut") { searchInput.cut(); searchInput.applyLiveQuery() }
-                    else if (a === "copy") searchInput.copy()
-                    else if (a === "paste") { searchInput.paste(); searchInput.applyLiveQuery() }
-                    else if (a === "select-all") searchInput.selectAll()
-                }
+            onTextEdited: {
+                applyLiveQuery()
+                root._searchReclaim = true
+                Qt.callLater(root._reclaimSearchFocus)
             }
 
             // The Enter rule (HeaderBar.slint on-enter): cortinilla open +
@@ -985,8 +1080,9 @@ Rectangle {
                     // the modals use, not merely cleared: a null
                     // activeFocusItem passes the gate but leaves AppShell's
                     // Keys handler receiving nothing at all.
-                    if (QbzSearch.cortinillaOpen)
-                        QbzSearch.cortinillaDismiss()
+                    // …and it empties the box too (2026-09-13, every search
+                    // box): clearSearch() drops the text and the dropdown.
+                    root.clearSearch()
                     event.accepted = true
                     var p = searchInput
                     while (p.parent) {
@@ -1018,6 +1114,7 @@ Rectangle {
         // open (Slint: it lives in the box, opposite the magnifier), else
         // the × clear.
         Text {
+            id: enterHint
             visible: QbzSearch.cortinillaOpen
             anchors.right: parent.right
             anchors.rightMargin: 10
@@ -1027,10 +1124,14 @@ Rectangle {
             font.pixelSize: 12
             verticalAlignment: Text.AlignVCenter
         }
+        // The clear cross: always there while there is text (2026-09-13); it
+        // sits to the LEFT of the ↵ hint while the dropdown is open, at the
+        // right edge otherwise.
         Rectangle {
-            visible: !QbzSearch.cortinillaOpen && searchInput.text !== ""
-            anchors.right: parent.right
-            anchors.rightMargin: 5
+            id: clearCross
+            visible: searchInput.text !== ""
+            anchors.right: QbzSearch.cortinillaOpen ? enterHint.left : parent.right
+            anchors.rightMargin: QbzSearch.cortinillaOpen ? 4 : 5
             width: 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
@@ -1170,7 +1271,7 @@ Rectangle {
                             border.width: 1
                             border.color: theme.borderSubtle
                             opacity: QbzSession.connectivity === 2 ? 0.4 : 1.0
-                            color: signInArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: signInArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                             Text {
                                 id: signInText
                                 anchors.centerIn: parent
@@ -1495,6 +1596,14 @@ Rectangle {
                     // shape the window verbs use rather than a bridge
                     // round-trip for state Rust has no use for.
                     root.reportIssueRequested()
+                }
+            }
+            AppMenuItem {
+                name: "refresh-cw"
+                label: QbzSession.tr("Check for updates now", QbzSession.trRev)
+                onClicked: {
+                    appMenu.close()
+                    QbzAbout.updatesCheck()
                 }
             }
             AppMenuItem {

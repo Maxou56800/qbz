@@ -32,16 +32,18 @@
 //! only the `contextual` branch navigates; `weak`/`none` publish a document
 //! that a global overlay renders (`musician_qt.rs`).
 //!
-//! `purchase-album` is in that same context-carrying class (its album id lives
-//! in the purchases controller, not in the id), and `purchases` is left out of
-//! the restore set for a DIFFERENT reason: it is opt-in and ships hidden
-//! (`show_purchases`, default false), so restoring onto it could open the app
-//! on a surface whose own entry point is switched off. Neither is in
-//! `VIEW_TO_PREF` below, so `startup_view()` can never resolve to either — and
-//! neither is offered by the Startup page dropdown, whose own list
-//! (`settings_qt::STARTUP_PAGE_VALUES`) would have to grow a matching entry
-//! first. The Slint build DOES restore `purchases` (`qbz/src/main.rs:637`);
-//! bringing that across is an additive change that needs both halves.
+//! `purchase-album` and `purchases` are not in `VIEW_TO_PREF` below either:
+//! the album id lives in the purchases controller, and the surface is opt-in
+//! (`show_purchases`, default false). Since 2026-09-13 page_restore_qt brings
+//! both back — the controller notes the album id, and the restore checks the
+//! opt-in first, so a hidden surface never reopens the app.
+//!
+//! WHERE YOU LEFT OFF, EXACTLY (2026-09-13): every route push goes through
+//! `record` / `record_with` (the latter carries the opener's arguments, kept
+//! on the entry), and page_restore_qt keeps the current page, its arguments
+//! and its tab in a per-profile document. `startup_view()` answers with that
+//! page's entry view, the history is seeded with the page's root, and the
+//! session entry re-runs the opener.
 //!
 //! `nowplaying` is KIOSK-ONLY (2026-08-02 kiosk-port contract §3): it is the
 //! NavRail's fifth tile and the route the kiosk's full-screen player lives on.
@@ -76,6 +78,10 @@ struct Entry {
     /// scroll scope, Rust stores and returns it without interpreting it.
     state_scope: String,
     state_json: String,
+    /// The opener's arguments (`record_with`), Null for a plain route push:
+    /// what page_restore_qt keeps for a restart, re-noted when a step lands
+    /// back on the entry.
+    args: serde_json::Value,
 }
 
 struct NavHistory {
@@ -125,6 +131,9 @@ pub fn set_live_state(scope: &str, json: &str) {
     live.0.push_str(scope);
     live.1.clear();
     live.1.push_str(json);
+    drop(live);
+    // The page's tab rides along to the page document (page_restore_qt).
+    crate::page_restore_qt::note_state(scope, json);
 }
 
 fn live_state() -> (String, String) {
@@ -154,11 +163,12 @@ fn with_history<R>(f: impl FnOnce(&mut NavHistory) -> R) -> R {
         // restored view with a history rooted at Home would offer a Back to a
         // page the user never opened this session.
         entries: vec![Entry {
-            view: startup_view(),
+            view: startup_root(),
             scope: String::new(),
             scroll: 0.0,
             state_scope: String::new(),
             state_json: String::new(),
+            args: serde_json::Value::Null,
         }],
         index: 0,
     });
@@ -192,11 +202,12 @@ fn with_history<R>(f: impl FnOnce(&mut NavHistory) -> R) -> R {
 /// owner's own prefs today read `last_view = "local-library"`, written by Slint.
 /// Unknown values in either direction resolve to Home rather than guessing.
 ///
-/// This root-only fallback does not carry detail IDs. Local albums now have
-/// a separate per-profile context in local_restore_qt, restored at session
-/// entry with a missing-entity fallback. Other details, Search and Settings are
-/// excluded too — transient and config respectively, and reopening the app
-/// inside either is a surprise, not "where you left off".
+/// This root-only value carries no detail ids and never will: it is the
+/// SHARED file. The exact page — the album, the artist, the playlist, the
+/// search, the Settings section, and the tab a root view was on — lives in
+/// page_restore_qt's per-profile document since 2026-09-13 (local albums in
+/// local_restore_qt's), restored at session entry with this root seeded
+/// beneath it and used as the fallback when the page cannot come back.
 const VIEW_TO_PREF: &[(&str, &str)] = &[
     ("home", "home"),
     ("library", "favorites"),
@@ -291,6 +302,12 @@ pub fn crash_level() -> u8 {
 /// on Home every time. That is the "renders, persists, drives nothing" defect
 /// class this port has a name for.
 pub fn startup_view() -> String {
+    // The exact page, when page_restore_qt has one to reopen (it applies the
+    // same "remember" and crash-chain gates, plus the launcher-link and kiosk
+    // ones): its entry view is what the shell mounts.
+    if let Some(view) = crate::page_restore_qt::startup_view() {
+        return view;
+    }
     if crate::settings_qt::pref_str("startup_page", "home") != "remember" {
         return "home".to_string();
     }
@@ -304,6 +321,12 @@ pub fn startup_view() -> String {
     let resolved = view_for_pref(&last).unwrap_or("home");
     log::info!("[qbz-qt] startup: remember -> last_view {last:?} resolves to view {resolved:?}");
     resolved.to_string()
+}
+
+/// The history seed: the root beneath a restored page (so Back leads there),
+/// else the startup view itself.
+fn startup_root() -> String {
+    crate::page_restore_qt::startup_root().unwrap_or_else(startup_view)
 }
 
 /// The view the SHELL should mount on at this session entry.
@@ -325,7 +348,14 @@ pub fn shell_entry_view() -> String {
 }
 
 pub fn record(view: &str) {
-    record_entry(view, false);
+    record_entry(view, false, serde_json::Value::Null);
+}
+
+/// `record` for an opener that can rebuild its page from arguments: they
+/// travel with the entry and into page_restore_qt's document. `args` is a
+/// JSON object of plain values (an id, a name, a kind).
+pub fn record_with(view: &str, args: serde_json::Value) {
+    record_entry(view, false, args);
 }
 
 /// A user-selected Local Library tab is a distinct history destination even
@@ -356,12 +386,12 @@ fn record_view_tab(view: &str, tab: &str, state: &str) {
         return;
     }
     set_live_state(view, state);
-    record_entry(view, true);
+    record_entry(view, true, serde_json::Value::Null);
     next["activeTab"] = serde_json::json!(tab);
     set_live_state(view, &next.to_string());
 }
 
-fn record_entry(view: &str, force: bool) {
+fn record_entry(view: &str, force: bool, args: serde_json::Value) {
     // Persist BEFORE the history mutation so the write reflects the view the
     // user actually reached, and only for the safe set — a detail view leaves
     // the stored value on the last safe root, which is exactly what the
@@ -369,6 +399,8 @@ fn record_entry(view: &str, force: bool) {
     if let Some(pref) = pref_for_view(view) {
         crate::settings_qt::save_pref("last_view", serde_json::json!(pref));
     }
+    // The exact page, for "Where you left off" (page_restore_qt).
+    crate::page_restore_qt::note_page(view, &args);
     let (can_back, can_forward, current, pushed) = with_history(|h| {
         let mut pushed = false;
         if force || h.entries[h.index].view != view {
@@ -390,6 +422,7 @@ fn record_entry(view: &str, force: bool) {
                 scroll: 0.0,
                 state_scope: String::new(),
                 state_json: String::new(),
+                args,
             });
             h.index += 1;
             pushed = true;
@@ -445,7 +478,7 @@ pub fn forward() {
 /// move the cursor, and hand the destination's saved position to the shell so
 /// its scroll container can pick it up when it lays out.
 fn step(delta: isize) {
-    let (can_back, can_forward, current, scope, scroll, state_scope, state_json) =
+    let (can_back, can_forward, current, scope, scroll, state_scope, state_json, args) =
         with_history(|h| {
             let next = h.index as isize + delta;
             if next >= 0 && (next as usize) < h.entries.len() {
@@ -468,12 +501,16 @@ fn step(delta: isize) {
                 e.scroll,
                 e.state_scope.clone(),
                 e.state_json.clone(),
+                e.args.clone(),
             )
         });
     // The destination is now the live page: seed the live pair with what it is
     // about to restore to, so leaving it again before it has reported anything
     // does not stamp the OUTGOING page's offset onto it.
     set_live_scroll(&scope, scroll);
+    // The destination is the page again (its arguments travel on the entry);
+    // note it BEFORE the state, so the tab lands on the right page.
+    crate::page_restore_qt::note_page(&current, &args);
     set_live_state(&state_scope, &state_json);
     // Arm only for a position worth restoring. A page that was at the top
     // needs no restore, and arming for 0 would leave a scope standing until

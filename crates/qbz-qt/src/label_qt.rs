@@ -231,7 +231,7 @@ pub fn open_label(label_id: String) {
         log::warn!("[qbz-qt] open_label: not a Qobuz label id: {label_id}");
         return;
     };
-    crate::nav_qt::record("label");
+    crate::nav_qt::record_with("label", serde_json::json!({ "id": id.to_string() }));
     let generation = {
         let Ok(mut s) = LABEL.lock() else {
             return;
@@ -770,7 +770,7 @@ pub fn open_releases() {
         s.query.clear();
         (s.releases_generation, id)
     };
-    crate::nav_qt::record("labelreleases");
+    crate::nav_qt::record_with("labelreleases", serde_json::json!({ "id": id.to_string() }));
     publish_releases();
     fetch_releases(generation, id);
 }
@@ -1358,6 +1358,7 @@ fn parse_top_track(index: usize, raw: &Value) -> TrackRow {
             raw.get("release_date_stream").and_then(|v| v.as_str()),
         );
     TrackRow {
+        featured: Vec::new(),
         is_favorite: id
             .parse::<u64>()
             .map(crate::fav_cache_qt::contains_track)

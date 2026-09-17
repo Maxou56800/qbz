@@ -85,9 +85,127 @@ struct EditState {
     is_local: bool,
     offline_only: bool,
     busy: bool,
+    /// The folder the playlist is filed in ("" = root) — the editor's
+    /// "Folder" row (2026-09-13).
+    folder_id: String,
 }
 
 static EDIT: LazyLock<Mutex<EditState>> = LazyLock::new(|| Mutex::new(EditState::default()));
+
+/// The "Delete playlist?" confirmation summoned from a context menu (sidebar
+/// row, playlist card) — the same delete the editor's button runs, minus the
+/// editor. Published as `QbzPlaylistEdit.deleteJson`; the shell-level modal
+/// self-gates on `open` (2026-09-13).
+#[derive(Clone, Debug, Default)]
+struct DeleteAsk {
+    open: bool,
+    id: String,
+    name: String,
+    is_local: bool,
+}
+
+static DELETE_ASK: LazyLock<Mutex<DeleteAsk>> =
+    LazyLock::new(|| Mutex::new(DeleteAsk::default()));
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteDoc {
+    open: bool,
+    id: String,
+    name: String,
+    is_local: bool,
+}
+
+pub(crate) fn publish_delete_ask() {
+    let ask = DELETE_ASK.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let json = serde_json::to_string(&DeleteDoc {
+        open: ask.open,
+        id: ask.id,
+        name: ask.name,
+        is_local: ask.is_local,
+    })
+    .unwrap_or_else(|_| "{\"open\":false}".to_string());
+    crate::playlist_edit_bridge::ui(move |mut b| {
+        b.as_mut().set_delete_json(QString::from(json.as_str()));
+    });
+}
+
+/// Open the confirmation for `id` (a Qobuz id or a local ref), showing `name`.
+pub(crate) fn ask_delete(id: &str, name: &str) {
+    let id = id.trim().to_string();
+    if id.is_empty() {
+        return;
+    }
+    let is_local = matches!(
+        crate::local_playlist_qt::PlaylistRef::parse(&id),
+        Some(crate::local_playlist_qt::PlaylistRef::Local(_))
+    );
+    {
+        let mut ask = DELETE_ASK.lock().unwrap_or_else(|e| e.into_inner());
+        *ask = DeleteAsk {
+            open: true,
+            id,
+            name: name.to_string(),
+            is_local,
+        };
+    }
+    publish_delete_ask();
+}
+
+pub(crate) fn cancel_delete() {
+    DELETE_ASK.lock().unwrap_or_else(|e| e.into_inner()).open = false;
+    publish_delete_ask();
+}
+
+/// The modal's Delete: run the same delete the editor runs, refresh the
+/// surfaces, and leave the detail page only if it was the deleted one.
+pub(crate) fn confirm_delete() {
+    let (id, is_local) = {
+        let mut ask = DELETE_ASK.lock().unwrap_or_else(|e| e.into_inner());
+        if !ask.open || ask.id.is_empty() {
+            return;
+        }
+        ask.open = false;
+        (std::mem::take(&mut ask.id), ask.is_local)
+    };
+    publish_delete_ask();
+    crate::spawn(async move {
+        let ok = delete_ref(&id, is_local).await;
+        if ok {
+            crate::playlist_qt::back_if_showing(&id);
+            after_write();
+        } else {
+            log::warn!("[qbz-qt] playlist delete (from menu) failed for {id}");
+            crate::toast_qt::error(qbz_i18n::t("Failed to delete playlist"));
+        }
+    });
+}
+
+/// Delete a playlist by ref: the local repo for a local one, the catalog
+/// (delete when owned, unsubscribe otherwise) for a Qobuz one.
+async fn delete_ref(id: &str, is_local: bool) -> bool {
+    if is_local {
+        let target = id.to_string();
+        return tokio::task::spawn_blocking(move || {
+            crate::local_playlist_qt::delete_blocking(&target)
+        })
+        .await
+        .unwrap_or(false);
+    }
+    match id.parse::<u64>() {
+        Ok(pid) => {
+            let runtime = crate::app();
+            match crate::playlist_qt::delete_by_id(&runtime, pid).await {
+                Ok(()) => true,
+                Err(e) => {
+                    log::error!("[qbz-qt] {e}");
+                    false
+                }
+            }
+        }
+        Err(_) => false,
+    }
+}
 
 fn state() -> std::sync::MutexGuard<'static, EditState> {
     EDIT.lock().unwrap_or_else(|e| e.into_inner())
@@ -108,6 +226,9 @@ struct EditDoc {
     is_local: bool,
     offline_only: bool,
     busy: bool,
+    /// The folder the playlist is filed in ("" = root), so the editor can
+    /// offer "Folder" next to the name (2026-09-13).
+    folder_id: String,
 }
 
 /// Serialize a snapshot. Split from [`edit_doc`] so the shape is testable
@@ -123,6 +244,7 @@ fn edit_doc_of(st: EditState) -> String {
         is_local: st.is_local,
         offline_only: st.offline_only,
         busy: st.busy,
+        folder_id: st.folder_id,
     })
     .unwrap_or_else(|_| "{\"open\":false}".to_string())
 }
@@ -171,6 +293,27 @@ struct Seed {
     desc_loaded: bool,
     is_local: bool,
     offline_only: bool,
+    folder_id: String,
+}
+
+/// The folder a playlist is filed in, read off the same tables the sidebar
+/// reads: `local_playlists.folder_id` for a local one, the per-playlist
+/// settings for a Qobuz one. Blocking (SQLite); call off the UI thread.
+fn folder_of_blocking(id: &str) -> String {
+    match crate::local_playlist_qt::PlaylistRef::parse(id) {
+        Some(crate::local_playlist_qt::PlaylistRef::Local(local)) => {
+            crate::local_playlist_qt::get_blocking(&local)
+                .and_then(|p| p.folder_id)
+                .unwrap_or_default()
+        }
+        Some(crate::local_playlist_qt::PlaylistRef::Qobuz(pid)) => {
+            crate::folders_qt::playlist_settings_map()
+                .get(&pid)
+                .and_then(|s| s.folder_id.clone())
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    }
 }
 
 /// Open the editor on `id`.
@@ -218,6 +361,7 @@ fn open_local(id: String) {
         seat(
             id,
             Seed {
+                folder_id: p.folder_id.clone().unwrap_or_default(),
                 name: p.name,
                 description: p.description.unwrap_or_default(),
                 // A local read either answered or we returned above.
@@ -233,20 +377,32 @@ fn open_qobuz(id: String, pid: u64) {
     // Warm manager cache first: it is free, it is already merged, and it
     // carries the description precisely so this lookup does not need a fetch.
     if let Some((name, description)) = crate::playlist_manager_qt::cached_playlist_seed(pid) {
-        seat(
-            id,
-            Seed {
-                name,
-                description: description.unwrap_or_default(),
-                desc_loaded: true,
-                is_local: false,
-                offline_only: false,
-            },
-        );
+        // The folder is one SQLite read; keep it off the UI thread.
+        crate::spawn(async move {
+            let lookup = id.clone();
+            let folder_id = tokio::task::spawn_blocking(move || folder_of_blocking(&lookup))
+                .await
+                .unwrap_or_default();
+            seat(
+                id,
+                Seed {
+                    name,
+                    description: description.unwrap_or_default(),
+                    desc_loaded: true,
+                    is_local: false,
+                    offline_only: false,
+                    folder_id,
+                },
+            );
+        });
         return;
     }
     let runtime = crate::app();
     crate::spawn(async move {
+        let lookup = id.clone();
+        let folder_id = tokio::task::spawn_blocking(move || folder_of_blocking(&lookup))
+            .await
+            .unwrap_or_default();
         let seed = match runtime.core().get_playlist(pid).await {
             Ok(p) => Seed {
                 name: p.name,
@@ -254,6 +410,7 @@ fn open_qobuz(id: String, pid: u64) {
                 desc_loaded: true,
                 is_local: false,
                 offline_only: false,
+                folder_id: folder_id.clone(),
             },
             Err(e) => {
                 // Offline, or the playlist is gone. The editor still opens —
@@ -268,6 +425,7 @@ fn open_qobuz(id: String, pid: u64) {
                     desc_loaded: false,
                     is_local: false,
                     offline_only: false,
+                    folder_id,
                 }
             }
         };
@@ -288,6 +446,7 @@ fn seat(id: String, seed: Seed) {
             is_local: seed.is_local,
             offline_only: seed.offline_only,
             busy: false,
+            folder_id: seed.folder_id,
         };
     }
     publish();
@@ -421,28 +580,7 @@ pub(crate) fn delete_playlist() {
     publish();
 
     crate::spawn(async move {
-        let ok = if is_local {
-            let target = id.clone();
-            tokio::task::spawn_blocking(move || crate::local_playlist_qt::delete_blocking(&target))
-                .await
-                .unwrap_or(false)
-        } else {
-            match id.parse::<u64>() {
-                Ok(pid) => {
-                    let runtime = crate::app();
-                    // The ownership re-derivation and the unsubscribe branch
-                    // live in there (§5.1); it NEVER navigates.
-                    match crate::playlist_qt::delete_by_id(&runtime, pid).await {
-                        Ok(()) => true,
-                        Err(e) => {
-                            log::error!("[qbz-qt] {e}");
-                            false
-                        }
-                    }
-                }
-                Err(_) => false,
-            }
-        };
+        let ok = delete_ref(&id, is_local).await;
 
         if ok {
             // CONDITIONAL (§5.1): only when the user is actually standing on
@@ -529,10 +667,12 @@ mod tests {
             is_local: true,
             offline_only: true,
             busy: false,
+            folder_id: "folder-1".into(),
         });
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["id"], serde_json::Value::String("local:abc-def".into()));
         assert_eq!(v["isLocal"], serde_json::Value::Bool(true));
+        assert_eq!(v["folderId"], serde_json::Value::String("folder-1".into()));
         assert_eq!(v["offlineOnly"], serde_json::Value::Bool(true));
         assert_eq!(v["descLoaded"], serde_json::Value::Bool(true));
         assert!(v.get("is_local").is_none());

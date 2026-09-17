@@ -64,7 +64,7 @@ Item {
         root.draftIsNetwork = root.st.isNetwork === true
         root.draftOverride = root.st.userOverrideNetwork === true
         root.draftFsIndex = root.st.fsTypeIndex || 0
-        aliasField.text = root.draftAlias
+        aliasField.reset(root.draftAlias)
         closeButton.forceActiveFocus()
     }
 

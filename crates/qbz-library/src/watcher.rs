@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode, MetadataKind, ModifyKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::{LibraryError, LibraryFolder};
 
@@ -26,19 +27,25 @@ pub struct LocalRootWatcher {
     watcher: RecommendedWatcher,
     receiver: Receiver<notify::Result<Event>>,
     roots: BTreeMap<i64, PathBuf>,
+    failures: BTreeMap<i64, (PathBuf, String)>,
 }
 
 impl LocalRootWatcher {
     pub fn new(folders: &[LibraryFolder]) -> Result<Self, LibraryError> {
         let (sender, receiver) = mpsc::channel();
-        let watcher = notify::recommended_watcher(move |event| {
-            let _ = sender.send(event);
+        let watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
+            // Filter before enqueueing: our own directory walks and playback
+            // reads otherwise schedule another scan indefinitely.
+            if event.as_ref().map_or(true, changes_library) {
+                let _ = sender.send(event);
+            }
         })
         .map_err(|error| LibraryError::Other(format!("local root watcher: {error}")))?;
         let mut result = Self {
             watcher,
             receiver,
             roots: BTreeMap::new(),
+            failures: BTreeMap::new(),
         };
         result.rebuild(folders)?;
         Ok(result)
@@ -58,30 +65,57 @@ impl LocalRootWatcher {
             let _ = self.watcher.unwatch(&path);
             self.roots.remove(&root_id);
         }
-        let mut watch_failures = 0_usize;
+        self.failures.retain(|id, (path, _)| desired.get(id) == Some(path));
         for (root_id, path) in &desired {
             if self.roots.get(root_id) == Some(path) {
                 continue;
             }
             // A missing/newly-unmounted root remains covered by periodic
             // reconciliation. Failing to install its hint is not fatal.
-            if self.watcher.watch(path, RecursiveMode::Recursive).is_ok() {
-                self.roots.insert(*root_id, path.clone());
-            } else {
-                watch_failures += 1;
+            match self.watcher.watch(path, RecursiveMode::Recursive) {
+                Ok(()) => {
+                    self.roots.insert(*root_id, path.clone());
+                    if self.failures.remove(root_id).is_some() {
+                        log::info!(
+                            "[local-scan] watcher restored root_id={root_id} path={}",
+                            path.display()
+                        );
+                    }
+                }
+                Err(error) => {
+                    let error = error.to_string();
+                    if self.record_failure(*root_id, path.clone(), error.clone()) {
+                        log::warn!(
+                            "[local-scan] watcher unavailable root_id={root_id} path={} error={error}; periodic reconciliation remains active",
+                            path.display()
+                        );
+                    }
+                }
             }
-        }
-        if watch_failures > 0 {
-            log::warn!(
-                "[local-scan] watcher unavailable for {watch_failures} local root(s); periodic reconciliation remains active"
-            );
         }
         Ok(())
     }
 
+    // Report a failure once per path/cause, then again after recovery. Keep
+    // retrying registration so removable folders recover without a restart.
+    fn record_failure(&mut self, id: i64, path: PathBuf, error: String) -> bool {
+        let failure = (path, error);
+        if self.failures.get(&id) == Some(&failure) {
+            return false;
+        }
+        self.failures.insert(id, failure);
+        true
+    }
+
     pub fn recv_timeout(&self, timeout: Duration) -> RootWatchEvent {
         match self.receiver.recv_timeout(timeout) {
+            Ok(Ok(event)) if event.need_rescan() => {
+                RootWatchEvent::Changed(self.roots.keys().copied().collect())
+            }
             Ok(Ok(event)) => RootWatchEvent::Changed(self.roots_for_paths(&event.paths)),
+            Ok(Err(error)) if error.paths.is_empty() => {
+                RootWatchEvent::Error(self.roots.keys().copied().collect())
+            }
             Ok(Err(error)) => RootWatchEvent::Error(self.roots_for_paths(&error.paths)),
             Err(RecvTimeoutError::Timeout) => RootWatchEvent::Timeout,
             Err(RecvTimeoutError::Disconnected) => RootWatchEvent::Disconnected,
@@ -106,9 +140,62 @@ impl LocalRootWatcher {
     }
 }
 
+fn changes_library(event: &Event) -> bool {
+    if event.need_rescan() {
+        return true;
+    }
+    match event.kind {
+        // Preserve the completed-write hint: a preceding Modify can arrive
+        // while an external writer still has an incomplete audio file open.
+        EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
+        EventKind::Access(_) => false,
+        EventKind::Modify(ModifyKind::Metadata(MetadataKind::AccessTime)) => false,
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_do_not_schedule_scans_but_content_changes_and_overflow_do() {
+        use notify::event::{CreateKind, DataChange, Flag, RemoveKind, RenameMode};
+        for kind in [
+            EventKind::Access(AccessKind::Read),
+            EventKind::Access(AccessKind::Open(AccessMode::Any)),
+            EventKind::Access(AccessKind::Close(AccessMode::Read)),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::AccessTime)),
+        ] {
+            assert!(!changes_library(&Event::new(kind)), "{kind:?}");
+            assert!(changes_library(&Event::new(kind).set_flag(Flag::Rescan)));
+        }
+        for kind in [
+            EventKind::Create(CreateKind::File),
+            EventKind::Remove(RemoveKind::Folder),
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::Permissions)),
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+        ] {
+            assert!(changes_library(&Event::new(kind)), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn directory_reads_do_not_feed_back_into_native_watcher() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("track.flac");
+        std::fs::write(&path, b"fixture").unwrap();
+        let watcher = LocalRootWatcher::new(&[folder(4, temp.path(), false)]).unwrap();
+        for _ in 0..3 {
+            let _ = std::fs::read_dir(temp.path()).unwrap().collect::<Vec<_>>();
+            assert_eq!(std::fs::read(&path).unwrap(), b"fixture");
+        }
+        assert_eq!(watcher.recv_timeout(Duration::from_millis(300)), RootWatchEvent::Timeout);
+        std::fs::write(&path, b"changed").unwrap();
+        assert_eq!(watcher.recv_timeout(Duration::from_secs(5)), RootWatchEvent::Changed(vec![4]));
+    }
 
     fn folder(id: i64, path: &std::path::Path, network: bool) -> LibraryFolder {
         LibraryFolder {
@@ -121,6 +208,31 @@ mod tests {
             user_override_network: network,
             last_scan: None,
         }
+    }
+
+    #[test]
+    fn missing_root_retries_recovers_and_forgets_removed_failures() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("removable");
+        let folders = [folder(7, &path, false)];
+        let mut watcher = LocalRootWatcher::new(&folders).unwrap();
+        assert_eq!(watcher.watched_roots(), 0);
+        assert_eq!(watcher.failures.len(), 1);
+        let failure = watcher.failures[&7].clone();
+        watcher.rebuild(&folders).unwrap();
+        assert_eq!(watcher.failures[&7], failure);
+        assert!(!watcher.record_failure(7, failure.0, failure.1));
+        assert!(watcher.record_failure(7, path.clone(), "changed cause".into()));
+        std::fs::create_dir(&path).unwrap();
+        watcher.rebuild(&folders).unwrap();
+        assert_eq!(watcher.watched_roots(), 1);
+        assert!(watcher.failures.is_empty());
+        watcher.rebuild(&[]).unwrap();
+        std::fs::remove_dir(&path).unwrap();
+        watcher.rebuild(&folders).unwrap();
+        assert_eq!(watcher.failures.len(), 1);
+        watcher.rebuild(&[]).unwrap();
+        assert!(watcher.failures.is_empty());
     }
 
     #[test]

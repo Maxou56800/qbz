@@ -12,7 +12,7 @@ use crate::{
     queue_command_proto::{
         AskForQueueStateMessage, AskForRendererStateMessage, AutoplayLoadTracksMessage,
         AutoplayRemoveTracksMessage, ClearQueueMessage, DeviceCapabilitiesMessage,
-        DeviceInfoMessage, JoinSessionMessage, MuteVolumeMessage, PlaybackPositionMessage,
+        DeviceInfoMessage, RendererDeviceInfoUpdatedMessage, JoinSessionMessage, MuteVolumeMessage, PlaybackPositionMessage,
         QConnectMessage, QConnectMessageType, QConnectMessages, QueueAddTracksMessage,
         QueueInsertTracksMessage, QueueLoadTracksMessage, QueueRemoveTracksMessage,
         QueueReorderTracksMessage, QueueVersionRef, RendererDeviceAudioQualityChangedMessage,
@@ -416,7 +416,9 @@ fn map_renderer_report(report: &RendererReport) -> Result<QConnectMessage, Proto
         }
         RendererReportType::RndrSrvrDeviceInfoUpdated => Ok(QConnectMessage {
             message_type: Some(QConnectMessageType::MessageTypeRndrSrvrDeviceInfoUpdated as i32),
-            rndr_srvr_device_info_updated: parse_device_info(&report.payload)?,
+            rndr_srvr_device_info_updated: Some(RendererDeviceInfoUpdatedMessage {
+                device_info: parse_device_info(&report.payload)?,
+            }),
             ..Default::default()
         }),
         RendererReportType::RndrSrvrStateUpdated => {
@@ -948,6 +950,26 @@ mod tests {
     use prost::Message;
     use qconnect_core::QueueVersion;
     use serde_json::json;
+
+    #[test]
+    fn device_info_update_matches_official_nested_wire_shape() {
+        // Official Renderer.DeviceInfoUpdatedMessage: device_info at tag 1;
+        // Common.DeviceInfo: capabilities at tag 7; VolumeRemoteControl at tag 3.
+        // Fixed bytes keep this independent of our protobuf decoder's schema.
+        for permission in [1u8, 2] {
+            for nested in [false, true] {
+                let info = json!({"capabilities": {"volume_remote_control": permission}});
+                let payload = if nested { json!({"device_info": info}) } else { info };
+                let report = RendererReport::new(
+                    RendererReportType::RndrSrvrDeviceInfoUpdated,
+                    "00000000-0000-0000-0000-000000000000",
+                    QueueVersion::default(), payload,
+                );
+                assert_eq!(map_renderer_report(&report).unwrap().encode_to_vec(),
+                    vec![0x08, 22, 0xb2, 0x01, 6, 0x0a, 4, 0x3a, 2, 0x18, permission]);
+            }
+        }
+    }
 
     #[test]
     fn maps_device_audio_quality_changed_report_to_tag_27() {

@@ -48,9 +48,14 @@ Rectangle {
     // in a WM-less session.
     readonly property bool isQbzShellRoot: true
     focus: true
-    Component.onCompleted: root.forceActiveFocus()
+    Component.onCompleted: {
+        root.forceActiveFocus()
+        Qt.callLater(function () { QbzAbout.updatesLaunch() })
+    }
 
     QbzTheme { id: theme }
+    UpdatesModal { kioskHost: true }
+    WhatsNewModal { }
 
     /// The back bar's one button form: 44x36, radius-sm hover fill, a 20px
     /// glyph. `available` dims the glyph and disarms the area (Back/Forward
@@ -458,10 +463,18 @@ Rectangle {
         // on that view, so its 42px must NOT be subtracted — otherwise the
         // content stays short and the NavRail rides up, leaving dead space
         // below the footer.
+        OrbitBanner {
+            id: orbitBanner
+            width: shellColumn.width
+            remoteActive: QbzOrbit.enabled && QbzOrbit.controllingRemote
+            connectionLost: QbzOrbit.connectionLost
+            hostName: QbzOrbit.hostName
+        }
+
         Rectangle {
             id: contentFrame
             width: shellColumn.width
-            height: root.height - backBar.height
+            height: root.height - backBar.height - orbitBanner.height
                     - (QbzShell.currentView === "nowplaying" ? 0 : root.transportHeight)
                     - root.navRailHeight
             color: theme.surfaceCard

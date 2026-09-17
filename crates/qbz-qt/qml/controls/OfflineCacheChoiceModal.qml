@@ -128,7 +128,7 @@ Item {
                 width: parent.width
                 height: allCol.implicitHeight + 24
                 radius: theme.radiusSm
-                color: allArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                color: allArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                 border.width: 1
                 border.color: allArea.containsMouse ? theme.accent : theme.borderSubtle
                 Row {
@@ -178,7 +178,7 @@ Item {
                 width: parent.width
                 height: missingCol.implicitHeight + 24
                 radius: theme.radiusSm
-                color: missingArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                color: missingArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                 border.width: 1
                 border.color: missingArea.containsMouse ? theme.accent : theme.borderSubtle
                 Row {
@@ -229,7 +229,7 @@ Item {
                     width: cancelLabel.implicitWidth + 32
                     height: 36
                     radius: theme.radiusSm
-                    color: cancelArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: cancelArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     Text {
                         id: cancelLabel
                         anchors.centerIn: parent

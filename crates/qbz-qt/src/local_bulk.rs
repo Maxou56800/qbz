@@ -24,7 +24,9 @@
 //! This file is the Qt-facing half of the tree selection; the state and the
 //! blocking mutators live in `local_tree.rs`, next to the tree they annotate.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use cxx_qt_lib::QString;
 use qbz_library::LocalTrack;
@@ -61,29 +63,124 @@ fn publish_selection() {
 // ---------------------------------------------------------------------------
 
 /// Rail header toggle. Leaving select mode drops the selection, so the
-/// republish is what hollows every checkbox again.
+/// republish is what hollows every checkbox again. The drop waits behind any
+/// checkbox click still queued, or that click would tick a row again after it.
 pub fn set_select_mode(on: bool) {
-    tree::set_tree_select_mode(on);
-    publish_selection();
+    if on {
+        publish_selection();
+    } else {
+        run_tree_select(TreeSelectOp::LeaveSelectMode);
+    }
+}
+
+/// One tree-selection mutation, as the user issued it.
+enum TreeSelectOp {
+    Folder(String),
+    Track(String),
+    Range(Vec<(String, bool)>),
+    SelectAll,
+    Clear,
+    LeaveSelectMode,
+}
+
+/// The rail's selection mutations run ONE AT A TIME, in the order they were
+/// clicked. Each is a blocking DB read, and they used to be spawned side by
+/// side: harmless while every click was a toggle of its own row, but a
+/// Shift-range that finished before the plain click that set its anchor would
+/// see that folder already selected by the range — and the late toggle would
+/// then UNselect it. Clicks push here on the Qt thread, so the queue order is
+/// the click order; a single drainer works through it.
+static TREE_SELECT_OPS: Mutex<VecDeque<TreeSelectOp>> = Mutex::new(VecDeque::new());
+static TREE_SELECT_DRAINING: AtomicBool = AtomicBool::new(false);
+
+fn run_tree_select(op: TreeSelectOp) {
+    TREE_SELECT_OPS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push_back(op);
+    if TREE_SELECT_DRAINING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    crate::spawn(async move {
+        // A drainer that dies mid-queue must not leave the flag up, or no
+        // later click would ever be applied.
+        struct Unwedge;
+        impl Drop for Unwedge {
+            fn drop(&mut self) {
+                if std::thread::panicking() {
+                    TREE_SELECT_DRAINING.store(false, Ordering::SeqCst);
+                }
+            }
+        }
+        let _unwedge = Unwedge;
+        loop {
+            let next = TREE_SELECT_OPS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pop_front();
+            let Some(op) = next else {
+                TREE_SELECT_DRAINING.store(false, Ordering::SeqCst);
+                // A click that queued between the empty pop and the store saw
+                // a drainer still running and spawned none: take it over.
+                let pending = !TREE_SELECT_OPS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .is_empty();
+                if pending && !TREE_SELECT_DRAINING.swap(true, Ordering::SeqCst) {
+                    continue;
+                }
+                break;
+            };
+            let _ = tokio::task::spawn_blocking(move || match op {
+                TreeSelectOp::Folder(path) => tree::toggle_folder_select_blocking(&path),
+                TreeSelectOp::Track(path) => tree::toggle_track_select_blocking(&path),
+                TreeSelectOp::Range(nodes) => tree::select_nodes_blocking(&nodes),
+                TreeSelectOp::SelectAll => tree::tree_select_all_blocking(),
+                TreeSelectOp::Clear => tree::tree_clear_selection(),
+                TreeSelectOp::LeaveSelectMode => tree::set_tree_select_mode(false),
+            })
+            .await;
+            publish_selection();
+        }
+    });
 }
 
 /// Folder checkbox: recursive, so it is a DB read on a blocking thread.
 pub fn toggle_folder_select(path: String) {
-    crate::spawn(async move {
-        let _ =
-            tokio::task::spawn_blocking(move || tree::toggle_folder_select_blocking(&path)).await;
-        publish_selection();
-    });
+    run_tree_select(TreeSelectOp::Folder(path));
 }
 
 /// Track checkbox: a deselect is pure state, a select resolves the record
 /// from the parent folder listing — blocking either way.
 pub fn toggle_track_select(path: String) {
-    crate::spawn(async move {
-        let _ =
-            tokio::task::spawn_blocking(move || tree::toggle_track_select_blocking(&path)).await;
-        publish_selection();
-    });
+    run_tree_select(TreeSelectOp::Track(path));
+}
+
+/// Shift-click on a rail checkbox: `nodes_json` is the visible rows from the
+/// anchor to the clicked one, `[{"path": …, "isFolder": …}]`, all SELECTED
+/// (`local_tree::select_nodes_blocking`).
+pub fn select_tree_range(nodes_json: String) {
+    let nodes = parse_tree_range(&nodes_json);
+    if nodes.is_empty() {
+        return;
+    }
+    run_tree_select(TreeSelectOp::Range(nodes));
+}
+
+fn parse_tree_range(json: &str) -> Vec<(String, bool)> {
+    #[derive(serde::Deserialize)]
+    struct Node {
+        #[serde(default)]
+        path: String,
+        #[serde(rename = "isFolder", default)]
+        is_folder: bool,
+    }
+    serde_json::from_str::<Vec<Node>>(json)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|node| !node.path.is_empty())
+        .map(|node| (node.path, node.is_folder))
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +196,11 @@ pub fn toggle_track_select(path: String) {
 pub fn folders_bulk_action(action: String) {
     match action.as_str() {
         "select-all" => {
-            // Two-way: "check all" un-checks when everything already is.
-            crate::spawn(async move {
-                let _ = tokio::task::spawn_blocking(tree::tree_select_all_blocking).await;
-                publish_selection();
-            });
+            // Two-way: "check all" un-checks when everything already is. In
+            // the same queue as the checkboxes, so it sees them all applied.
+            run_tree_select(TreeSelectOp::SelectAll);
         }
-        "clear" => {
-            tree::tree_clear_selection();
-            publish_selection();
-        }
+        "clear" => run_tree_select(TreeSelectOp::Clear),
         _ => {
             let rows = tree::tree_selected_snapshot();
             crate::spawn(async move {
@@ -335,4 +427,31 @@ async fn enqueue_rows(rows: Vec<LocalTrack>, mode: &str) {
         _ => runtime.core().add_tracks(queue).await,
     }
     crate::playback_qt::publish_queue(&runtime).await;
+}
+
+#[cfg(test)]
+mod tree_range_tests {
+    use super::parse_tree_range;
+
+    #[test]
+    fn range_nodes_keep_their_order_and_kind() {
+        let nodes = parse_tree_range(
+            r#"[{"path":"/m/a","isFolder":true},{"path":"/m/a/1.flac","isFolder":false},{"path":"/m/b","isFolder":true}]"#,
+        );
+        assert_eq!(
+            nodes,
+            vec![
+                ("/m/a".to_string(), true),
+                ("/m/a/1.flac".to_string(), false),
+                ("/m/b".to_string(), true),
+            ]
+        );
+    }
+
+    #[test]
+    fn range_nodes_without_a_path_or_bad_json_are_dropped() {
+        assert!(parse_tree_range("not json").is_empty());
+        let nodes = parse_tree_range(r#"[{"isFolder":true},{"path":"/m/c"}]"#);
+        assert_eq!(nodes, vec![("/m/c".to_string(), false)]);
+    }
 }

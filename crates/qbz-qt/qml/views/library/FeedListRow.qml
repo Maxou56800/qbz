@@ -123,19 +123,26 @@ Rectangle {
         }
     }
 
-    // Row body — click plays/opens by kind. Declared BEFORE the cells so
-    // the ⋯ button and art-play win their clicks.
+    readonly property bool isTrack: feedRow.item.kind === "track"
+    function playTrack() {
+        if (!feedRow.pulledDead)
+            feedRow.view.playTrackInContext(feedRow.item.id)
+    }
+
+    // Row body — click opens by kind. Declared BEFORE the cells so the ⋯
+    // button and art-play win their clicks. A TRACK row follows the track-row
+    // policy (#790, rows/TrackRow.qml `clickPlays`): the art-play disc plays,
+    // a single click on the body does nothing, a double click plays.
     MouseArea {
         id: rowArea
         anchors.fill: parent
         hoverEnabled: true
-        cursorShape: feedRow.pulledDead ? Qt.ArrowCursor : Qt.PointingHandCursor
+        cursorShape: (feedRow.pulledDead || feedRow.isTrack) ? Qt.ArrowCursor : Qt.PointingHandCursor
+        onDoubleClicked: if (feedRow.isTrack) feedRow.playTrack()
         onClicked: {
-            if (feedRow.item.kind === "track") {
-                if (!feedRow.pulledDead)
-                    feedRow.view.playTrackInContext(feedRow.item.id)
-            }
-            else if (feedRow.item.kind === "album") {
+            if (feedRow.isTrack)
+                return
+            if (feedRow.item.kind === "album") {
                 if (!feedRow.pulledDead)
                     QbzAlbum.openAlbum(feedRow.item.id)
             }
@@ -266,14 +273,13 @@ Rectangle {
                 MouseArea {
                     id: lrTitleArea
                     anchors.fill: parent
+                    // A track's title is not a link: disabled, its clicks
+                    // reach the row body (single = nothing, double = play).
+                    enabled: !feedRow.isTrack
                     hoverEnabled: true
                     cursorShape: feedRow.pulledDead ? Qt.ArrowCursor : Qt.PointingHandCursor
                     onClicked: {
-                        if (feedRow.item.kind === "track") {
-                            if (!feedRow.pulledDead)
-                                feedRow.view.playTrackInContext(feedRow.item.id)
-                        }
-                        else if (feedRow.item.kind === "album") {
+                        if (feedRow.item.kind === "album") {
                             if (!feedRow.pulledDead)
                                 QbzAlbum.openAlbum(feedRow.item.id)
                         }
@@ -290,7 +296,7 @@ Rectangle {
                 text: feedRow.item.subtitle
                 color: (feedRow.item.artistId !== ""
                         && (feedRow.item.kind === "track" || feedRow.item.kind === "album")
-                        && lrSubArea.containsMouse) ? theme.accent : theme.textMuted
+                        && lrSubArea.hotName) ? theme.accent : theme.textMuted
                 font.pixelSize: 12
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
@@ -298,10 +304,23 @@ Rectangle {
                     id: lrSubArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    cursorShape: (feedRow.item.artistId !== ""
-                                  && (feedRow.item.kind === "track" || feedRow.item.kind === "album"))
-                        ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: if (feedRow.item.artistId !== "") QbzArtist.openArtist(feedRow.item.artistId)
+                    // On a track row only the drawn name is the link; the
+                    // whitespace past it is row body (double click plays).
+                    readonly property bool isLink: feedRow.item.artistId !== ""
+                        && (feedRow.item.kind === "track" || feedRow.item.kind === "album")
+                    function overName(x) { return !feedRow.isTrack || x <= parent.contentWidth }
+                    property bool hotName: false
+                    onPositionChanged: function (mouse) { hotName = overName(mouse.x) }
+                    onExited: hotName = false
+                    cursorShape: (isLink && hotName) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: function (mouse) {
+                        if (feedRow.item.artistId !== "" && overName(mouse.x))
+                            QbzArtist.openArtist(feedRow.item.artistId)
+                    }
+                    onDoubleClicked: function (mouse) {
+                        if (feedRow.isTrack && !(isLink && overName(mouse.x)))
+                            feedRow.playTrack()
+                    }
                 }
             }
         }

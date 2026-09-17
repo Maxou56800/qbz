@@ -162,7 +162,7 @@ Item {
                         height: 30
                         radius: 6
                         color: active ? theme.accent
-                             : (pArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated)
+                             : (pArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated)
                         Text {
                             id: pLabel
                             anchors.centerIn: parent
@@ -197,6 +197,8 @@ Item {
                 border.color: queryInput.activeFocus ? theme.accent : theme.borderSubtle
 
                 TextInput {
+
+                    QbzTextEditMenu { }
                     id: queryInput
                     anchors.fill: parent
                     anchors.leftMargin: 12

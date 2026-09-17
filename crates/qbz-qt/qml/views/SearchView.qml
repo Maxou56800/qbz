@@ -76,6 +76,7 @@ Rectangle {
     readonly property var artists: doc.artists || []
     readonly property var artistsCarousel: doc.artistsCarousel || []
     readonly property var playlists: doc.playlists || []
+    readonly property var localSections: doc.localSections || []
     readonly property var mp: doc.mostPopular || ({})
     readonly property bool loading: doc.loading === true
     readonly property int tab: doc.tab || 0
@@ -84,7 +85,8 @@ Rectangle {
     // IDENTITY: when it changes, the page on screen is a different result set
     // and any pending "fade the tail" threshold is stale (see clearFade).
     readonly property string query: doc.query || ""
-    readonly property bool hasResults: albums.length + tracks.length + artists.length + playlists.length > 0
+    readonly property bool hasQobuzResults: albums.length + tracks.length + artists.length + playlists.length > 0
+    readonly property bool hasResults: hasQobuzResults || localSections.length > 0
     readonly property int previewCap: 6
 
     // The per-type result tabs live inside the page Flickable, so a GridView
@@ -665,11 +667,17 @@ Rectangle {
                 font.weight: theme.weightBold
             }
             Row {
-                visible: root.hasResults
+                visible: root.hasQobuzResults || root.filterIndex !== 0
                 anchors.right: parent.right
                 anchors.rightMargin: 32
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 16
+                Text {
+                    text: QbzSession.tr("Qobuz", QbzSession.trRev)
+                    color: theme.textMuted
+                    font.pixelSize: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
                 FilterRadio { label: QbzSession.tr("Main Artist", QbzSession.trRev); selected: root.filterIndex === 1; onPicked: QbzSearch.searchFilterChanged(1) }
                 FilterRadio { label: QbzSession.tr("Performer", QbzSession.trRev); selected: root.filterIndex === 2; onPicked: QbzSearch.searchFilterChanged(2) }
                 FilterRadio { label: QbzSession.tr("Composer", QbzSession.trRev); selected: root.filterIndex === 3; onPicked: QbzSearch.searchFilterChanged(3) }
@@ -681,7 +689,7 @@ Rectangle {
                     height: 24
                     radius: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    color: clrArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: clrArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     QbzIcon { name: "x"; width: 13; height: 13; anchors.centerIn: parent; tintName: clrArea.containsMouse ? "textPrimary" : "muted" }
                     MouseArea {
                         id: clrArea
@@ -1212,6 +1220,20 @@ Rectangle {
                         cellW: 224
                         cellH: 270
                         onClicked: root.armLoadMore(4)
+                    }
+                    SearchLocalResults {
+                        id: localSearchResults
+                        width: parent.width
+                        sections: root.localSections
+                        revision: root.doc.localRevision || ""
+                        tab: root.tab
+                        visible: localSearchResults.hasResults
+                        onActivated: function(revision, index, action) {
+                            QbzSearch.searchLocalAction(revision, index, action)
+                        }
+                        onViewMore: function(revision, kind) {
+                            QbzSearch.searchLocalMore(revision, kind)
+                        }
                     }
                 }
 

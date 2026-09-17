@@ -190,6 +190,8 @@ Item {
                     border.color: queryInput.activeFocus ? theme.accent : theme.borderSubtle
 
                     TextInput {
+
+                        QbzTextEditMenu { }
                         id: queryInput
                         anchors.fill: parent
                         anchors.leftMargin: 12
@@ -408,6 +410,18 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     tierOverride: cand.modelData.qualityTier || ""
                                     label: cand.modelData.qualityDetail || ""
+                                }
+                                // The mark alone says "CD" or "Hi-Res"; the
+                                // exact tier is the decision, so it is spelled
+                                // out beside it. (The badge's own hover tooltip
+                                // never shows on this row: the row's MouseArea
+                                // takes the hover.)
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: (cand.modelData.qualityDetail || "") !== ""
+                                    text: cand.modelData.qualityDetail || ""
+                                    color: theme.textSecondary
+                                    font.pixelSize: theme.fontLegal
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter

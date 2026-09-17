@@ -127,6 +127,10 @@ const CONTRIBUTORS: &[&str] = &[
     "Mazipani",
     "RayneGit",
     "LuckyTheCoder",
+    // 2.1.2 — Maxou56800 (the local-playback conflict fence released in the
+    // shared session loop, #795, reported and verified against the official
+    // Android client).
+    "Maxou56800",
 ];
 
 /// Release-time snapshot from `data/about-sponsors.json`. GitHub contains the

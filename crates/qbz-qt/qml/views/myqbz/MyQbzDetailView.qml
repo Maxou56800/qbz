@@ -1193,7 +1193,10 @@ Rectangle {
                             // selection checkbox rather than bolt one on.
                             selectMode: root.selectMode
                             selected: gcell.cSelected
-                            onSelectToggled: QbzMyQbz.detailToggleItemSelect(gcell.cPosition)
+                            onSelectToggled: function (mods) {
+                                QbzMyQbz.detailToggleItemSelect(gcell.cPosition,
+                                    (mods & Qt.ShiftModifier) !== 0)
+                            }
                             // Card body click, non-select mode only (the card
                             // routes a select-mode click to `selectToggled`).
                             onOpenRequested: QbzMyQbz.openItem(gcell.cSource,

@@ -126,6 +126,32 @@ another module, and it didn't go well.
 
 ## Installation
 
+### One-line installer (Linux and macOS, from 2.1.2)
+
+```bash
+curl -fsSL https://qbz.lol/install.sh | bash
+```
+
+Installs the official AppImage on Linux or the upstream `.app` in
+`~/Applications` on macOS, for the current user. It detects Intel/AMD or ARM64,
+verifies the package SHA-256 against GitHub's release metadata, and preserves
+existing installations from other sources. Future updates use **Settings →
+Updates** in QBZ. Linux needs curl and Python 3 or jq; the launcher works without
+FUSE. The existing glibc requirements still apply. The macOS package uses the
+upstream ad-hoc signature; the notarized community channel remains available below.
+
+To inspect the script before running it, or remove this installation while
+keeping personal data:
+
+```bash
+curl -fsSL https://qbz.lol/install.sh -o qbz-install.sh
+less qbz-install.sh
+bash qbz-install.sh --check
+bash qbz-install.sh
+# Close QBZ before uninstalling:
+bash qbz-install.sh --uninstall
+```
+
 ### Arch Linux (AUR)
 
 Install the prebuilt packages (recommended):
@@ -333,6 +359,25 @@ subscription, Gatekeeper blocks its first run. On recent macOS versions
   it's a one-time unlock for this copy of the app; updates installed through
   QBZ's own updater don't need it again.
 
+### Updates
+
+Use **Check for updates now** in the app menu or **Settings → Updates**.
+Launch checks are optional and preserve existing preferences. GitHub release
+notifications wait until a stable release is at least 12 hours old. Manual checks find new stable
+releases immediately and report network errors separately from “up to date”.
+
+AppImage and upstream macOS `.app` installations can download and install
+signed updates from QBZ. Close and reopen the app after installation. macOS
+builds signed by another distributor, including the notarized community
+builds, keep their original update channel. The one-line installer uses these
+same update paths. Flatpak checks and updates its own installed ref through the
+Flatpak portal, including progress, cancellation and already-deployed updates
+that only need a restart. Permission changes require the system software manager.
+Windows MSI installations stage a signed MSI and run Windows Installer after
+QBZ closes, then reopen the app. The installer never requests a machine restart.
+For Snap, APT/RPM, AUR, Gentoo, Nix, Homebrew and other manual installs, update through the original
+installation source; its package may arrive after the GitHub release.
+
 ## Features
 
 ### Audio and playback
@@ -447,6 +492,51 @@ Multi-device playback control using Qobuz's real-time streaming protocol. Full
   Japanese, Dutch
 - **Offline mode** usable without ever logging into Qobuz, with fully offline
   playlists and automatic reconnection
+
+### Playback memory cache
+
+In **Settings → Playback → Playback cache**, choose a playback memory profile:
+
+| Profile | Cache and prefetch behavior |
+| --- | --- |
+| **Auto — recommended** | Fixed 400 MiB on normal-memory hosts or 50 MiB below 2 GiB RAM. |
+| **High — dynamic** | Starts at 400 MiB and can grow to 1600 MiB when RAM is available. |
+| **Desktop** | Fixed 400 MiB with normal prefetch. |
+| **Low — Pi style** | Fixed 50 MiB, smaller initial buffers and reduced prefetch; skips speculative Hi-Res warm-up. |
+| **Custom** | Manual base/maximum and dynamic growth; prefetch follows the detected host class. |
+
+Editing a preset's limits or growth toggle switches to Custom. Existing manual
+cache settings are preserved as Custom. Restore defaults returns to Auto.
+Profiles are shared by qbz and qbzd and preserve the requested audio quality.
+
+Dynamic growth requires measured memory headroom. The cache shrinks after two
+minutes without new demand and can fall below its base under memory pressure.
+These budgets cover cached audio, not reserved RAM or the whole application's
+memory. New buffers follow the selected profile; an existing track continues
+with its current storage. Changing the profile does not restart the DAC.
+
+L2 disk cache remains enabled unless **Streaming only** is selected. Tracks
+outside the memory budget stream through temporary files; L2 playback and
+catalog gapless read files without loading entire tracks into RAM. Keep the
+cache directory on real storage when saving RAM: tmpfs consumes RAM too.
+Offline downloads retain their separate settings. Streaming only keeps gapless
+available, uses less memory and skips cache-based protection against network
+interruptions and instant replay.
+
+```bash
+qbzd settings set audio.playback_memory_profile high
+qbzd status --json
+qbzd settings set audio.playback_memory_profile low
+qbzd settings set audio.playback_memory_profile auto
+```
+
+The CLI also accepts `desktop` and `custom`. Advanced keys remain
+`audio.playback_cache_dynamic`, `audio.playback_cache_min_mib` and
+`audio.playback_cache_max_mib`; editing them selects Custom. Use `none` for an
+automatic limit. Custom dynamic mode defaults to a ceiling four times the base,
+capped at 16384 MiB. `status.playback_cache` reports the active profile, usage,
+and effective/base/maximum budgets in bytes.
+
 
 ## Headless daemon (qbzd)
 
@@ -844,8 +934,22 @@ Almost all of the documentation, except this README, is AI slop. Seriously,
 help writing or improving it is welcome. I hate writing documentation, and
 who doesn't?
 
+One thing is not negotiable, and it applies to me as much as to anyone sending
+a PR: **the human who signs a commit is the author and is responsible for it.**
+Models are tools, so they do not get co-author credit here — not to hide their
+part, which this whole section is about, but because credit without
+accountability is worth nothing. If your agent wrote it, you still read it, you
+still ran it, and you answer for it.
+
+That also means an agent's output is not evidence on its own. A report that
+nobody verified, or a fix that passes the model's own tests and nothing else,
+costs more time to unpick than it saves. Findings are genuinely welcome — bring
+them as issues with what you observed. A fix is welcome too, once you have run
+it yourself and can say what you tested.
+
 If you have a problem using software built with AI tools, this software is
-probably not for you.
+probably not for you. If you expect unsupervised AI output to be merged because
+it came from a model, that is not for you either.
 
 ## Documentation
 
@@ -887,6 +991,7 @@ pull requests.
 - [@Mazipani](https://github.com/Mazipani) — Chromecast X.509 v1 certificates
 - [@RayneGit](https://github.com/RayneGit) — Wayland clipboard
 - [@LuckyTheCoder](https://github.com/LuckyTheCoder) — macOS Liquid Glass icon
+- [@Maxou56800](https://github.com/Maxou56800) — QConnect local-takeover fence
 
 ## License
 

@@ -66,7 +66,8 @@ Rectangle {
     readonly property bool pulled: root.item.qobuzUnavailable === true
     readonly property int cacheStatus: root.item.cacheStatus !== undefined
         ? root.item.cacheStatus : 0
-    readonly property bool pulledDead: root.pulled && root.cacheStatus !== 3
+    readonly property bool pulledDead: (root.pulled && root.cacheStatus !== 3)
+        || root.item.sourceUnavailable === true
     /// `modifiers` rides straight off the mouse event: Shift is what turns
     /// a click into a range (controls/SelectionModel.qml).
     signal toggleSelect(int modifiers)
@@ -75,6 +76,9 @@ Rectangle {
 
     // Same columns (and widths) as AlbumListHeader.qml.
     readonly property int colArt: 52
+    /// See AlbumListHeader.showLabel.
+    property bool showLabel: true
+    readonly property int colLabel: (!root.showLabel || (root.kioskHost && width < 500)) ? 0 : 150
     readonly property int colQuality: root.kioskHost && width < 500 ? 0 : 150
     readonly property int colYear: root.kioskHost && width < 500 ? 0 : 64
     readonly property int colOverflow: root.kioskHost ? 44 : 36
@@ -106,7 +110,7 @@ Rectangle {
                 return
             }
             if (root.selectMode) root.toggleSelect(mouse.modifiers)
-            else if (!root.pulledDead) QbzAlbum.openAlbum(root.item.id || "")
+            else if (!root.pulledDead) QbzAlbum.openAlbumFrom(root.item.id || "", root.item.title || "", root.item.artist || "")
         }
         // Touch has no right button. Desktop-inert: `pressAndHold` never
         // fires for a mouse press that is released normally, and the guard
@@ -123,7 +127,7 @@ Rectangle {
     /// below all resolve a catalog id.
     readonly property bool catalogRow: {
         var src = root.item.source || ""
-        return src !== "local" && src !== "plex"
+        return src === "" || src === "qobuz"
     }
 
     function menuEntries() {
@@ -159,13 +163,17 @@ Rectangle {
         }
         if (!root.pulledDead && root.catalogRow)
             m.push({ "label": t("Block this album", r), "icon": "blind-eye", "action": "block" })
+        // The label page outlives a pulled release, so this one stays.
+        if ((root.item.labelId || "") !== "")
+            m.push({ "label": t("View label", r), "icon": "tags", "action": "view-label" })
         return m
     }
     function menuAction(a) {
         var id = root.item.id || ""
         if (id === "") return
+        if (a === "view-label") { QbzHome.openLabel(root.item.labelId || ""); return }
         if (root.pulledDead) return
-        if (a === "open") QbzAlbum.openAlbum(id)
+        if (a === "open") QbzAlbum.openAlbumFrom(id, root.item.title || "", root.item.artist || "")
         else if (a === "play") QbzPlayer.playAlbum(id)
         // `artUrl`, never `artPath`: the store keeps a denormalized cover url
         // and a file:// cache path is dead on any other machine.
@@ -273,6 +281,7 @@ Rectangle {
             // multi-select is switched on.
             width: parent.width - root.colArt - root.colQuality - root.colYear
                 - root.colOverflow - 4 * root.colGap
+                - (root.colLabel > 0 ? root.colLabel + root.colGap : 0)
                 - (root.selectMode ? 18 + root.colGap : 0)
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
@@ -295,11 +304,41 @@ Rectangle {
                     id: artistArea
                     anchors.fill: parent
                     // Only a real artist id is clickable — otherwise the
-                    // pointer promises a page that cannot open.
-                    enabled: (root.item.artistId || "") !== ""
+                    // pointer promises a page that cannot open. In select
+                    // mode the whole row selects (Shift / Ctrl included), so
+                    // the name stops being a link and the click falls to the
+                    // row body underneath.
+                    enabled: !root.selectMode && (root.item.artistId || "") !== ""
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: QbzArtist.openArtist(root.item.artistId)
+                }
+            }
+        }
+
+        // LABEL — the release's label, a link to its page when the feed
+        // carries the id (2026-09-13). Zero-width (and skipped by the Row)
+        // where the column is off.
+        Item {
+            visible: root.colLabel > 0
+            width: root.colLabel
+            height: parent.height
+            Text {
+                id: labelText
+                width: parent.width
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.item.label || ""
+                color: labelArea.containsMouse && labelArea.enabled ? theme.accent : theme.textMuted
+                font.pixelSize: 12
+                elide: Text.ElideRight
+                MouseArea {
+                    id: labelArea
+                    anchors.fill: parent
+                    // Not a link in select mode, for the artist name's reason.
+                    enabled: !root.selectMode && (root.item.labelId || "") !== ""
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: QbzHome.openLabel(root.item.labelId)
                 }
             }
         }

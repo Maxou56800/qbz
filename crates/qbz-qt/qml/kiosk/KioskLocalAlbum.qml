@@ -53,14 +53,28 @@ Rectangle {
     function toggleSelected(id, mods) { selected = selection.next(selected, id, visibleTracks, mods === undefined ? Qt.NoModifier : mods) }
     readonly property string navigationStateJson: JSON.stringify({trackQuery: trackQuery})
     function restoreNavigationState(state) { trackQuery = state.trackQuery || "" }
-    onDocChanged: exitMultiSelectMode()
+    // An in-place album switch starts at the top; the first document of a
+    // mount does not touch the viewport (ScrollMemory may be restoring it).
+    property string loadedAlbumId: ""
+    onDocChanged: {
+        exitMultiSelectMode()
+        var id = root.album ? String(root.album.id || "") : ""
+        if (id === root.loadedAlbumId)
+            return
+        if (root.loadedAlbumId !== "")
+            rowsModel.scrollToTop()
+        root.loadedAlbumId = id
+    }
 
     ListView {
         id: list
         anchors.fill: parent
         anchors.margins: 12
         clip: true
-        model: root.visibleTracks
+        // Swapped on a QbzArrayModel, never on `model:` — a fresh array there
+        // makes Qt 6.11 focus delegate 0 and the header's search box loses the
+        // keyboard on every keystroke (see the control's header).
+        model: QbzArrayModel { id: rowsModel; view: list; rows: root.visibleTracks; delegate: trackDelegate }
         cacheBuffer: height
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
@@ -115,45 +129,50 @@ Rectangle {
                 error:root.doc.error || ""
             }
         }
-        delegate: Column {
-            id: row
-            required property var modelData
-            required property int index
-            width: list.width
-            readonly property int disc: modelData.disc || 1
-            readonly property bool startsDisc: index === 0 || (root.visibleTracks[index-1].disc || 1) !== disc
-            Item {
-                width: parent.width
-                height: row.startsDisc ? 44 : 0
-                visible: row.startsDisc
-                Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: QbzSession.tr("Disc", QbzSession.trRev) + " " + row.disc; color: theme.textSecondary; font.pixelSize: 16 }
-                SettingsButton {
-                    id: discButton
-                    kioskHost: true; anchors.right: parent.right
-                    iconName: "ellipsis"; minWidth: 44
-                    onClicked: discMenu.openBelowRight(discButton)
+        // Handed to rowsModel: Qt 6.8/6.9 ignore a view's delegate when the
+        // model is an external DelegateModel, and rendered zero rows.
+        Component {
+            id: trackDelegate
+            Column {
+                id: row
+                required property var modelData
+                required property int index
+                width: list.width
+                readonly property int disc: modelData.disc || 1
+                readonly property bool startsDisc: index === 0 || (root.visibleTracks[index-1].disc || 1) !== disc
+                Item {
+                    width: parent.width
+                    height: row.startsDisc ? 44 : 0
+                    visible: row.startsDisc
+                    Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: QbzSession.tr("Disc", QbzSession.trRev) + " " + row.disc; color: theme.textSecondary; font.pixelSize: 16 }
+                    SettingsButton {
+                        id: discButton
+                        kioskHost: true; anchors.right: parent.right
+                        iconName: "ellipsis"; minWidth: 44
+                        onClicked: discMenu.openBelowRight(discButton)
+                    }
+                    CardMenu {
+                        id: discMenu; kioskHost: true
+                        entries: [
+                            {label: QbzSession.tr("Play", QbzSession.trRev), action:"play"},
+                            {label: QbzSession.tr("Play next", QbzSession.trRev), action:"next"},
+                            {label: QbzSession.tr("Play later", QbzSession.trRev), action:"later"},
+                            {label: QbzSession.tr("Add to queue", QbzSession.trRev), action:"queue"}
+                        ]
+                        onPicked: function(a) { QbzLocal.albumDiscAction(row.disc, a) }
+                    }
                 }
-                CardMenu {
-                    id: discMenu; kioskHost: true
-                    entries: [
-                        {label: QbzSession.tr("Play", QbzSession.trRev), action:"play"},
-                        {label: QbzSession.tr("Play next", QbzSession.trRev), action:"next"},
-                        {label: QbzSession.tr("Play later", QbzSession.trRev), action:"later"},
-                        {label: QbzSession.tr("Add to queue", QbzSession.trRev), action:"queue"}
-                    ]
-                    onPicked: function(a) { QbzLocal.albumDiscAction(row.disc, a) }
+                LocalTrackRow {
+                    width: parent.width; kioskHost: true
+                    item: row.modelData
+                    number: row.modelData.number > 0 ? row.modelData.number : row.index + 1
+                    showAlbum: false; showArtwork: false; zebra: true
+                    selectMode: root.multiSelect
+                    checked: root.selected[row.modelData.id] === true
+                    onPlayRequested: QbzLocal.albumSelectedAction("play", row.modelData.id)
+                    onEnqueueRequested: function(mode) { QbzLocal.enqueue("track", row.modelData.id, mode) }
+                    onToggleSelect: function(mods) { root.toggleSelected(row.modelData.id, mods) }
                 }
-            }
-            LocalTrackRow {
-                width: parent.width; kioskHost: true
-                item: row.modelData
-                number: row.modelData.number > 0 ? row.modelData.number : row.index + 1
-                showAlbum: false; showArtwork: false; zebra: true
-                selectMode: root.multiSelect
-                checked: root.selected[row.modelData.id] === true
-                onPlayRequested: QbzLocal.albumSelectedAction("play", row.modelData.id)
-                onEnqueueRequested: function(mode) { QbzLocal.enqueue("track", row.modelData.id, mode) }
-                onToggleSelect: function(mods) { root.toggleSelected(row.modelData.id, mods) }
             }
         }
     }
@@ -168,6 +187,6 @@ Rectangle {
         ]
         onPicked: function(a) { if (root.selectedCount > 0) root.bulkAction(a) }
     }
-    ScrollMemory { target: list; scope: "localalbum" }
+    ScrollMemory { target: list; scope: "localalbum"; relativeToOrigin: true }
     QbzScrollBar { target: list; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom }
 }

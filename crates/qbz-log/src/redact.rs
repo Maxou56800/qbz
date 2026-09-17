@@ -45,6 +45,16 @@ fn patterns() -> &'static Vec<Regex> {
             r#"(?i)((access|refresh)_token["':=\s]+)[A-Za-z0-9._\-]+"#,
             // generic URL token param
             r#"(?i)(token=)[^&\s"']+"#,
+            // quoted token inside an `Authorization: MediaBrowser …` header
+            r#"(?i)(token=")[^"]+"#,
+            // media-server API key query params (Jellyfin `ApiKey` / legacy `api_key`)
+            r#"(?i)(api_?key=)[^&\s"']+"#,
+            // Signed CDN URLs: Qobuz/Akamai `hmac=`, CloudFront `Signature=` /
+            // `Policy=` / `Key-Pair-Id=`. Value = up to the next query separator.
+            r#"(?i)(hmac=)[^&\s"']+"#,
+            r#"(?i)(signature=)[^&\s"']+"#,
+            r#"(?i)(policy=)[^&\s"']+"#,
+            r#"(?i)(key-pair-id=)[^&\s"']+"#,
         ]
         .iter()
         .filter_map(|p| Regex::new(p).ok())
@@ -74,7 +84,10 @@ pub fn register_secret(value: String) {
 /// Cheap pre-check: does the line contain any substring that one of the regexes could
 /// match? Avoids running the whole pattern set on the overwhelming majority of lines.
 fn has_redaction_candidate(lower: &str) -> bool {
-    const NEEDLES: [&str; 6] = ["token", "secret", "password", "bearer", "auth", "sig"];
+    const NEEDLES: [&str; 11] = [
+        "token", "secret", "password", "bearer", "auth", "sig", "hmac", "policy", "key-pair",
+        "apikey", "api_key",
+    ];
     NEEDLES.iter().any(|n| lower.contains(n))
 }
 
@@ -169,6 +182,32 @@ mod tests {
             assert!(!r.contains("hunter2"), "leaked password: {r}");
             assert!(!r.contains("eyJ.aaa.bbb"), "leaked bearer token: {r}");
         }
+    }
+
+    #[test]
+    fn redacts_signed_cdn_url_params() {
+        let r = redact(
+            "fetch: https://streaming.example/file?eid=1&hmac=HMACSECRET&etsp=1700000000 \
+             and https://cf.example/l.json?Policy=POLICYBLOB&Signature=SIGBLOB&Key-Pair-Id=KPID123",
+        );
+        for leaked in ["HMACSECRET", "POLICYBLOB", "SIGBLOB", "KPID123"] {
+            assert!(!r.contains(leaked), "leaked {leaked}: {r}");
+        }
+        assert!(r.contains("etsp=1700000000"), "non-secret params survive: {r}");
+        assert!(r.contains("eid=1"), "non-secret params survive: {r}");
+    }
+
+    #[test]
+    fn redacts_media_server_api_keys_and_header_tokens() {
+        let r = redact(
+            "stream http://jf:8096/Audio/x/stream?static=true&ApiKey=JFKEY123 \
+             old ?api_key=OLDKEY456&static=true \
+             Authorization: MediaBrowser Client=\"QBZ\", Token=\"HDRTOKEN789\"",
+        );
+        for leaked in ["JFKEY123", "OLDKEY456", "HDRTOKEN789"] {
+            assert!(!r.contains(leaked), "leaked {leaked}: {r}");
+        }
+        assert!(r.contains("static=true"), "non-secret params survive: {r}");
     }
 
     #[test]

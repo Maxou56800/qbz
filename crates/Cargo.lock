@@ -579,6 +579,7 @@ dependencies = [
  "js-sys",
  "num-traits",
  "pure-rust-locales",
+ "serde",
  "wasm-bindgen",
  "windows-link 0.2.1",
 ]
@@ -1456,6 +1457,12 @@ checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
 ]
+
+[[package]]
+name = "downcast-rs"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "dst-decoder"
@@ -2946,6 +2953,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3927,7 +3940,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-app"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -3954,7 +3967,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-audio"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "alsa",
  "alsa-sys",
@@ -3990,8 +4003,12 @@ dependencies = [
  "filetime",
  "log",
  "md-5",
+ "qbz-models",
  "rusqlite",
  "serde",
+ "serde_json",
+ "tempfile",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -4014,7 +4031,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-cmaf"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "aes",
  "base64 0.23.1",
@@ -4028,8 +4045,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "qbz-control"
+version = "2.1.2"
+dependencies = [
+ "log",
+ "qbz-core",
+ "qbz-library",
+ "qbz-models",
+ "qbz-qobuz",
+ "qbz-reco",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tiny_http",
+ "tokio",
+ "urlencoding",
+ "uuid 1.26.0",
+]
+
+[[package]]
 name = "qbz-core"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4051,7 +4087,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-credentials"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "aes-gcm",
  "ashpd",
@@ -4069,7 +4105,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-dac-wizard-core"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "qbz-audio",
  "qbz-i18n",
@@ -4078,7 +4114,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-disc"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "base64 0.23.1",
  "dirs 6.0.0",
@@ -4098,7 +4134,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-dsd"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "dst-decoder",
  "id3",
@@ -4109,7 +4145,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-external-reco"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4145,7 +4181,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-jellyfin"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "reqwest",
  "rustls",
@@ -4191,7 +4227,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-log"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -4221,7 +4257,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-media-cache"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -4230,7 +4266,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-media-controls"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "ashpd",
  "async-channel",
@@ -4266,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-models"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4280,13 +4316,14 @@ dependencies = [
 
 [[package]]
 name = "qbz-music-link"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "log",
  "qbz-models",
  "qbz-qobuz",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -4295,7 +4332,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-offline-cache"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "dirs 6.0.0",
  "futures-util",
@@ -4317,7 +4354,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-player"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4333,6 +4370,7 @@ dependencies = [
  "rodio",
  "serde",
  "symphonia",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-stream",
@@ -4357,7 +4395,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-plex"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "dirs 6.0.0",
  "open",
@@ -4369,7 +4407,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-qobuz"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4394,7 +4432,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-qt"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-io",
  "async-trait",
@@ -4418,6 +4456,7 @@ dependencies = [
  "qbz-audio",
  "qbz-cache",
  "qbz-cast",
+ "qbz-control",
  "qbz-core",
  "qbz-credentials",
  "qbz-dac-wizard-core",
@@ -4445,6 +4484,7 @@ dependencies = [
  "qbz-subsonic",
  "qbz-text-utils",
  "qbz-theme",
+ "qbz-updater",
  "qconnect-app",
  "qconnect-lan",
  "qconnect-protocol",
@@ -4461,6 +4501,8 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid 1.26.0",
+ "wayland-client",
+ "wayland-protocols-plasma",
  "windows-sys 0.61.2",
  "winresource",
  "zbus 5.19.0",
@@ -4469,7 +4511,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-radio"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "dirs 5.0.1",
  "log",
@@ -4480,7 +4522,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-reco"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "log",
  "qbz-integrations",
@@ -4493,7 +4535,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-rip"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "flacenc",
  "lofty",
@@ -4504,7 +4546,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-secrets"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -4521,7 +4563,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-source"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "log",
@@ -4544,7 +4586,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-subsonic"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "md-5",
  "reqwest",
@@ -4556,7 +4598,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-text-utils"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "chrono",
  "qbz-i18n",
@@ -4564,7 +4606,7 @@ dependencies = [
 
 [[package]]
 name = "qbz-theme"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "image",
  "serde",
@@ -4572,8 +4614,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "qbz-updater"
+version = "2.1.2"
+dependencies = [
+ "base64 0.23.1",
+ "chrono",
+ "flate2",
+ "futures-util",
+ "minisign-verify",
+ "reqwest",
+ "rusqlite",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "tokio",
+ "windows-sys 0.61.2",
+ "zbus 5.19.0",
+]
+
+[[package]]
 name = "qbzd"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "clap",
@@ -4585,9 +4649,11 @@ dependencies = [
  "open",
  "qbz-app",
  "qbz-audio",
+ "qbz-control",
  "qbz-core",
  "qbz-credentials",
  "qbz-integrations",
+ "qbz-library",
  "qbz-log",
  "qbz-media-controls",
  "qbz-models",
@@ -4617,7 +4683,7 @@ dependencies = [
 
 [[package]]
 name = "qconnect-app"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -4639,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "qconnect-core"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "qbz-models",
  "serde",
@@ -4648,7 +4714,7 @@ dependencies = [
 
 [[package]]
 name = "qconnect-lan"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "base64 0.23.1",
  "if-addrs 0.15.0",
@@ -4672,7 +4738,7 @@ dependencies = [
 
 [[package]]
 name = "qconnect-protocol"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "log",
  "prost",
@@ -4685,7 +4751,7 @@ dependencies = [
 
 [[package]]
 name = "qconnect-transport-ws"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5971,6 +6037,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
+
+[[package]]
 name = "task-local"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6745,6 +6822,76 @@ dependencies = [
 ]
 
 [[package]]
+name = "wayland-backend"
+version = "0.3.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38a91b4eaddff87b1cd1074985e3713da4af2c49742d1b356b2c01670a67a078"
+dependencies = [
+ "cc",
+ "downcast-rs",
+ "rustix 1.1.4",
+ "smallvec",
+ "wayland-sys",
+]
+
+[[package]]
+name = "wayland-client"
+version = "0.31.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3c36a0f861ad76d0901f2800b46321410d9f73f2ea88aac0650d86c32688073"
+dependencies = [
+ "bitflags 2.13.1",
+ "rustix 1.1.4",
+ "wayland-backend",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-protocols"
+version = "0.32.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23d0c813de3daa2ed6520af85a3bd49b0e722a3078506899aa9686fea58dc4b6"
+dependencies = [
+ "bitflags 2.13.1",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-protocols-plasma"
+version = "0.3.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b6d8cf1eb2c1c31ed1f5643c88a6e53538129d4af80030c8cabd1f9fa884d91"
+dependencies = [
+ "bitflags 2.13.1",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-scanner",
+]
+
+[[package]]
+name = "wayland-scanner"
+version = "0.31.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "338e30461b3a2b67d70eb30a6d89f8e0c93a833e07d2ae89085cd070c4a00ac0"
+dependencies = [
+ "proc-macro2",
+ "quick-xml",
+ "quote",
+]
+
+[[package]]
+name = "wayland-sys"
+version = "0.31.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8eab23fefc9e41f8e841df4a9c707e8a8c4ed26e944ef69297184de2785e3be"
+dependencies = [
+ "pkg-config",
+]
+
+[[package]]
 name = "web-sys"
 version = "0.3.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7452,6 +7599,16 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix 1.1.4",
+]
 
 [[package]]
 name = "xdg-home"

@@ -128,6 +128,7 @@ where
     qbz_log::register_secret(token.clone());
 
     // Emit LoggedIn through the core (idempotent set_session).
+    crate::local_service_qt::quiesce().await;
     core.set_session(session).await.map_err(|e| e.to_string())?;
 
     // Activate the per-user session (creates dirs, opens the session store).
@@ -136,6 +137,7 @@ where
     // Offline-MODE per-user binding, then the D4 valid verdict and the D2
     // recovery: a successful login ends any unauthenticated offline session.
     if let Some(dir) = crate::offline_fwd::user_data_dir(user_id) {
+        crate::local_service_qt::bind(&dir);
         crate::offline_fwd::init_for_user(&dir);
         // Plex settings live per-user (plex_settings.db); bind the store to
         // this session so the first Local Library read does not have to.
@@ -197,6 +199,7 @@ where
 /// logs on failure, never blocks shell entry) — one entry point, so the caller
 /// cannot bind the uid and forget the schema.
 async fn bind_per_user_stores(dir: &std::path::Path, user_id: u64) {
+    crate::local_service_qt::bind(dir);
     // Independent Last.fm/ListenBrainz credentials + queues. This binding is
     // retained across Qobuz logout by design (opt-out lives in that store),
     // and is replaced atomically when another profile activates.
@@ -358,11 +361,13 @@ where
             let user_id = session.user_id;
             let display_name = session.display_name.clone();
             let subscription = session.subscription_label.clone();
+            crate::local_service_qt::quiesce().await;
             core.set_session(session).await.map_err(|e| e.to_string())?;
             runtime.activate(user_id).await?;
             // Per-user stores the shell depends on — the same binding the
             // fresh-login path uses.
             if let Some(dir) = crate::offline_fwd::user_data_dir(user_id) {
+                crate::local_service_qt::bind(&dir);
                 crate::offline_fwd::init_for_user(&dir);
                 // Plex settings live per-user (plex_settings.db); bind the
                 // store to this session so the first Local Library read does
@@ -415,11 +420,13 @@ where
     }
 
     // Session scaffolding at the last user (session store, runtime state).
+    crate::local_service_qt::quiesce().await;
     runtime.activate_offline().await?;
 
     // Offline-MODE engine: bind the per-user stores and flag the
     // unauthenticated offline session.
     if let Some(dir) = crate::offline_fwd::user_data_dir(user_id) {
+        crate::local_service_qt::bind(&dir);
         crate::offline_fwd::init_for_user(&dir);
         // Plex settings live per-user (plex_settings.db); bind the store to
         // this session so the first Local Library read does not have to.
@@ -469,6 +476,7 @@ pub async fn logout<A>(runtime: &Arc<AppRuntime<A>>) -> Result<(), String>
 where
     A: FrontendAdapter + Send + Sync + 'static,
 {
+    crate::local_service_qt::reset();
     crate::media_sync_qt::cancel_all();
     let _ = qbz_credentials::clear_oauth_token();
     let _ = runtime.core().logout().await;

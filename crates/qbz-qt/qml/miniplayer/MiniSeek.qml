@@ -25,6 +25,7 @@ import "../theme"
 
 Item {
     id: root
+    property bool lightForeground: false
 
     /// Effective 0..1, fed by MiniFooter's pending-seek machine.
     property real progress: 0.0
@@ -47,7 +48,7 @@ Item {
         height: root.trackHeight
         y: Math.round((root.height - height) / 2)
         radius: root.rounded ? height / 2 : 0
-        color: theme.alphaTier(12)
+        color: root.lightForeground ? "#40ffffff" : theme.alphaTier(12)
         clip: true
 
         Rectangle {

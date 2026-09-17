@@ -16,6 +16,7 @@ import QtQuick
 import QtQuick.Effects
 import com.blitzfc.qbz
 import "../immersive"
+import "../shell"
 import "../theme"
 
 Rectangle {
@@ -28,17 +29,7 @@ Rectangle {
     // startSystemMove() on it rather than walking a parent chain.
     property var hostWindow: null
 
-    // §13-D4 — the reference feeds `MiniPlayerState.window-hovered` from winit
-    // CursorMoved/CursorLeft (`crates/qbz/src/miniplayer.rs:420-429`) because a
-    // borderless Slint card has no reliable root hover; `state.slint:4506`
-    // names "or a root TouchArea" as the alternative and Qt takes that branch.
-    // A HoverHandler, NOT a MouseArea: a MouseArea would lose containsMouse the
-    // moment the pointer crossed onto any button in the footer, which is
-    // exactly the measured failure the tree records at
-    // qml/immersive/SuggestionsPanel.qml:316-325 and
-    // qml/shell/Cortinilla.qml:215-222. This drives the capsule's conditional
-    // mount, so getting it wrong means the capsule vanishes under the cursor
-    // that is reaching for it.
+    // A whole-card hover sensor keeps the capsule open across its buttons.
     HoverHandler { id: cardHover }
 
     // --- Cached per-mode values (§7-M2) ------------------------------------
@@ -91,11 +82,13 @@ Rectangle {
         }
     }
 
-    // --- Card chrome (MiniShell.slint:20-24) -------------------------------
-    // #050506 stays a literal here because it is a literal there (§4.11): it is
-    // the near-black the artwork backdrop is composed against, not a theme
-    // surface.
-    color: QbzMini.backgroundBlur ? "#050506" : theme.surfaceMain
+    // Inherit the app background. The mini's blur button can override it
+    // with its static artwork backdrop; turning that off restores the app mode.
+    readonly property bool useAppBackground: theme.ambientOn && !QbzMini.backgroundBlur
+    readonly property bool backdropOn: root.useAppBackground || QbzMini.backgroundBlur
+    readonly property bool backdropMounted: QbzMini.open && root.backdropOn
+
+    color: theme.surfaceMain
     border.width: 1
     border.color: theme.alphaTier(10)
     // 9 px for micro + compact, 10 px otherwise (§15 trap 6).
@@ -103,35 +96,14 @@ Rectangle {
     antialiasing: true
     clip: true
 
-    // --- The backdrop, and why it needs a MASK ----------------------------
-    // Both backdrop layers live inside ONE masked container.
-    //
-    // The card above sets `radius` + `clip: true`, and that is NOT enough:
-    // **QML's clip is RECTANGULAR.** `qml/theme/RoundedImage.qml:3-6` states it
-    // as measured fact on this exact Qt build — *"a Rectangle with radius +
-    // clip: true does NOT clip children to the rounded shape (proven with an
-    // isolated scene on this Qt build: the child paints square over the rounded
-    // fill)"*. So without a mask the scrim, and the atmosphere's own opaque
-    // `#0a0a0b` root (ImmersiveAtmosphere.qml:57-60), would both paint into the
-    // four corner regions the card fill leaves transparent: the moment the
-    // backdrop is switched on, the floating card stops being a rounded card and
-    // becomes a hard-cornered rectangle with a rounded hairline inside it.
-    //
-    // This is reachable WITHOUT B3's toggle: `mini_background_blur` lives in
-    // the ui_prefs.json that is CO-OWNED with the shipping Slint app
-    // (mini_qt.rs's key table), so a user who enabled the backdrop over there
-    // gets it on their first Qt mini open.
-    //
-    // ONE layer + ONE mask for the whole group, never one per child — the
-    // tree's own idiom at `qml/shell/Sidebar.qml:1002-1013`. The 0.5/1.0 mask
-    // pair is MEASURED, not defaulted; RoundedImage.qml:495-521 has the table
-    // and the reason 0.0/0.0 collapses Qt's smoothstep to `step()`.
+    // One rounded mask for either background, shared by all five surfaces.
     Item {
         id: backdrop
+        objectName: "miniBackdrop"
         anchors.fill: parent
-        visible: QbzMini.backgroundBlur
+        visible: root.backdropMounted
         clip: true
-        layer.enabled: QbzMini.backgroundBlur && !root._noShaders
+        layer.enabled: root.backdropMounted && !root._noShaders
         layer.smooth: true
         layer.effect: MultiEffect {
             maskEnabled: true
@@ -139,58 +111,58 @@ Rectangle {
             maskThresholdMin: 0.5
             maskSpreadAtMin: 1.0
         }
-
-        // Layer 1: the ambient field (MiniShell.slint:26-37). A conditional
-        // MOUNT, not a `visible` flip: with the backdrop off there is no
-        // ambient item at all, which is the point of §7-M11 — handing a 380 px
-        // always-on-top window a continuously repainting shader surface is the
-        // failure mode. A Loader with an INLINE sourceComponent keeps the type
-        // (and therefore every property name below) checkable; nothing ever
-        // reads `Loader.item`, which §8 rule 4 forbids.
-        //
-        // All four tuning values are passed EXPLICITLY. ImmersiveAtmosphere's
-        // own defaults are animated:true / dim 0.15 / baseOpacity 0.95 /
-        // warpOpacity 0.48 (ImmersiveAtmosphere.qml:36-41) and every one of
-        // them is wrong for the mini.
         Loader {
             anchors.fill: parent
-            active: QbzMini.backgroundBlur && QbzPlayer.npHasTrack
-            sourceComponent: Component {
-                ImmersiveAtmosphere {
-                    source: QbzImmersive.atmosphereUrl
-                    fallbackSource: QbzPlayer.npArtworkPath
-                    animated: false
-                    dim: 0.54
-                    baseOpacity: 0.72
-                    warpOpacity: 0.20
-                }
+            active: root.backdropMounted && root.useAppBackground
+            sourceComponent: AppBackground {
+                hostWindow: root.hostWindow
             }
         }
-
-        // Layer 2: the scrim (MiniShell.slint:39-41). Gated on background-blur
-        // ALONE — NOT on has-track, unlike the layer above it. That asymmetry
-        // is the reference's and it is deliberate: with the backdrop on and no
-        // track, the card is the flat scrim over #050506.
+        Loader {
+            anchors.fill: parent
+            active: root.backdropMounted && QbzMini.backgroundBlur && QbzPlayer.npHasTrack
+            sourceComponent: ImmersiveAtmosphere {
+                source: QbzImmersive.atmosphereUrl
+                fallbackSource: QbzPlayer.npArtworkPath
+                animated: false
+                dim: theme.isDark ? 0.54 : 0.0
+                baseOpacity: 0.72
+                warpOpacity: 0.20
+            }
+        }
         Rectangle {
             anchors.fill: parent
-            color: "#bf050506"  // #050506bf in Slint; Qt is #AARRGGBB
+            visible: QbzMini.backgroundBlur
+            color: theme.surfaceMain
+            opacity: 0.75
         }
     }
-
-    // The mask's own item. A layer renders even when its item is invisible —
-    // that IS the mask idiom — so the gate is `backgroundBlur`, not `visible`,
-    // and an ungated pair of layers would cost two FBOs on a card that usually
-    // has the backdrop OFF.
     Item {
         id: backdropMask
         anchors.fill: parent
         visible: false
-        layer.enabled: QbzMini.backgroundBlur && !root._noShaders
+        layer.enabled: root.backdropMounted && !root._noShaders
         layer.smooth: true
         Rectangle {
             anchors.fill: parent
             radius: root.radius
             color: "#ffffff"
+        }
+    }
+
+    // Below every interactive surface: controls retain the pointer grab.
+    // Queue/lyrics reserve their content area for scrolling, even in gaps.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        onPressed: function(mouse) {
+            if ((root.surfaceId === 3 || root.surfaceId === 4)
+                    && mouse.y < root.height - root.footerHeight) {
+                mouse.accepted = false
+                return
+            }
+            if (root.hostWindow)
+                root.hostWindow.startSystemMove()
         }
     }
 
@@ -223,14 +195,14 @@ Rectangle {
             anchors.fill: parent
             active: root.surfaceId === 1
             sourceComponent: Component {
-                MiniCompactSurface { npExplicit: root.npExplicit }
+                MiniCompactSurface { npExplicit: root.npExplicit; backdropActive: root.backdropOn }
             }
         }
         Loader {
             anchors.fill: parent
             active: root.surfaceId === 2
             sourceComponent: Component {
-                MiniArtworkSurface { npExplicit: root.npExplicit }
+                MiniArtworkSurface { npExplicit: root.npExplicit; backdropActive: root.backdropOn }
             }
         }
         // Both of these carry `QbzMini.open` in their gate, and that term is
@@ -285,6 +257,7 @@ Rectangle {
     // two overlap rather than part.
     MiniFooter {
         id: footer
+        objectName: "miniFooter"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -292,6 +265,7 @@ Rectangle {
         anchors.rightMargin: root.border.width
         anchors.bottomMargin: root.border.width
         height: root.footerHeight
+        backgroundActive: root.backdropOn
         mode: root.footerMode
         cardRadius: root.radius - root.border.width
         hostWindow: root.hostWindow

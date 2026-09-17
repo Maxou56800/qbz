@@ -24,3 +24,5 @@ pub mod settings;
 pub mod status;
 pub mod transport;
 pub mod watch;
+
+pub mod library;

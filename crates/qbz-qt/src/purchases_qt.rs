@@ -2366,6 +2366,9 @@ fn begin_open_album(album_id: String, verified_entitlement: Option<PurchaseAlbum
     if album_id.is_empty() {
         return;
     }
+    // The route is pushed by the QML caller afterwards; the id waits for it
+    // (page_restore_qt keeps the pair for "Where you left off").
+    crate::page_restore_qt::note_args("purchase-album", serde_json::json!({ "id": &album_id }));
     let generation = with_detail(|s| {
         s.generation = next_generation();
         s.loading = true;

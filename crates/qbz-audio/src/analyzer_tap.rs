@@ -36,6 +36,10 @@ pub struct AnalyzerWaveformTrack {
     pub target_lufs: Option<f32>,
     /// Shared gain atomic — loudness analyzer writes, DynamicAmplify reads.
     pub gain_atomic: Option<Arc<AtomicU32>>,
+    /// A start gain was resolved before the first sample (cache / ReplayGain):
+    /// the live analyser must not overwrite it.
+    pub known_gain: bool,
+    pub prevent_clipping: bool,
 }
 
 const BATCH_SIZE: usize = 4096;
@@ -220,6 +224,8 @@ mod tests {
             start_frame: 0,
             target_lufs: None,
             gain_atomic: None,
+            known_gain: false,
+            prevent_clipping: true,
         }
     }
 

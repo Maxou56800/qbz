@@ -103,6 +103,10 @@ Item {
             root.draftIsPublic = false
             // Offline forces it ON and locks it (reference :184-216).
             root.draftOfflineOnly = root.offlineLocked
+            // The boxes too (QbzLineEdit.reset()): "" is also what the
+            // drafts held after the last cancel, so nothing above re-seeds.
+            nameField.reset("")
+            descriptionField.reset("")
             scope.forceActiveFocus()
             nameField.focusField()
         } else {
@@ -274,6 +278,7 @@ Item {
                         font.weight: theme.weightMedium
                     }
                     QbzTextArea {
+                        id: descriptionField
                         width: parent.width
                         height: 80
                         text: root.draftDescription
@@ -410,7 +415,7 @@ Item {
                             height: 36
                             radius: theme.radiusSm
                             color: (cancelArea.containsMouse && !root.busy)
-                                ? theme.surfaceHover : theme.surfaceElevated
+                                ? theme.surfaceElevatedHover : theme.surfaceElevated
                             opacity: root.busy ? 0.5 : 1.0
                             Text {
                                 id: cancelLabel

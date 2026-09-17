@@ -96,7 +96,7 @@ Item {
         width: tb.kioskHost ? Math.max(64, tbRow.width) : tbRow.width
         height: tb.kioskHost ? 64 : 30
         radius: 6
-        color: tbArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: tbArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
         Row {
             id: tbRow
             height: parent.height
@@ -396,7 +396,7 @@ Item {
             width: root.kioskHost ? 64 : 30
             height: root.kioskHost ? 64 : 30
             radius: 6
-            color: filterArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+            color: filterArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
             QbzIcon {
                 name: "list-filter"
                 width: 16
@@ -579,7 +579,7 @@ Item {
             height: root.kioskHost ? 64 : 30
             radius: 6
             anchors.verticalCenter: parent.verticalCenter
-            color: viewArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+            color: viewArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
             QbzIcon {
                 name: root.viewMode === "grid" ? "list" : "layout-grid"
                 width: 16

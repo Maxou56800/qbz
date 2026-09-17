@@ -668,6 +668,8 @@ Item {
                             border.color: manualInput.activeFocus ? theme.accent : theme.borderSubtle
 
                             TextInput {
+
+                                QbzTextEditMenu { }
                                 id: manualInput
                                 anchors.fill: parent
                                 anchors.leftMargin: 12
@@ -752,7 +754,7 @@ Item {
                                 width: parent.width
                                 height: 40
                                 radius: theme.radiusSm
-                                color: cfgHead.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                                color: cfgHead.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                                 border.width: 1
                                 border.color: activeFocus ? theme.accent : theme.borderSubtle
                                 activeFocusOnTab: visible && enabled
@@ -976,7 +978,7 @@ Item {
                                     event.accepted = true
                                 }
                             }
-                            color: prevTa.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: prevTa.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                             QbzIcon {
                                 anchors.centerIn: parent
                                 width: 16
@@ -1014,7 +1016,7 @@ Item {
                                     event.accepted = true
                                 }
                             }
-                            color: nextTa.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: nextTa.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                             QbzIcon {
                                 anchors.centerIn: parent
                                 width: 16

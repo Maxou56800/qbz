@@ -15,19 +15,14 @@
 //! Pure + blocking helpers only: no Qt types, no bridge, no `ui()`. The
 //! publishing side stays in `search_qt.rs`.
 //!
-//! ## What the reference does that this does NOT change
-//!
-//! Several oddities are reproduced 1:1 on purpose, because the reference is
-//! the spec and a "fix" here would be a silent divergence:
+//! ## Search presentation and candidate policy
 //!
 //! - **No dedupe between the Qobuz half and the local half.** An album owned
 //!   locally AND in the catalog appears twice, in two sections, with two ids.
 //! - **`has_more` is window-relative, not library-relative.** No `COUNT(*)` is
 //!   ever issued; it answers "were there more distinct groups inside the rows
 //!   I fetched", which under-reports on a large library.
-//! - **Plex rows are PREPENDED and the track section is a plain `take(cap)`,**
-//!   so three Plex matches can starve the local-file tracks out of the section
-//!   entirely.
+//! - Candidate reads use qbz-library's bounded, interleaved source search.
 //! - **Artwork is resolved before mapping.** Current scans persist
 //!   embedded/disc/collection art in that order; this bounded search window
 //!   also runs the queue-time folder resolver so rows indexed by an older
@@ -36,6 +31,50 @@
 use std::collections::HashSet;
 
 use crate::search_qt::{CortRow, CortSection, CortinillaData};
+
+/// The page owns a separate snapshot: typing in the dropdown must never change
+/// what a page click plays. Track row keys are snapshot offsets, not DB IDs;
+/// different source instances are allowed to reuse the same native integer ID.
+#[derive(Default)]
+pub(crate) struct PageSnapshot {
+    pub data: CortinillaData,
+    pub tracks: Vec<qbz_library::LocalTrack>,
+}
+
+impl PageSnapshot {
+    pub fn new(query: &str, tracks: Vec<qbz_library::LocalTrack>) -> Self {
+        let mut data = CortinillaData {
+            query: query.into(),
+            ..Default::default()
+        };
+        append_local_sections(
+            &mut data,
+            &tracks,
+            LocalCaps {
+                albums: 8,
+                artists: 4,
+                tracks: 8,
+            },
+            query,
+        );
+        for section in &mut data.sections {
+            if section.kind == "local" {
+                for (index, row) in section.rows.iter_mut().enumerate() {
+                    row.id = index.to_string();
+                }
+            }
+        }
+        Self { data, tracks }
+    }
+
+    pub fn row(&self, index: i32) -> Option<&CortRow> {
+        self.data
+            .sections
+            .iter()
+            .flat_map(|s| &s.rows)
+            .find(|r| r.flat_index == index)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Caps
@@ -195,8 +234,7 @@ pub(crate) fn derive_local_album_rows(
         if out.len() >= cap {
             continue; // keep counting for an honest has_more
         }
-        let (art_url, art_path) =
-            local_art_split(t, crate::local_rows::ArtworkScope::Album);
+        let (art_url, art_path) = local_art_split(t, crate::local_rows::ArtworkScope::Album);
         out.push(CortRow {
             kind: "album".into(),
             id: key,
@@ -249,8 +287,7 @@ pub(crate) fn derive_local_artist_rows(
         if out.len() >= cap {
             continue;
         }
-        let (art_url, art_path) =
-            local_art_split(t, crate::local_rows::ArtworkScope::Album);
+        let (art_url, art_path) = local_art_split(t, crate::local_rows::ArtworkScope::Album);
         out.push(CortRow {
             kind: "artist".into(),
             id: String::new(),
@@ -275,8 +312,7 @@ pub(crate) fn derive_local_artist_rows(
 /// media action. `id` is the library row id; the router resolves the concrete
 /// `LocalTrack` back from the per-query snapshot, NOT from this id.
 pub(crate) fn map_local_track_to_cort_row(t: &qbz_library::LocalTrack) -> CortRow {
-    let (art_url, art_path) =
-        local_art_split(t, crate::local_rows::ArtworkScope::Track);
+    let (art_url, art_path) = local_art_split(t, crate::local_rows::ArtworkScope::Track);
     // "artist · album" when both exist, else whichever does (U+00B7).
     let subtitle = match (t.artist.is_empty(), t.album.is_empty()) {
         (false, false) => format!("{} · {}", t.artist, t.album),
@@ -395,9 +431,9 @@ pub(crate) fn append_immersive_local_albums(
 /// Fetch up to `limit` local-library tracks matching `query`, off the calling
 /// thread.
 ///
-/// Independent of the Qobuz search: callers `tokio::join!` this with
-/// `core.search_all`, so a slow or offline Qobuz never blocks the on-device
-/// results and vice versa.
+/// Callers run this alongside `core.search_all` with `tokio::join!`.
+/// Local lookup has no Qobuz-auth prerequisite; publication still waits for
+/// both queries, and a Qobuz failure must preserve the local result.
 ///
 /// `gated` is the intelligent-search kill switch. The MAIN cortinilla passes
 /// `true` — the module being off means no local search either, which is the
@@ -417,55 +453,64 @@ pub(crate) async fn load_cortinilla_local(
         return Vec::new();
     }
     let exclude_network = crate::offline_fwd::exclude_network_folders_now();
-    // Plex is part of the user's Local Library — the Artists/Tracks tabs union
-    // it — so the cortinilla must include it too. The DB search only hits
-    // `local_tracks`; the Plex cache is a separate bounded set merged here.
-    let plex_enabled = crate::local_plex::is_configured();
-    let q_log = q.clone();
+    // Resolve the files profile on the caller before scheduling work. Remote
+    // adapters retain their existing cache/config ownership until the per-host
+    // source registry is extracted; the shared merger has no Qt globals.
+    let mut search = qbz_library::search::LibrarySearch::default();
+    if let Some(path) = crate::local_state::db_path() {
+        search
+            .add_files(qbz_library::LibraryStore::new(path), exclude_network)
+            .expect("files source registered once");
+    }
+    if crate::local_plex::is_configured() {
+        search
+            .add_source("plex", |q, limit| {
+                Ok(crate::local_plex::search_tracks_page(
+                    q,
+                    0,
+                    limit,
+                    "default",
+                    &[],
+                    false,
+                    &[],
+                ))
+            })
+            .expect("Plex source registered once");
+    }
+    for source in crate::media_servers_qt::configured_words() {
+        search
+            .add_source(source, move |q, limit| {
+                Ok(crate::media_servers_qt::search_tracks_page(
+                    source,
+                    q,
+                    0,
+                    limit,
+                    "default",
+                    &[],
+                    false,
+                    &[],
+                ))
+            })
+            .expect("media source registered once");
+    }
     let t = std::time::Instant::now();
-    let rows: Vec<qbz_library::LocalTrack> = tokio::task::spawn_blocking(move || {
-        let mut rows = crate::local_state::with_db(|db| {
-            // "default" sort: the cortinilla has no sort control, so keep the
-            // historical album-grouped order.
-            db.search_with_filter_page(q.trim(), 0, limit, true, exclude_network, "default")
-        })
-        .unwrap_or_default();
-        // PREPEND so remote content is visible without scrolling past a full
-        // local page. See the module header: this can starve the local-file
-        // tracks out of the track section, and that is the reference's
-        // behaviour, reproduced — now for every remote source, not just Plex.
-        let mut merged = if plex_enabled {
-            crate::local_plex::search_tracks(q.trim())
-        } else {
-            Vec::new()
-        };
-        // BOUNDED, unlike the Plex arm. The Plex cache is read whole because
-        // it always was; a media-server mirror can hold 50k rows and this runs
-        // on every keystroke of the cortinilla, so it takes the same limit the
-        // caller asked the local query for.
-        merged.extend(crate::media_servers_qt::search_tracks(
-            q.trim(),
-            Some(limit as u32),
-        ));
-        if !merged.is_empty() {
-            merged.append(&mut rows);
-            rows = merged;
+    let rows = tokio::task::spawn_blocking(move || {
+        let result = search.search(&q, limit);
+        for failure in result.failures {
+            log::warn!(
+                "[qbz-qt] local search source {}: {}",
+                failure.source,
+                failure.error
+            );
         }
-        // Search is an artwork-bearing surface too. Keep the result consistent
-        // with Library Explorer and playback for pre-migration rows: a cover
-        // in the track's disc directory wins over a stale collection cover,
-        // while collection art remains the fallback. The window is bounded by
-        // `limit`, and this closure is already off the async/UI threads.
+        let mut rows = result.tracks;
         crate::local_playback::fill_missing_covers(&mut rows);
         rows
     })
     .await
     .unwrap_or_default();
-    // The port had NO perf log on any local path, which is why the cost of
-    // this query on a large library was unmeasured. It is measured now.
     log::info!(
-        "[qbz-qt][perf] cortinilla local: query={q_log:?} limit={limit} plex={plex_enabled} \
-         exclude_network={exclude_network} -> {} rows in {:?}",
+        "[qbz-qt][perf] local search limit={limit} -> {} rows in {:?}",
         rows.len(),
         t.elapsed()
     );
@@ -484,6 +529,34 @@ mod tests {
         t.album_group_key = format!("{artist}|{album}");
         t.album_group_title = album.into();
         t
+    }
+
+    #[test]
+    fn page_snapshot_preserves_colliding_source_ids_and_is_independent_of_dropdown() {
+        let mut files = track("Song", "Artist", "Album");
+        files.id = 7;
+        let mut remote = files.clone();
+        remote.source = Some("jellyfin".into());
+        remote.file_path = "server-item-7".into();
+        let page = PageSnapshot::new("Song", vec![files, remote]);
+        let dropdown = PageSnapshot::new("Other", vec![track("Other", "Other", "Other")]);
+        let section = page
+            .data
+            .sections
+            .iter()
+            .find(|s| s.kind == "local")
+            .unwrap();
+        assert_eq!(section.rows.len(), 2);
+        for (offset, expected_source) in [None, Some("jellyfin")].iter().enumerate() {
+            let displayed = page.row(section.rows[offset].flat_index).unwrap();
+            let resolved = &page.tracks[displayed.id.parse::<usize>().unwrap()];
+            assert_eq!(resolved.id, 7);
+            assert_eq!(&resolved.source.as_deref(), expected_source);
+            assert_eq!(resolved.title, "Song");
+        }
+        assert_eq!(dropdown.tracks[0].title, "Other");
+        assert!(page.row(-1).is_none());
+        assert!(page.row(1000).is_none());
     }
 
     /// The owner's real report: searching "Iro" showed Cynic and Die Toten

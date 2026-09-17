@@ -9,6 +9,7 @@
 //   { "role": "PRODUCER", "roleRaw": "Producer", "names": ["A", "B"] }
 
 import QtQuick
+import "../controls"
 import "../theme"
 
 Column {
@@ -33,46 +34,34 @@ Column {
     width: colW
     spacing: 6
 
-    Text {
+    QbzSelectableText {
         width: cc.colW
         text: cc.cell ? (cc.cell.role || "") : ""
         color: cc.overAmbient ? "#b3ffffff" : theme.textMuted
-        style: cc.overAmbient ? Text.Raised : Text.Normal
-        styleColor: "#b0000000"
-        font.pixelSize: 11
-        font.weight: theme.weightSemibold
-        font.letterSpacing: 0.5
-        wrapMode: Text.WordWrap
+        raised: cc.overAmbient
+        pixelSize: 11
+        weight: theme.weightSemibold
+        letterSpacing: 0.5
     }
 
     Column {
         spacing: 2
         Repeater {
             model: cc.cell ? (cc.cell.names || []) : []
-            delegate: Item {
+            // Selectable AND a link: a click lands on the musician, a drag
+            // selects the name (QbzSelectableText, rich-text anchor).
+            delegate: QbzSelectableText {
                 id: nameRow
                 required property string modelData
                 width: cc.colW
-                height: nameText.implicitHeight
-                Text {
-                    id: nameText
-                    width: cc.colW
-                    text: nameRow.modelData
-                    color: nameArea.containsMouse ? cc.accentColor
-                        : (cc.overAmbient ? "#f2ffffff" : theme.textPrimary)
-                    style: cc.overAmbient ? Text.Raised : Text.Normal
-                    styleColor: "#b0000000"
-                    font.pixelSize: 14
-                    wrapMode: Text.WordWrap
-                }
-                MouseArea {
-                    id: nameArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: cc.nameClicked(nameRow.modelData,
-                                              cc.cell ? (cc.cell.roleRaw || "") : "")
-                }
+                text: nameRow.modelData
+                color: cc.overAmbient ? "#f2ffffff" : theme.textPrimary
+                linkHref: "musician"
+                linkHoverColor: cc.accentColor
+                raised: cc.overAmbient
+                pixelSize: 14
+                onLinkActivated: cc.nameClicked(nameRow.modelData,
+                                                cc.cell ? (cc.cell.roleRaw || "") : "")
             }
         }
     }

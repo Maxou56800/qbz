@@ -710,7 +710,7 @@ pub(crate) fn open_mix(kind: String) {
             return;
         }
     };
-    crate::nav_qt::record("mix");
+    crate::nav_qt::record_with("mix", serde_json::json!({ "kind": &kind }));
     let (title, subtitle) = mix_meta(&kind);
     let generation = with_mix(|s| {
         s.generation = s.generation.wrapping_add(1);
@@ -1048,6 +1048,7 @@ fn to_row(track: &Track) -> TrackRow {
     let bit_depth = track.maximum_bit_depth;
     let sample_rate = track.maximum_sampling_rate;
     TrackRow {
+        featured: Vec::new(),
         id: track.id.to_string(),
         title,
         artist: track

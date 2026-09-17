@@ -66,6 +66,12 @@ Item {
     onVisibleChanged: {
         if (visible) {
             root.advancedOpen = false
+            // A modal's fields open clean (2026-09-14): the search box and the
+            // filter it drives both outlived the close.
+            if (searchInput.text !== "") {
+                searchInput.text = ""
+                QbzShell.logSetSearch("")
+            }
             keyScope.forceActiveFocus()
         }
     }
@@ -261,6 +267,7 @@ Item {
                         tintName: "muted"
                     }
                     TextInput {
+                        QbzTextEditMenu { }
                         id: searchInput
                         anchors.left: searchGlyph.right
                         anchors.leftMargin: 8
@@ -488,6 +495,7 @@ Item {
                     tintName: "accent"
                 }
                 TextInput {
+                    QbzTextEditMenu { }
                     anchors.left: linkGlyph.right
                     anchors.leftMargin: 8
                     anchors.right: urlCopy.left

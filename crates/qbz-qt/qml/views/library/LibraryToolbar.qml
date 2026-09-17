@@ -82,7 +82,7 @@ Item {
         width: 30
         height: 30
         radius: 6
-        color: active ? theme.surfaceElevated
+        color: active ? (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
              : ttArea.containsMouse ? theme.surfaceHover : "transparent"
         QbzIcon {
             name: parent.name
@@ -113,8 +113,8 @@ Item {
         // rest fill and, when a genre is applied, the SAME accent OUTLINE —
         // not an accent fill — so the three toolbar controls read identically
         // in their modified state.
-        color: gtbArea.containsMouse ? theme.surfaceHover
-             : (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
+        color: gtbArea.containsMouse ? theme.elevatedHoverFill
+             : theme.elevatedFill
         border.width: gtb.active ? 1 : 0
         border.color: gtb.active ? theme.accent : "transparent"
         Row {
@@ -234,7 +234,9 @@ Item {
         y: 25 - height / 2
         width: tabRow.width
         height: tabRow.height
-        color: theme.surfaceElevated
+        // Ambient-aware like the tab bar it hosts (the strip read opaque
+        // under the ambient field while Discover's and Local's had alpha).
+        color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
         radius: 6
         Row {
             id: tabRow

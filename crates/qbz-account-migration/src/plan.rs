@@ -190,10 +190,21 @@ pub fn plan(source: &AccountSnapshot, target: &AccountSnapshot, ledger: &Ledger)
             .unwrap_or(&[]);
         // §9.3: same name and nothing foreign in the target copy = the same
         // playlist (possibly behind); anything foreign = a different one.
-        let twin = same_name
+        let is_twin = |tgt: &&OwnedPlaylist| tgt.track_ids.iter().all(|id| src_set.contains(id));
+        let twin = same_name.iter().copied().find(is_twin);
+        // An earlier run may have created the "(migrated)" copy and died
+        // before the ledger recorded it (apply.rs creates first, saves second).
+        // Before creating a SECOND copy, look for that orphan by its copy
+        // name under the same twin rule.
+        let copy_name = format!("{}{}", src.name.trim(), COPY_SUFFIX);
+        let orphan_copy = target_by_name
+            .get(&normalized(&copy_name))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
             .iter()
-            .find(|tgt| tgt.track_ids.iter().all(|id| src_set.contains(id)));
-        match twin {
+            .copied()
+            .find(is_twin);
+        match twin.or(orphan_copy) {
             Some(tgt) => {
                 let tgt_set: HashSet<u64> = tgt.track_ids.iter().copied().collect();
                 let missing: Vec<u64> = src
@@ -384,6 +395,37 @@ mod tests {
         target.playlists.clear();
         let p = plan(&source, &target, &ledger);
         assert!(matches!(&p.playlists[0], PlaylistAction::Create { .. }));
+    }
+
+    /// apply.rs creates the copy BEFORE the ledger records it; a crash in
+    /// between left an orphan "(migrated)" playlist that the next run copied
+    /// again. The orphan is found by name under the same twin rule and
+    /// merged into instead.
+    #[test]
+    fn a_rerun_after_an_interrupted_copy_merges_into_the_orphan_copy() {
+        let mut source = snap();
+        source.playlists = vec![owned(12, "Metal", &[6, 7])];
+        let mut target = snap();
+        target.playlists = vec![
+            // the foreign same-name playlist that forced the copy
+            owned(101, "Metal", &[6, 99]),
+            // the copy the crashed run created, never written to the ledger
+            owned(300, "Metal (migrated)", &[6]),
+        ];
+        let p = plan(&source, &target, &Ledger::default());
+        assert_eq!(
+            p.playlists,
+            vec![PlaylistAction::Merge {
+                source_id: 12,
+                target_id: 300,
+                name: "Metal".into(),
+                missing_track_ids: vec![7],
+            }]
+        );
+        // A copy that holds foreign tracks is somebody else's playlist: copy again.
+        target.playlists[1] = owned(300, "Metal (migrated)", &[6, 42]);
+        let p = plan(&source, &target, &Ledger::default());
+        assert!(matches!(&p.playlists[0], PlaylistAction::CreateCopy { .. }));
     }
 
     #[test]

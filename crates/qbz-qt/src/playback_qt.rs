@@ -284,6 +284,65 @@ const PREFETCH_LOOKAHEAD: usize = 2;
 /// after a session does not hold a listening session's worth of bytes.
 const IDLE_L1_TRIM_SECS: u64 = 300;
 
+static MEMORY_APPLY_BUSY: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn memory_apply_busy() -> bool {
+    MEMORY_APPLY_BUSY.load(Ordering::SeqCst)
+}
+
+/// Explicit, confirmed rebuild of local playback buffers. The authority lane
+/// drains owner work and prevents the poller from repopulating gapless/L1 while
+/// Stop is acknowledged. Disk cache, queue order and audio settings survive.
+pub(crate) async fn apply_playback_memory(request: &str) -> Result<(), String> {
+    let (mode, expected_track) = request.split_once(':')
+        .filter(|(mode, _)| matches!(*mode, "idle" | "restart"))
+        .ok_or("Playback changed. Apply again to confirm the current track.")?;
+    if MEMORY_APPLY_BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Ok(());
+    }
+    struct BusyGuard;
+    impl Drop for BusyGuard {
+        fn drop(&mut self) { MEMORY_APPLY_BUSY.store(false, Ordering::SeqCst); }
+    }
+    let _busy = BusyGuard;
+    crate::settings_qt::publish_snapshot().await;
+    let runtime = crate::APP.get().ok_or("Playback is not ready yet.")?;
+    let service = crate::qconnect_qt::service().ok_or("Playback is not ready yet.")?;
+    let (_lane, _fence) = tokio::time::timeout(
+        std::time::Duration::from_secs(20), service.playback_memory_fence(),
+    ).await.map_err(|_| "Playback is busy. Try applying the memory profile again.".to_string())??;
+    if crate::cast_qt::is_casting().await || service.is_peer_renderer_active().await {
+        return Err("Playback memory can only be applied to local playback.".into());
+    }
+    let player = runtime.core().player();
+    let event = player.get_playback_event();
+    let pending = PENDING_PLAY_ID.load(Ordering::Relaxed);
+    let restart = event.is_playing || pending != 0;
+    let active = player.has_loaded_audio() || event.is_playing || pending != 0;
+    let current = runtime.core().current_track().await;
+    if (restart && mode != "restart")
+        || (active && !current.as_ref().is_some_and(|t| t.id.to_string() == expected_track)) {
+        return Err("Playback changed. Apply again to confirm the current track.".into());
+    }
+    let _ = begin_resolved_play();
+    PENDING_PLAY_ID.store(0, Ordering::Relaxed);
+    player.stop_and_evict_playback_memory().await?;
+    crate::now_playing::clear_loading();
+    crate::now_playing::set_position(0, event.duration as i32, false, 0.0, false);
+    if let Some(track) = current {
+        let _ = qbz_app::session_persist::take_resume_for(track.id);
+        if restart {
+            crate::now_playing::begin_loading();
+            let result = restore_owner_playback(runtime, track.id, 0, true).await;
+            crate::now_playing::clear_loading();
+            result?;
+        }
+    }
+    refresh_now_playing(runtime).await;
+    log::info!("[playback-memory] Applied profile; old playback buffers and L1 released, L2 retained");
+    Ok(())
+}
+
 /// Shared upper bound across overlapping track edges. A new current track can
 /// surface while the second successor of the previous edge is still warming;
 /// the player's own fetching marker de-duplicates the overlap, while this
@@ -458,13 +517,30 @@ fn prefetch_quality_tag(quality: Quality) -> qbz_audio::network_throttle::Playba
 /// established byte path; only a cold network successor needs the bounded
 /// initial-buffer handoff. A zero adaptive cap protects a live stream that is
 /// already struggling instead of competing with it for the link.
+#[derive(Debug, PartialEq, Eq)]
+enum GaplessSource {
+    Download,
+    Catalog,
+    Local,
+}
+
+fn gapless_source(track: &QueueTrack) -> GaplessSource {
+    if crate::local_playback::belongs_to_the_offline_tier(track) {
+        GaplessSource::Download
+    } else if track.is_local {
+        GaplessSource::Local
+    } else {
+        GaplessSource::Catalog
+    }
+}
+
 fn should_stream_gapless_successor(
-    streaming_only: bool,
+    _streaming_only: bool,
     player_cached: bool,
     offline_cached: bool,
     throttle_cap: usize,
 ) -> bool {
-    streaming_only && !player_cached && !offline_cached && throttle_cap > 0
+    !offline_cached && (player_cached || throttle_cap > 0)
 }
 
 /// The queue/engine edge a completed gapless fetch still belongs to.
@@ -538,16 +614,20 @@ async fn kick_prefetch(
         .casting_prefetch_quality()
         .await
         .unwrap_or_else(|| local_playback_quality().0);
+    let memory = runtime.core().player().playback_prefetch_policy();
+    if qbz_app::memory_watchdog::prefetch_halted()
+        || ((!memory.allow_hires || qbz_app::memory_watchdog::hires_prefetch_paused())
+            && matches!(quality, Quality::HiRes | Quality::UltraHiRes)) { return; }
     let throttle_cap = qbz_audio::network_throttle::state().current_prefetch_cap(
         qbz_audio::network_throttle::playback_mbps_for_quality(prefetch_quality_tag(quality)),
-        MAX_CONCURRENT_PREFETCH,
+        MAX_CONCURRENT_PREFETCH.min(memory.concurrency),
     );
     if throttle_cap == 0 {
         log::debug!("[qbz-qt] prefetch: skipped (network throttle cap 0)");
         return;
     }
 
-    let upcoming = runtime.core().peek_upcoming(PREFETCH_LOOKAHEAD).await;
+    let upcoming = runtime.core().peek_upcoming(PREFETCH_LOOKAHEAD.min(memory.lookahead)).await;
     let candidates: Vec<PrefetchCandidate> = upcoming.iter().map(PrefetchCandidate::from).collect();
     let track_ids = prefetch_track_ids(streaming_only, offline, throttle_cap, &candidates);
     for track_id in track_ids {
@@ -570,6 +650,7 @@ async fn kick_prefetch(
                 return;
             };
             let player = runtime.core().player();
+            if !player.playback_prefetch_policy().allow_hires && matches!(quality, Quality::HiRes | Quality::UltraHiRes) { return; }
             if let Err(error) = player.prefetch_into_cache(client, track_id, quality).await {
                 log::debug!("[qbz-qt] prefetch: track {track_id} failed: {error}");
             }
@@ -3522,6 +3603,19 @@ fn auto_skip_unavailable<'a>(
     })
 }
 
+/// The LOCAL tail of `seek_frac` (no cast / QConnect routing): the A-B loop's
+/// jump, which is only ever armed for local playback.
+pub(crate) async fn seek_local_secs(runtime: &Arc<AppRuntime<LoggingAdapter>>, target: u64) {
+    let Some(_transport_action) = begin_transport_action() else {
+        return;
+    };
+    if let Err(e) = runtime.core().seek(target) {
+        log::warn!("[qbz-qt] seek failed: {e}");
+        return;
+    }
+    crate::media_controls_qt::push_seeked(target);
+}
+
 pub async fn seek_frac(runtime: &Arc<AppRuntime<LoggingAdapter>>, frac: f32) {
     let Some(_transport_action) = begin_transport_action() else {
         return;
@@ -3596,6 +3690,7 @@ pub async fn seek_frac(runtime: &Arc<AppRuntime<LoggingAdapter>>, frac: f32) {
         return;
     }
     let target = (frac.clamp(0.0, 1.0) * event.duration as f32) as u64;
+    crate::ab_loop_qt::on_manual_seek(target);
     if let Err(e) = runtime.core().seek(target) {
         log::warn!("[qbz-qt] seek failed: {e}");
         return;
@@ -4338,14 +4433,8 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                 // ms → s at the publish boundary (see UNITS above).
                 let position_secs = position_ms / 1000;
                 let playing = remote.playing;
-                // Reflect the PEER's actual volume on the bar so a drag starts
-                // from a safe level (never QBZ's local 100). When the peer
-                // hasn't reported a volume, clamp to 50% — the AVR-nuke
-                // safety default (playback.rs:5174-5180, §12.13).
-                let remote_volume = remote
-                    .volume
-                    .map(|v| (v as f32 / 100.0).clamp(0.0, 1.0))
-                    .unwrap_or(0.5);
+                // The event sink unlocks controls once the peer reports volume.
+                let remote_volume = crate::qconnect_qt::peer_volume_fraction(remote.volume);
                 // Reflect the PEER's shuffle/repeat state on the bar buttons.
                 // Pure UI reflection of the cloud's reported state — no local
                 // order is generated (WS-authoritative for shuffle order).
@@ -4457,6 +4546,7 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                 if let Some(_owner_action) = begin_owner_action() {
                     // The peer's mute was UI-only; returning to local restores
                     // the owner's retained toggle without changing its volume.
+                    crate::now_playing::set_volume(runtime.core().get_playback_state().volume);
                     crate::now_playing::set_muted(MUTED.load(Ordering::Relaxed));
                 }
             }
@@ -4616,6 +4706,7 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                     qbz_app::session_persist::capture_and_save(&runtime).await;
                 }
                 last_track_id = track_id;
+                crate::ab_loop_qt::on_track_changed(track_id);
                 // The engine may have reached this track through a GAPLESS
                 // hand-off, in which case the arming guard still names the
                 // track that just ended. Clear it so the NEW current track can
@@ -4725,7 +4816,52 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                                 "[qbz-qt] [GAPLESS] upcoming {} is the track already playing; cursor off by one, successor skipped",
                                 next.id
                             );
-                        } else if next.id != track_id && !next.is_local {
+                        } else if next.id != track_id
+                            && gapless_source(&next) == GaplessSource::Download
+                        {
+                            // Local Library downloads carry a catalog play ID
+                            // and a local row hint, but their path is an encrypted
+                            // bundle. Use the same offline resolver as normal
+                            // playback, before the generic local-file branch.
+                            gapless_requested_for = track_id;
+                            let runtime = runtime.clone();
+                            let next_id = next.id;
+                            let task = spawn_owner_playback_task(async move {
+                                let Some(_owner_action) =
+                                    begin_owner_action_exact(owner_token).await
+                                else {
+                                    return;
+                                };
+                                let Some(offline) = crate::offline_qt::get().await else {
+                                    return;
+                                };
+                                let sink = crate::offline_cache_qt::row_sink();
+                                let Some(bytes) = qbz_core::offline_resolve::resolve_offline_bytes(
+                                    next_id,
+                                    &offline,
+                                    Some(&sink),
+                                )
+                                .await
+                                else {
+                                    return;
+                                };
+                                if !gapless_edge_is_current(&runtime, track_id, next_id).await {
+                                    return;
+                                }
+                                if let Err(error) =
+                                    runtime.core().player().play_next(bytes, next_id)
+                                {
+                                    log::warn!(
+                                        "[qbz-qt] [GAPLESS] offline successor {next_id}: {error}"
+                                    );
+                                }
+                            });
+                            if let Some(stale) = gapless_fetch_task.replace(task) {
+                                stale.abort();
+                            }
+                        } else if next.id != track_id
+                            && gapless_source(&next) == GaplessSource::Catalog
+                        {
                             gapless_requested_for = track_id;
                             let runtime = runtime.clone();
                             let next_id = next.id;
@@ -4819,48 +4955,22 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                                     runtime.core().player().is_track_cached(next_id);
                                 let offline_cached = crate::offline_qt::is_cached_id(next_id);
 
-                                if streaming_only && !player_cached && !offline_cached {
-                                    // A long successor cannot reliably finish a
-                                    // whole-file download inside the fixed 10 s
-                                    // handoff window. In Streaming only, prepare
-                                    // just its initial CMAF buffer and append that
-                                    // incremental source behind the current one.
-                                    // The same adaptive throttle that protects
-                                    // immediate prefetch keeps a struggling live
-                                    // stream from starting this second transfer.
+                                if !offline_cached {
+                                    // L1/L2 and cold catalog successors all use the
+                                    // bounded streaming/file path. Offline downloads
+                                    // retain the existing offline-aware resolver below.
                                     let throttle_cap = qbz_audio::network_throttle::state()
                                         .current_prefetch_cap(
-                                            qbz_audio::network_throttle::playback_mbps_for_quality(
-                                                prefetch_quality_tag(quality),
-                                            ),
-                                            1,
-                                        );
-                                    if !should_stream_gapless_successor(
-                                        streaming_only,
-                                        player_cached,
-                                        offline_cached,
-                                        throttle_cap,
-                                    ) {
-                                        log::info!(
-                                        "[qbz-qt] [GAPLESS] streaming successor {next_id} skipped: network throttle cap 0"
-                                    );
+                                            qbz_audio::network_throttle::playback_mbps_for_quality(prefetch_quality_tag(quality)), 1);
+                                    if !should_stream_gapless_successor(streaming_only, player_cached, offline_cached, throttle_cap) {
+                                        log::info!("[qbz-qt] [GAPLESS] successor {next_id} skipped: network throttle cap 0");
                                         return;
                                     }
-                                    match runtime
-                                    .core()
-                                    .queue_gapless_streaming(next_id, quality)
-                                    .await
-                                {
-                                    Ok(()) => {
-                                        log::info!(
-                                            "[qbz-qt] [GAPLESS] queued streaming track {next_id}"
-                                        );
-                                        return;
+                                    match runtime.core().queue_gapless_streaming(next_id, quality).await {
+                                        Ok(()) => log::info!("[qbz-qt] [GAPLESS] queued streaming track {next_id}"),
+                                        Err(error) => log::warn!("[qbz-qt] [GAPLESS] streaming setup for {next_id} failed: {error}"),
                                     }
-                                    Err(error) => log::warn!(
-                                        "[qbz-qt] [GAPLESS] streaming setup for {next_id} failed: {error}; trying byte fallback"
-                                    ),
-                                }
+                                    return;
                                 }
 
                                 // Shared tier-walk: L1/L2 (player cache) -> OFFLINE
@@ -4911,7 +5021,9 @@ pub fn start_poll_loop(runtime: Arc<AppRuntime<LoggingAdapter>>) {
                             if let Some(stale) = gapless_fetch_task.replace(task) {
                                 stale.abort();
                             }
-                        } else if next.id != track_id && next.is_local {
+                        } else if next.id != track_id
+                            && gapless_source(&next) == GaplessSource::Local
+                        {
                             // Source-owned gapless. `is_local` means "does not use
                             // Qobuz's tier walk", NOT "has a filesystem path": it
                             // also covers Plex/Jellyfin/Subsonic streams. Resolve
@@ -5566,8 +5678,10 @@ mod tests {
     }
 
     #[test]
-    fn cached_or_offline_successor_keeps_the_byte_handoff() {
-        assert!(!should_stream_gapless_successor(true, true, false, 1));
+    fn cached_successor_uses_file_handoff_and_offline_keeps_its_resolver() {
+        assert!(should_stream_gapless_successor(true, true, false, 1));
+        assert!(should_stream_gapless_successor(false, true, false, 0));
+        assert!(should_stream_gapless_successor(false, false, false, 1));
         assert!(!should_stream_gapless_successor(true, false, true, 1));
     }
 
@@ -5972,5 +6086,101 @@ mod tests {
         assert!(qml.contains("albumMetrics.advanceWidth"));
         assert!(qml.contains("a - qa <= near"));
         assert!(qml.contains("b - qb <= near"));
+    }
+}
+
+#[cfg(test)]
+mod offline_gapless_regressions {
+    use super::*;
+
+    #[tokio::test]
+    async fn local_library_download_routes_to_offline_bytes_by_catalog_id() {
+        use qbz_offline_cache::{OfflineCacheState, OfflineCacheStatus, TrackCacheInfo};
+        let temp = tempfile::tempdir().unwrap();
+        let offline = OfflineCacheState::new_empty();
+        offline.init_at(temp.path()).await.unwrap();
+        let file = temp.path().join("download.flac");
+        let bytes = b"fLaC-regression-byte-source";
+        std::fs::write(&file, bytes).unwrap();
+        let row = crate::local_playback::local_queue_track(&qbz_library::LocalTrack {
+            id: 4938,
+            qobuz_track_id: Some(266725026),
+            source: Some("qobuz_download".into()),
+            file_path: file.display().to_string(),
+            ..Default::default()
+        });
+        assert!(row.is_local);
+        assert_eq!(row.source_item_id_hint.as_deref(), Some("4938"));
+        assert_eq!(gapless_source(&row), GaplessSource::Download);
+        {
+            let guard = offline.db.lock().await;
+            let db = guard.as_ref().unwrap();
+            db.insert_track(
+                &TrackCacheInfo {
+                    track_id: row.id,
+                    title: "Next".into(),
+                    artist: "Fixture".into(),
+                    album: None,
+                    album_id: None,
+                    duration_secs: 30,
+                    quality: "hires".into(),
+                    bit_depth: Some(24),
+                    sample_rate: Some(192000.0),
+                },
+                file.to_str().unwrap(),
+            )
+            .unwrap();
+            db.update_status(row.id, OfflineCacheStatus::Ready, None)
+                .unwrap();
+        }
+        let resolved = qbz_core::offline_resolve::resolve_offline_bytes(row.id, &offline, None)
+            .await
+            .unwrap();
+        assert_eq!(resolved, bytes);
+        assert!(
+            qbz_core::offline_resolve::resolve_offline_bytes(4938, &offline, None)
+                .await
+                .is_none()
+        );
+        std::fs::remove_file(file).unwrap();
+        assert!(
+            qbz_core::offline_resolve::resolve_offline_bytes(row.id, &offline, None)
+                .await
+                .is_none()
+        );
+    }
+
+    fn queue_row(source: &str, is_local: bool) -> QueueTrack {
+        let mut row = crate::local_playback::local_queue_track(&qbz_library::LocalTrack {
+            id: 42, ..Default::default()
+        });
+        row.source = Some(source.into());
+        row.is_local = is_local;
+        row
+    }
+
+    #[test]
+    fn files_purchases_and_servers_keep_their_source_route() {
+        for source in [
+            "user",
+            "local",
+            "ephemeral",
+            "qobuz_purchase",
+            "plex",
+            "jellyfin",
+            "subsonic",
+            "navidrome",
+        ] {
+            let row = queue_row(source, true);
+            assert_eq!(gapless_source(&row), GaplessSource::Local, "{source}");
+        }
+        for source in ["qobuz_download", "offline"] {
+            let row = queue_row(source, true);
+            assert_eq!(gapless_source(&row), GaplessSource::Download, "{source}");
+        }
+        assert_eq!(
+            gapless_source(&queue_row("qobuz", false)),
+            GaplessSource::Catalog
+        );
     }
 }

@@ -13,6 +13,8 @@ path = "src/main.rs"
 # workspace crates shared by the daemon and the Qt application
 qbz-models = { path = "../qbz-models" }
 qbz-app = { path = "../qbz-app" }
+qbz-library = { path = "../qbz-library" }
+qbz-control = { path = "../qbz-control" }
 qbz-core = { path = "../qbz-core" }
 qbz-player = { path = "../qbz-player" }
 qbz-audio = { path = "../qbz-audio" }          # PROTECTED — read-only consumer

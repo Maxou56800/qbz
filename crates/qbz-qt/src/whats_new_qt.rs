@@ -34,7 +34,7 @@
 //!
 //! # Divergences from the reference
 //!
-//! - `format_release_date` is rewritten WITHOUT chrono (`qbz-qt` has no chrono
+//! - `release_date_iso` keeps only the civil date; QML formats it (`qbz-qt` has no chrono
 //!   dependency and is not gaining one for a date the GitHub API always emits
 //!   in a fixed RFC3339 shape). Same output, same raw-string fallback.
 //! - The blocks are plain `Serialize` structs instead of Slint model rows; the
@@ -92,6 +92,96 @@ pub struct TocEntry {
     pub label: String,
 }
 
+/// One curated card of the release's visual deck.
+///
+/// The deck is what the modal shows FIRST; the rendered release body becomes
+/// its last card. Text lives here and not in the artwork on purpose: a msgid is
+/// the English string and travels to all eight catalogs, while text baked into
+/// a `.webp` would need eight sets of images per release.
+///
+/// `action_section` is a `SettingsView` sub-section index (Audio 0, Playback 1,
+/// Appearance 2 — the order that file documents), used as
+/// `QbzBridge.settingsSetSection(n)` before navigating. `-1` opens Settings
+/// without choosing a section; `None` means the card has no button.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct Slide {
+    pub image: String,
+    pub title: String,
+    pub body: String,
+    #[serde(rename = "actionLabel")]
+    pub action_label: String,
+    #[serde(rename = "actionSection")]
+    pub action_section: i32,
+}
+
+/// The deck for `version`, empty when that version has none.
+///
+/// Matched on the `MAJOR.MINOR.PATCH` prefix so a `-rc`/`-beta` build of the
+/// same version still shows its deck. A version without a deck degrades to the
+/// release-notes body the modal has always rendered.
+fn deck_for(version: &str) -> Vec<Slide> {
+    let base = version
+        .split(['-', '+'])
+        .next()
+        .unwrap_or(version)
+        .to_string();
+    if base != "2.1.2" {
+        return Vec::new();
+    }
+    let art = |file: &str| format!("../assets/whatsnew/2.1.2/{file}");
+    vec![
+        Slide {
+            image: art("01-settings.webp"),
+            title: qbz_i18n::t("Reorganised settings"),
+            body: qbz_i18n::t(
+                "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking.",
+            ),
+            action_label: qbz_i18n::t("Open settings"),
+            action_section: -1,
+        },
+        Slide {
+            image: art("02-memory.webp"),
+            title: qbz_i18n::t("Cache profiles"),
+            body: qbz_i18n::t(
+                "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities.",
+            ),
+            action_label: qbz_i18n::t("Open playback"),
+            action_section: 1,
+        },
+        Slide {
+            image: art("03-loudness.webp"),
+            title: qbz_i18n::t("Volume normalization"),
+            body: qbz_i18n::t(
+                "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards.",
+            ),
+            action_label: qbz_i18n::t("Open audio"),
+            action_section: 0,
+        },
+        Slide {
+            image: art("04-qol.webp"),
+            title: qbz_i18n::t("Quality of Life"),
+            body: qbz_i18n::t(
+                "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc.",
+            ),
+            action_label: qbz_i18n::t("Open settings"),
+            action_section: -1,
+        },
+        Slide {
+            image: art("05-connect.webp"),
+            title: qbz_i18n::t("QConnect hardening"),
+            body: qbz_i18n::t(
+                "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement.",
+            ),
+            action_label: String::new(),
+            action_section: -1,
+        },
+    ]
+}
+
+/// Pref key: the last version whose deck was dismissed. The deck opens by
+/// itself exactly once per version; the hamburger row reopens it any time.
+const SEEN_PREF: &str = "whatsnew_seen_version";
+
 #[derive(Default)]
 struct State {
     version: String,
@@ -115,10 +205,15 @@ struct Doc<'a> {
     has_body: bool,
     toc: &'a [TocEntry],
     blocks: &'a [Block],
+    deck: &'a [Slide],
 }
 
 pub fn publish() {
     let st = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    // The deck is keyed on the RUNNING version, never on the fetched release:
+    // the artwork ships inside this binary, so a fetch that lands on another
+    // tag (or fails) must not pair these cards with another version's notes.
+    let deck = deck_for(crate::about_qt::app_version());
     let doc = Doc {
         open: OPEN.load(Ordering::SeqCst),
         loading: LOADING.load(Ordering::SeqCst),
@@ -127,6 +222,7 @@ pub fn publish() {
         has_body: st.has_body,
         toc: &st.toc,
         blocks: &st.blocks,
+        deck: &deck,
     };
     let json = serde_json::to_string(&doc).unwrap_or_else(|_| "{}".into());
     drop(st);
@@ -156,7 +252,28 @@ pub fn open() {
 
 pub fn close() {
     OPEN.store(false, Ordering::SeqCst);
+    // Dismissing is the acknowledgement, whichever card it happened on: the
+    // deck has been seen for this version and will not open by itself again.
+    // Reopening from the hamburger is always available and rewrites the same
+    // value, so it never re-arms the automatic open.
+    let version = crate::about_qt::app_version();
+    if !deck_for(version).is_empty() {
+        crate::settings_qt::save_pref(SEEN_PREF, serde_json::Value::String(version.to_string()));
+    }
     publish();
+}
+
+/// Open the deck by itself, once per version. Called after the shell is up:
+/// never over the login screen, and never when this version has no deck.
+pub fn auto_open_if_new() {
+    let version = crate::about_qt::app_version();
+    if deck_for(version).is_empty() {
+        return;
+    }
+    if crate::settings_qt::pref_str(SEEN_PREF, "") == version {
+        return;
+    }
+    open();
 }
 
 /// Apply the fetched release (or its absence) to the document.
@@ -231,7 +348,7 @@ async fn fetch_release_for_version(version: &str) -> Option<FetchedRelease> {
 
     Some(FetchedRelease {
         version: normalize_version_tag(&release.tag_name),
-        date: format_release_date(&release.published_at),
+        date: release_date_iso(&release.published_at),
         body: release.body,
     })
 }
@@ -240,34 +357,25 @@ fn normalize_version_tag(tag: &str) -> String {
     tag.trim().trim_start_matches('v').to_string()
 }
 
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/// Format an RFC3339 timestamp as "Mon D, YYYY" (en-US short). Falls back to
-/// the raw string on anything malformed.
-///
-/// CHRONO-FREE (the reference uses `DateTime::parse_from_rfc3339`, and this
-/// crate has no chrono dependency). GitHub's `published_at` is always
-/// `YYYY-MM-DDTHH:MM:SSZ`, and chrono's `year()/month0()/day()` on a parsed
-/// `DateTime<FixedOffset>` report the date AS WRITTEN in the string — so
-/// slicing the first ten ASCII bytes is behaviour-identical, offset included.
-fn format_release_date(iso: &str) -> String {
+/// Reduce GitHub's RFC3339 `published_at` to its civil date AS WRITTEN
+/// (`YYYY-MM-DD`, offset ignored — the reference's chrono
+/// `year()/month0()/day()` on a parsed `DateTime<FixedOffset>` did the same).
+/// Display formatting happens in QML with `Qt.formatDate(..., Locale.LongFormat)`
+/// so the header follows the user's locale instead of an English month table.
+/// Malformed input is echoed verbatim.
+fn release_date_iso(iso: &str) -> String {
     let bytes = iso.as_bytes();
     if bytes.len() < 10 || bytes[4] != b'-' || bytes[7] != b'-' {
         return iso.to_string();
     }
     let num = |a: usize, b: usize| iso[a..b].parse::<u32>().ok();
-    let (Some(year), Some(month), Some(day)) = (num(0, 4), num(5, 7), num(8, 10)) else {
+    let (Some(_year), Some(month), Some(day)) = (num(0, 4), num(5, 7), num(8, 10)) else {
         return iso.to_string();
     };
-    let Some(month_name) = month
-        .checked_sub(1)
-        .and_then(|m| MONTHS.get(m as usize).copied())
-    else {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return iso.to_string();
-    };
-    format!("{month_name} {day}, {year}")
+    }
+    iso[..10].to_string()
 }
 
 // ==================== Markdown → blocks + TOC ====================
@@ -603,21 +711,17 @@ mod tests {
     }
 
     #[test]
-    fn release_dates_format_like_the_reference_and_fall_back_raw() {
-        assert_eq!(format_release_date("2026-07-04T18:22:01Z"), "Jul 4, 2026");
-        assert_eq!(
-            format_release_date("2026-12-31T00:00:00+02:00"),
-            "Dec 31, 2026"
-        );
-        assert_eq!(format_release_date("2026-01-09T00:00:00Z"), "Jan 9, 2026");
+    fn release_dates_reduce_to_their_civil_date_and_fall_back_raw() {
+        assert_eq!(release_date_iso("2026-07-04T18:22:01Z"), "2026-07-04");
+        // The date AS WRITTEN, offset ignored (chrono's year()/month0()/day()
+        // on a parsed DateTime<FixedOffset> behave the same).
+        assert_eq!(release_date_iso("2026-12-31T00:00:00+02:00"), "2026-12-31");
+        assert_eq!(release_date_iso("2026-01-09T00:00:00Z"), "2026-01-09");
         // Malformed input is echoed verbatim, never blanked.
-        assert_eq!(format_release_date("not a date"), "not a date");
-        assert_eq!(format_release_date("2026/07/04"), "2026/07/04");
-        assert_eq!(
-            format_release_date("2026-13-04T00:00:00Z"),
-            "2026-13-04T00:00:00Z"
-        );
-        assert_eq!(format_release_date(""), "");
+        assert_eq!(release_date_iso("not a date"), "not a date");
+        assert_eq!(release_date_iso("2026/07/04"), "2026/07/04");
+        assert_eq!(release_date_iso("2026-13-04T00:00:00Z"), "2026-13-04T00:00:00Z");
+        assert_eq!(release_date_iso(""), "");
     }
 
     #[test]

@@ -282,7 +282,7 @@ Rectangle {
                     width: toggleRow.implicitWidth + 28
                     height: root.kioskHost ? 44 : 34
                     radius: theme.radiusSm
-                    color: toggleArea.containsMouse ? theme.surfaceHover
+                    color: toggleArea.containsMouse ? theme.surfaceElevatedHover
                                                     : theme.surfaceElevated
                     Row {
                         id: toggleRow

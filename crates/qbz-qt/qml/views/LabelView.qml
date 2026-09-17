@@ -213,7 +213,7 @@ Rectangle {
                     height: root.kioskHost && (cr.kind === "album" || cr.kind === "playlist") ? 64 : 246
 
                     KioskCoverSource { id: cellArt; remote: root.kioskHost ? (crCell.modelData.artUrl || "") : ""; local: crCell.modelData.artPath || ""; edge: 44 }
-                    Component { id: crKioskAlbum; AlbumListRow { kioskHost: true; item: crCell.modelData; artSource: root.kioskHost ? cellArt.source : (crCell.modelData.artPath || "") } }
+                    Component { id: crKioskAlbum; AlbumListRow { kioskHost: true; showLabel: false; item: crCell.modelData; artSource: root.kioskHost ? cellArt.source : (crCell.modelData.artPath || "") } }
                     Component { id: crKioskPlaylist; PlaylistListRow { kioskHost: true; item: crCell.modelData; artSource: root.kioskHost ? cellArt.source : (crCell.modelData.artPath || "") } }
                     Component {
                         id: crAlbum

@@ -29,6 +29,8 @@
 #[cfg(target_os = "linux")]
 pub mod alsa_backend;
 pub mod alsa_direct;
+#[cfg(target_os = "linux")]
+mod pcm_write;
 pub mod alsa_hardware_volume;
 pub mod wasapi_direct;
 /// Endpoint capabilities: the exclusive-mode rate sweep and the hotplug watch.
@@ -52,6 +54,7 @@ pub mod jack_backend;
 pub mod loudness;
 pub mod loudness_analyzer;
 pub mod loudness_cache;
+pub mod loudness_scan;
 pub mod network_throttle;
 pub mod output_sinks;
 #[cfg(target_os = "linux")]
@@ -91,7 +94,8 @@ pub use health::{
 pub use jack_backend::JackStream;
 pub use loudness::{calculate_gain_factor, db_to_linear, extract_replaygain, ReplayGainData};
 pub use loudness_analyzer::LoudnessAnalyzer;
-pub use loudness_cache::LoudnessCache;
+pub use loudness_cache::{gain_for, lufs_from_replaygain, LoudnessCache, LoudnessSource, StoredLoudness};
+pub use loudness_scan::{measure as measure_loudness, TrackLoudness};
 pub use output_sinks::{list_output_sinks, OutputSinkInfo};
 pub use seek_waveform::{
     register_seek_waveform_key, seek_waveform_content_key, seek_waveform_snapshot,
@@ -123,3 +127,6 @@ pub fn device_supports_sample_rate(_device_id: &str, _sample_rate: u32) -> Optio
 pub fn get_device_supported_rates(_device_id: &str) -> Option<Vec<u32>> {
     None
 }
+
+#[cfg(target_os = "linux")]
+mod pcm_sample;

@@ -33,6 +33,7 @@ import "../theme"
 
 Rectangle {
     id: root
+    property bool lightForeground: false
 
     /// Icon file stem, e.g. "shuffle" (QbzIcon appends ".svg").
     property string name: ""
@@ -61,7 +62,7 @@ Rectangle {
         // a half-pixel offset on a 13 px glyph is visible as a blur.
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
-        tintName: root.active ? "accent" : "textPrimary"
+        tintName: root.active ? "accent" : (root.lightForeground ? "white" : "textPrimary")
         opacity: (root.active || ta.containsMouse) ? 1.0 : 0.70
     }
 

@@ -78,6 +78,12 @@ pub fn apply_renderer_command(
             current_track,
             next_track,
         } => {
+            // Position belongs to an occurrence, never to the next track.
+            if current_track.as_ref().zip(state.current_track.as_ref()).is_some_and(|(next, previous)|
+                next.track_id != previous.track_id || next.queue_item_id != previous.queue_item_id) {
+                state.current_position_ms = None;
+                state.next_track = None;
+            }
             // Only overwrite fields when the server provides a value.
             // Server pause/resume commands send None for position and tracks,
             // but the renderer should retain the last known values so that
@@ -133,6 +139,27 @@ pub fn apply_renderer_command(
 #[cfg(test)]
 mod tests {
     use crate::{apply_renderer_command, QConnectRendererState, QueueItem, RendererCommand};
+
+    #[test]
+    fn partial_first_target_keeps_position_but_a_new_occurrence_does_not() {
+        let mut state = QConnectRendererState::default();
+        let item = QueueItem { track_context_uuid: String::new(), track_id: 10, queue_item_id: 0 };
+        let command = |track, position| RendererCommand::SetState {
+            playing_state: Some(3), current_position_ms: position,
+            current_track: track, next_track: None,
+        };
+        apply_renderer_command(&mut state, &command(None, Some(45_000)), 1);
+        apply_renderer_command(&mut state, &command(Some(item.clone()), None), 2);
+        assert_eq!(state.current_position_ms, Some(45_000));
+        let mut revised_context = item.clone();
+        revised_context.track_context_uuid = "context".into();
+        apply_renderer_command(&mut state, &command(Some(revised_context), None), 3);
+        assert_eq!(state.current_position_ms, Some(45_000));
+        let mut repeated = item;
+        repeated.queue_item_id = 2;
+        apply_renderer_command(&mut state, &command(Some(repeated), None), 4);
+        assert_eq!(state.current_position_ms, None);
+    }
 
     #[test]
     fn set_state_replaces_renderer_cursor() {

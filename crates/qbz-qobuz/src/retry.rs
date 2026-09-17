@@ -51,7 +51,14 @@ pub fn reqwest_is_transient(e: &reqwest::Error) -> bool {
 /// are treated as transient — a definitive "gone" answer comes back as a 404
 /// *status*, not a transport error.
 pub fn classify_reqwest(e: &reqwest::Error, context: &str) -> FetchError {
-    FetchError::Transient(format!("{}: {}", context, e))
+    // reqwest's Display embeds the full request URL, and CDN URLs carry a
+    // signed token; this string is logged on every retry and bubbles up to
+    // the player's warn lines. Describe the class, never the URL.
+    FetchError::Transient(format!(
+        "{}: {}",
+        context,
+        crate::net_diag::describe_reqwest_error(e)
+    ))
 }
 
 /// Classify a non-success HTTP status into a `FetchError`. 5xx and 429 are

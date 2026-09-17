@@ -1,0 +1,23 @@
+[package]
+name = "qbz-control"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+description = "Shared HTTP API infrastructure for QBZ hosts"
+
+[dependencies]
+uuid = { version = "1", features = ["v4"] }
+qbz-library = { path = "../qbz-library" }
+qbz-models = { path = "../qbz-models" }
+qbz-core = { path = "../qbz-core" }
+qbz-qobuz = { path = "../qbz-qobuz" }
+qbz-reco = { path = "../qbz-reco" }
+tokio.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+log.workspace = true
+tiny_http = "0.12"
+urlencoding = "2"
+
+[dev-dependencies]
+tempfile = "3"

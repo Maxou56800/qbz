@@ -61,64 +61,10 @@ Rectangle {
         anchors.fill: parent
     }
 
-    // --- The background layers (AppShell.slint:206-242) --------------------
-    // The bottom-most visual layer, declared before every chrome surface so
-    // they all paint above it. Mode 1 and mode 2 are DIFFERENT looks and are
-    // mutually exclusive; neither is mounted while a mode is off or nothing is
-    // playing, which is the D4 "opaque theme restored" case.
-    readonly property bool ambientModeOn: root.ambientOn && QbzShell.ambientMode === 1
-    readonly property bool blurredModeOn: root.ambientOn && QbzShell.ambientMode === 2
-
-    // --- The polarity-aware legibility veil (owner, 2026-08-31) ------------
-    // The old scrim was a fixed BLACK layer at ambientDim — tuned for dark
-    // themes, where dark ground + light text is exactly right. Over a LIGHT
-    // theme the same dark scrim pushed the field to MID luminance, the worst
-    // possible ground for dark text (the weak grey ramp died completely).
-    // Light themes therefore veil with their own near-white surfaceMain, a
-    // notch stronger, and the in-shader/in-atmosphere darkening is turned
-    // OFF there (darkening and then whitening would just grey the field).
-    // Dark themes keep the exact previous look.
-    readonly property real veilStrength: theme.isDark
-        ? QbzShell.ambientDim
-        : Math.min(0.72, QbzShell.ambientDim + 0.2)
-
-    // Mode 1 — the album-triad metaball field, plus the veil that keeps text
-    // legible over a bright album palette (QBZ_BG_DIM, default 0.35).
-    AmbientField {
+    AppBackground {
         anchors.fill: parent
-        visible: root.ambientModeOn
-        running: root.ambientModeOn
-        dim: theme.isDark ? QbzShell.ambientDim : 0.0
-    }
-    Rectangle {
-        anchors.fill: parent
-        visible: root.ambientModeOn
-        color: theme.isDark ? "#000000" : theme.surfaceMain
-        opacity: root.veilStrength
-    }
-
-    // Mode 2 — Blurred art: the SAME ImmersiveAtmosphere the immersive view
-    // and the album/artist headers use, at window size (AppShell.slint:221-231
-    // reuses the identical component). `animated` follows the transport, so a
-    // paused player holds the static pose instead of drifting forever, and the
-    // fallback is the plain cover for a track whose atmosphere bitmap has not
-    // been generated yet. On light themes its internal dark dim is disabled
-    // and the veil below provides the legibility layer instead (the
-    // atmosphere's baked gradient scrim stays — it reads as depth under the
-    // light veil, not as darkness).
-    ImmersiveAtmosphere {
-        anchors.fill: parent
-        visible: root.blurredModeOn
-        source: root.blurredModeOn ? QbzImmersive.atmosphereUrl : ""
-        fallbackSource: root.blurredModeOn ? QbzPlayer.npArtworkPath : ""
-        animated: root.blurredModeOn && QbzPlayer.npPlaying
-        dim: theme.isDark ? QbzShell.ambientDim : 0.0
-    }
-    Rectangle {
-        anchors.fill: parent
-        visible: root.blurredModeOn && !theme.isDark
-        color: theme.surfaceMain
-        opacity: root.veilStrength
+        hostWindow: root.hostWindow
+        activeBackground: root.ambientOn
     }
 
     // The host ApplicationWindow (custom chrome: drag / maximize / resize).
@@ -141,7 +87,10 @@ Rectangle {
     // until the first click (measured 2026-08-03, RFB H0 first pass). Grab
     // once at mount; every other lifecycle arm (immersive close, modal
     // closes) hands focus BACK here.
-    Component.onCompleted: root.forceActiveFocus()
+    Component.onCompleted: {
+        root.forceActiveFocus()
+        Qt.callLater(function () { QbzAbout.updatesLaunch() })
+    }
 
     // THE ONE key entry (§1.1 route (b), divergence K1): NOTHING is handled
     // locally. The ordered pipeline (capture steal, search-dropdown Up/Down
@@ -188,10 +137,11 @@ Rectangle {
     // in-view QML JS (library_bulk.rs:8: "select-all / clear never reach
     // Rust"), so the QbzShell signals route to the mounted view's
     // duck-typed interface: selectAll() / exitMultiSelectMode() /
-    // multiSelectOn. Implemented by LibraryView, LocalLibraryView and
-    // LocalAlbumView (MyQbzDetailView is EXIT-ONLY — its selection lives in
-    // Rust with no select-all arm); views without multi-select (Artist,
-    // Playlist, Mix, Label, Offline) match nothing — PARITY-DEBT (K4).
+    // multiSelectOn. Implemented by every view with a multi-select list:
+    // Library, Local Library, Local Album, Album, Artist, Playlist, Mix,
+    // Label and the Offline manager. MyQbzDetailView is EXIT-ONLY — its
+    // selection lives in Rust and its bar has no select-all arm (the Slint
+    // never had one there either).
     Connections {
         target: QbzShell
         function onSelectAllRequested() {
@@ -239,14 +189,32 @@ Rectangle {
         // the compositor's business).
     }
 
+    OrbitBanner {
+        id: orbitBanner
+        anchors.top: header.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        remoteActive: QbzOrbit.enabled && QbzOrbit.controllingRemote
+        connectionLost: QbzOrbit.connectionLost
+        hostName: QbzOrbit.hostName
+    }
+
+    // The bottom chrome band (NowPlayingBar.qml's root): full width, flush
+    // on the window's bottom edge, the same tier and paint as the HeaderBar
+    // above. The bar layout inside it keeps the content pane's gutter to the
+    // window's left, right and bottom edges, the same on every platform —
+    // and the band sizes itself: the mode-aware layout height (Small
+    // collapses to one header-tall row; New/Classic/Large keep the full
+    // 112px, AppShell.slint:396) plus that gutter.
     NowPlayingBar {
         id: npb
+        // The small seek thumb/hit area extends above the bar by a few pixels.
+        // Only Small needs this overlap. Large's cover dock is a later
+        // sibling and must paint over the full-width player background.
+        z: QbzShell.npbMode === 2 ? 1 : 0
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        // Mode-aware height (AppShell.slint:396): Small collapses to one
-        // header-tall row; New/Classic/Large keep the full 112px.
-        height: QbzShell.npbMode === 2 ? theme.npbSmallHeight : theme.npbLargeHeight
         // The shared hover-tooltip overlay (declared further down — id
         // references resolve at completion). All four modes consume it for
         // Shuffle/Repeat state; the full bar also uses it for Qobuz Connect.
@@ -256,7 +224,7 @@ Rectangle {
     Sidebar {
         id: sidebar
         anchors.left: parent.left
-        anchors.top: header.bottom
+        anchors.top: orbitBanner.bottom
         anchors.bottom: npb.top
         // The shared hover-tooltip overlay (declared last, below). The sidebar
         // clips its own overflow, so the collapsed rail's name bubble HAS to be
@@ -281,7 +249,7 @@ Rectangle {
     Rectangle {
         id: queueColumn
         anchors.right: parent.right
-        anchors.top: header.bottom
+        anchors.top: orbitBanner.bottom
         anchors.bottom: npb.top
         // #771: the open width is the user's (300..600, persisted).
         width: (root.queueSidebarVisible || QbzShell.lyricsOpen)
@@ -344,7 +312,7 @@ Rectangle {
         visible: QbzShell.sidebarState !== 2
         // Pane edge at sidebar.width + 8; strip 245..249 at 240, centre 247.
         x: sidebar.width + 5
-        anchors.top: header.bottom
+        anchors.top: orbitBanner.bottom
         anchors.bottom: npb.top
         z: 5
         onDragged: function (px) { QbzShell.sidebarDrag(px) }
@@ -355,7 +323,7 @@ Rectangle {
         visible: queueColumn.width > 0
         // Pane edge at queueColumn.x - 8; strip x-9..x-4, centre x-6.5.
         x: queueColumn.x - 9
-        anchors.top: header.bottom
+        anchors.top: orbitBanner.bottom
         anchors.bottom: npb.top
         z: 5
         // The column hangs off the window's RIGHT edge: a pointer at x means
@@ -414,7 +382,7 @@ Rectangle {
         id: contentFrame
         anchors.left: sidebar.right
         anchors.right: queueColumn.left
-        anchors.top: header.bottom
+        anchors.top: orbitBanner.bottom
         anchors.bottom: npb.top
         color: root.ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
 
@@ -635,7 +603,9 @@ Rectangle {
         // so this width also sets the art size.
         x: 16
         width: 208
-        y: parent.height - QbzShell.largeDockHeight
+        // Flush with the bar LAYOUT's bottom edge, which sits a gutter above
+        // the window's (the band's inset) — the dock lifts with it.
+        y: npb.y + npb.height - npb.gutter - QbzShell.largeDockHeight
         ambientOn: root.ambientOn
     }
 
@@ -664,6 +634,32 @@ Rectangle {
         textModalOpen = true
     }
 
+    // Bodies arrive as plain text with blank lines between paragraphs (the
+    // biography and review sources). Rendered as rich text so the line height
+    // can breathe — TextEdit has no lineHeight — and the paragraphs keep
+    // their gap; single newlines stay line breaks.
+    function textModalHtml(body) {
+        var esc = function (s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        }
+        var paras = String(body || "").replace(/\r\n/g, "\n").split(/\n{2,}/)
+        var out = []
+        for (var i = 0; i < paras.length; i++) {
+            var p = paras[i].trim()
+            if (p === "") continue
+            out.push("<p style=\"line-height:150%; margin-top:0; margin-bottom:14px\">"
+                     + esc(p).replace(/\n/g, "<br>") + "</p>")
+        }
+        return out.join("")
+    }
+    property bool textModalCopied: false
+    Timer {
+        id: textModalCopiedTimer
+        interval: 1400
+        onTriggered: root.textModalCopied = false
+    }
+    QbzClipboard { id: textModalClipboard }
+
     Rectangle {
         visible: root.textModalOpen
         anchors.fill: parent
@@ -676,8 +672,11 @@ Rectangle {
         }
         Rectangle {
             anchors.centerIn: parent
-            width: Math.min(root.width - 80, 560)
-            height: Math.min(root.height - 120, 460)
+            // At least 75% x 65% of the window (2026-09-13): the old 560 x 460
+            // card crammed a biography into a column the reader had to squint
+            // at. Floors for small windows, ceilings that keep a margin.
+            width: Math.min(root.width - 32, Math.max(Math.round(root.width * 0.75), 560))
+            height: Math.min(root.height - 40, Math.max(Math.round(root.height * 0.65), 400))
             radius: theme.radiusMd
             color: theme.surfaceCard
             border.width: 1
@@ -689,23 +688,55 @@ Rectangle {
             }
             Column {
                 anchors.fill: parent
-                anchors.margins: 24
-                spacing: 14
+                anchors.margins: 28
+                spacing: 16
                 Row {
                     width: parent.width
+                    spacing: 8
                     Text {
-                        width: parent.width - 28
+                        width: parent.width - 28 - 28 - 16
                         text: root.textModalTitle
                         color: theme.textPrimary
                         font.pixelSize: theme.fontHeading
                         font.weight: theme.weightSemibold
+                        elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                    // Copy the whole body (plain text) to the clipboard; the
+                    // glyph turns into a check for a moment as the receipt.
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        color: tmCopyArea.containsMouse ? theme.surfaceHover : "transparent"
+                        radius: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        QbzIcon {
+                            name: root.textModalCopied ? "check" : "copy"
+                            width: 16
+                            height: 16
+                            anchors.centerIn: parent
+                            tintName: root.textModalCopied ? "accent"
+                                : (tmCopyArea.containsMouse ? "textPrimary" : "muted")
+                        }
+                        MouseArea {
+                            id: tmCopyArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (textModalClipboard.copy(root.textModalBody)) {
+                                    root.textModalCopied = true
+                                    textModalCopiedTimer.restart()
+                                }
+                            }
+                        }
                     }
                     Rectangle {
                         width: 28
                         height: 28
                         color: tmCloseArea.containsMouse ? theme.surfaceHover : "transparent"
                         radius: 6
+                        anchors.verticalCenter: parent.verticalCenter
                         QbzIcon {
                             name: "x"
                             width: 18
@@ -722,19 +753,34 @@ Rectangle {
                         }
                     }
                 }
-                Flickable {
+                Item {
                     width: parent.width
-                    height: parent.height - 42
-                    clip: true
-                    contentWidth: width
-                    contentHeight: tmText.implicitHeight
-                    Text {
-                        id: tmText
-                        width: parent.width
-                        text: root.textModalBody
-                        color: theme.textSecondary
-                        font.pixelSize: theme.fontBody
-                        wrapMode: Text.WordWrap
+                    height: parent.height - 28 - 16
+                    Flickable {
+                        id: tmFlick
+                        anchors.fill: parent
+                        anchors.rightMargin: 22
+                        clip: true
+                        contentWidth: width
+                        contentHeight: tmText.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        // Selectable, one size up from body text, paragraphs
+                        // with room between them.
+                        QbzSelectableText {
+                            id: tmText
+                            width: tmFlick.width
+                            rich: true
+                            text: root.textModalHtml(root.textModalBody)
+                            color: theme.textPrimary
+                            pixelSize: theme.fontBody + 1
+                        }
+                    }
+                    QbzScrollBar {
+                        target: tmFlick
+                        alwaysShown: true
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                     }
                 }
             }
@@ -908,6 +954,13 @@ Rectangle {
     PlaylistEditModal {
         anchors.fill: parent
     }
+    // PlaylistDeleteConfirm — the "Delete playlist?" confirmation the sidebar
+    // row menu and the playlist cards summon (QbzPlaylistEdit.askDelete).
+    // Self-gates on QbzPlaylistEdit.deleteJson; invisible and inert while
+    // closed. Out here for the same reason as FolderModals above.
+    PlaylistDeleteConfirm {
+        anchors.fill: parent
+    }
     // PlaylistCreateModal — "New playlist" (name · description · folder ·
     // public · offline-only), raised by the sidebar's "+" and, like its
     // neighbour, self-gating on its own document (QbzPlaylistEdit.createJson).
@@ -1041,11 +1094,25 @@ Rectangle {
     // while closed it is an invisible, non-interactive Item that parses one
     // small JSON string — and each carries an explicit `z: 3000` (ADR-009 as
     // this port spells it) rather than relying on declaration order alone.
+    UpdatesModal { }
     AboutModal {
         anchors.fill: parent
     }
     WhatsNewModal {
         anchors.fill: parent
+
+        // Offer the release deck once per version, from the SHELL and not from
+        // Main.qml: reaching this file already means the session is up and the
+        // login screen is behind us. One shot, after the first frames settle,
+        // so it never lands on top of a shell that is still assembling; the
+        // controller itself no-ops when the deck was already dismissed
+        // (whats_new_qt::auto_open_if_new).
+        Timer {
+            interval: 1200
+            repeat: false
+            running: true
+            onTriggered: QbzAbout.whatsNewAutoOpen()
+        }
     }
     // A LOADER, not a static mount. `visible: false` still CONSTRUCTS the
     // whole subtree -- panel, Flickable, fourteen Repeater delegates, their

@@ -453,7 +453,9 @@ pub async fn restore<A: Adapter>(runtime: &Arc<AppRuntime<A>>) -> bool {
         .await;
     // The queue session carries the authoritative last volume; apply it to the
     // player (the slider also seeds from ui_prefs, but this keeps them in step).
-    let _ = runtime.core().set_volume(pb_sess.volume);
+    if let Err(e) = runtime.core().set_volume(pb_sess.volume) {
+        log::warn!("[session] persist: volume restore failed: {e}");
+    }
     if RESUME_POSITION.load(Ordering::Relaxed) && position > 0 && current_track_id != 0 {
         PENDING_RESUME.store(position, Ordering::Relaxed);
         PENDING_RESUME_TRACK.store(current_track_id, Ordering::Relaxed);

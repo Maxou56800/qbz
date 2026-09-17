@@ -2317,9 +2317,6 @@ msgstr "Escolha qual página mostrar quando o app iniciar"
 msgid "Show Purchases"
 msgstr "Mostrar Compras"
 
-msgid "Show the Purchases section in the sidebar for browsing and downloading your purchased music"
-msgstr "Mostrar a seção Compras na barra lateral para navegar e baixar suas músicas compradas"
-
 msgid "MENU BAR"
 msgstr "BARRA DE MENUS"
 
@@ -4377,17 +4374,11 @@ msgstr "Abrir link do Qobuz"
 msgid "Paste a Qobuz, Spotify, Apple Music, Tidal, Deezer or song.link URL"
 msgstr "Cole uma URL do Qobuz, Spotify, Apple Music, Tidal, Deezer ou song.link"
 
-msgid "Place the Purchases entry in the custom title bar instead of the sidebar"
-msgstr "Coloca a entrada Compras na barra de título personalizada em vez da barra lateral"
-
 msgid "Press keys…"
 msgstr "Pressione as teclas…"
 
 msgid "Purchases"
 msgstr "Compras"
-
-msgid "Purchases in title bar"
-msgstr "Compras na barra de título"
 
 msgid "RENDERER"
 msgstr "RENDERIZADOR"
@@ -4459,8 +4450,9 @@ msgstr "Modo da barra de título alterado — reinicie o QBZ para aplicar"
 msgid "Compact header navigation"
 msgstr "Navegação compacta no cabeçalho"
 
-msgid "Use the icon-only section navigation in the header even while the sidebar is open."
-msgstr "Usa a navegação de secções apenas com ícones no cabeçalho mesmo com a barra lateral aberta."
+#: crates/qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Always use the icon-only section navigation in the header. When off, the text tabs turn into icons only when they no longer fit next to the search box."
+msgstr "Usa sempre a navegação de secções apenas com ícones no cabeçalho. Desligado, os separadores de texto só passam a ícones quando deixam de caber ao lado da caixa de pesquisa."
 
 # DSD support Phase 1 (2026-07-03)
 msgid "DSD: {}"
@@ -4637,10 +4629,6 @@ msgstr "Adicionados primeiro"
 msgid "Random"
 msgstr "Aleatório"
 
-
-# Offline cache clear — communicate it does not remove downloads (#606)
-msgid "Frees up cached data. Your downloaded albums are kept — remove those from the offline manager above."
-msgstr "Libera dados em cache. Seus álbuns baixados são mantidos — remova-os no gerenciador offline acima."
 
 msgid "Couldn't clear the cache"
 msgstr "Não foi possível limpar o cache"
@@ -7070,3 +7058,727 @@ msgstr "Nome (Z-A)"
 
 msgid "Search My QBZ"
 msgstr "Pesquisar em My QBZ"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Access key"
+msgstr "Chave de acesso"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Connection lost. Remote controls are unavailable."
+msgstr "Conexão perdida. Os controles remotos estão indisponíveis."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Controlling {}"
+msgstr "Controlando {}"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Copy access key"
+msgstr "Copiar chave de acesso"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Could not start the Orbit listener."
+msgstr "Não foi possível iniciar o servidor Orbit."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Could not verify the host."
+msgstr "Não foi possível verificar o host."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Enter a valid host address."
+msgstr "Digite um endereço de host válido."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Host address"
+msgstr "Endereço do host"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Host verified"
+msgstr "Host verificado"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Library unavailable"
+msgstr "Biblioteca indisponível"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Listening address"
+msgstr "Endereço de escuta"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Local files"
+msgstr "Arquivos locais"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Orbit is experimental. Verifying a host does not switch playback or settings."
+msgstr "O Orbit é experimental. Verificar um host não altera a reprodução nem as configurações."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Share this library"
+msgstr "Compartilhar esta biblioteca"
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "The host changed. Verify it again."
+msgstr "O host mudou. Verifique-o novamente."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "This host does not support library inspection."
+msgstr "Este host não permite consultar sua biblioteca."
+
+#. Experimental Orbit host inspection and persistent remote context.
+msgid "Verify host"
+msgstr "Verificar host"
+
+
+#: qbz-qt updates
+msgid "A new version of QBZ is available."
+msgstr "Uma nova versão do QBZ está disponível."
+
+
+#: qbz-qt updates
+msgid "Cancel download"
+msgstr "Cancelar download"
+
+
+#: qbz-qt updates
+msgid "Check for new releases on launch"
+msgstr "Buscar novas versões ao iniciar"
+
+
+#: qbz-qt updates
+msgid "Check for updates now"
+msgstr "Buscar atualizações agora"
+
+
+#: qbz-qt updates
+msgid "Checking for updates..."
+msgstr "Buscando atualizações..."
+
+
+#: qbz-qt updates
+msgid "Current version"
+msgstr "Versão atual"
+
+
+#: qbz-qt updates
+msgid "Download and install"
+msgstr "Baixar e instalar"
+
+
+#: qbz-qt updates
+msgid "Downloading update..."
+msgstr "Baixando atualização..."
+
+
+#: qbz-qt updates
+msgid "Installation"
+msgstr "Instalação"
+
+
+#: qbz-qt updates
+msgid "Installing update..."
+msgstr "Instalando atualização..."
+
+
+#: qbz-qt updates
+msgid "Show changelog for current version"
+msgstr "Mostrar alterações da versão atual"
+
+
+#: qbz-qt updates
+msgid "Skip this version"
+msgstr "Ignorar esta versão"
+
+
+#: qbz-qt updates
+msgid "The update could not be completed. Please try again."
+msgstr "Não foi possível concluir a atualização. Tente novamente."
+
+
+#: qbz-qt updates
+msgid "Update QBZ through your installation source. Packages may become available after the GitHub release."
+msgstr "Atualize o QBZ pela fonte usada na instalação. Os pacotes podem ficar disponíveis após o lançamento no GitHub."
+
+
+#: qbz-qt updates
+msgid "Update cancelled."
+msgstr "Atualização cancelada."
+
+
+#: qbz-qt updates
+msgid "Update installed. Close and reopen QBZ to use the new version."
+msgstr "Atualização instalada. Feche e reabra o QBZ para usar a nova versão."
+
+
+#: qbz-qt updates
+msgid "Updates"
+msgstr "Atualizações"
+
+
+#: qbz-qt updates
+msgid "Verifying update signature..."
+msgstr "Verificando a assinatura da atualização..."
+
+
+#: qbz-qt updates
+msgid "Visit release page"
+msgstr "Ver página do lançamento"
+
+
+#: qbz-qt updates
+msgid "You are using the latest version of QBZ."
+msgstr "Você está usando a versão mais recente do QBZ."
+
+
+#: qbz-qt updates
+msgid "System / manual"
+msgstr "Sistema / manual"
+
+#: qbz-qt/qml/shell/UpdatesModal.qml
+msgid "Update ready. Close QBZ to finish installation. It will reopen automatically."
+msgstr "Atualização pronta. Feche o QBZ para concluir a instalação. Ele será reaberto automaticamente."
+
+#. Playback memory cache policy (#774).
+msgid "PLAYBACK CACHE"
+msgstr "CACHE DE REPRODUÇÃO"
+
+#. Playback memory cache policy (#774).
+msgid "Grow cache when memory is available"
+msgstr "Expandir o cache quando houver memória disponível"
+
+#. Playback memory cache policy (#774).
+msgid "Optional; recommended for long Hi-Res tracks. The fixed budget remains the recommended default."
+msgstr "Opcional; recomendado para faixas longas em Hi-Res. O limite fixo continua sendo o padrão recomendado."
+
+#. Playback memory cache policy (#774).
+msgid "Minimum cache budget (MiB)"
+msgstr "Limite mínimo do cache (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Base budget, not reserved RAM. Memory pressure can reduce it. Leave blank for the recommended value."
+msgstr "Limite base, sem reservar RAM. Pode diminuir se faltar memória. Deixe em branco para usar o valor recomendado."
+
+#. Playback memory cache policy (#774).
+msgid "Maximum cache budget (MiB)"
+msgstr "Limite máximo do cache (MiB)"
+
+#. Playback memory cache policy (#774).
+msgid "Growth ceiling; available memory may impose a lower limit. Leave blank for automatic."
+msgstr "Teto de expansão; a memória disponível pode impor um limite menor. Deixe em branco para automático."
+
+#. Playback memory cache policy (#774).
+msgid "Memory cache usage"
+msgstr "Uso do cache em memória"
+
+#. Playback memory cache policy (#774).
+msgid "Used / current budget: %1 / %2 MiB. This excludes decoder memory and offline downloads."
+msgstr "Uso / limite atual: %1 / %2 MiB. Exclui a memória do decodificador e os downloads offline."
+
+#. Playback memory cache policy (#774).
+msgid "Recommended cache defaults"
+msgstr "Valores padrão recomendados do cache"
+
+#. Playback memory cache policy (#774).
+msgid "Restore defaults"
+msgstr "Restaurar padrões"
+
+#. Playback memory cache policy (#774).
+msgid "Playback cache limits must be between 16 and 16384 MiB"
+msgstr "Os limites do cache de reprodução devem estar entre 16 e 16384 MiB"
+
+#. Playback memory cache policy (#774).
+msgid "Minimum playback cache budget must not exceed its maximum"
+msgstr "O limite mínimo do cache de reprodução não pode exceder o máximo"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory profile"
+msgstr "Perfil de memória de reprodução"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto — recommended"
+msgstr "Auto — recomendado"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High — dynamic"
+msgstr "High — dinâmico"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop"
+msgstr "Desktop"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low — Pi style"
+msgstr "Low — estilo Pi"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Auto selects Desktop or Low from the computer's RAM. Fixed cache budget; dynamic growth is off. Recommended default."
+msgstr "Auto seleciona Desktop ou Low conforme a RAM do computador. Limite de cache fixo, sem crescimento dinâmico. Padrão recomendado."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "High starts with a 400 MiB cache budget and grows up to 1600 MiB when memory is available. It shrinks after inactivity or memory pressure. For long Hi-Res tracks and computers with spare RAM."
+msgstr "High começa com um limite de cache de 400 MiB e cresce até 1600 MiB quando há memória disponível. Diminui após inatividade ou pressão de memória. Para faixas Hi-Res longas e computadores com RAM livre."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Desktop uses a fixed 400 MiB cache budget and normal prefetch. Larger tracks use disk-backed buffers."
+msgstr "Desktop usa um limite fixo de cache de 400 MiB e pré-carregamento normal. Faixas maiores usam buffers em disco."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Low uses a 50 MiB cache budget, smaller startup buffers and reduced prefetch. Large tracks use disk; speculative Hi-Res prefetch is skipped. Useful on Raspberry Pi or when saving RAM."
+msgstr "Low usa um limite de cache de 50 MiB, buffers iniciais menores e menos pré-carregamento. Faixas grandes usam disco; o pré-carregamento especulativo Hi-Res é ignorado. Útil no Raspberry Pi ou para economizar RAM."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Custom uses your cache limits and growth preference below. Prefetch follows the computer's detected memory class. Editing a preset switches to Custom."
+msgstr "Personalizado usa os limites de cache e a preferência de crescimento abaixo. O pré-carregamento segue a classe de memória detectada. Editar um perfil muda para Personalizado."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Same audio quality in every profile"
+msgstr "A mesma qualidade de áudio em todos os perfis"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Profiles control playback memory, not audio quality or the whole app's RAM. Disk cache stays enabled unless Streaming only is on. Changes apply to new buffers; the current track continues."
+msgstr "Os perfis controlam a memória de reprodução, não a qualidade de áudio nem toda a RAM do aplicativo. O cache em disco continua ativo, exceto em Somente streaming. As alterações se aplicam a novos buffers; a faixa atual continua."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Allow the cache to grow within your maximum when RAM is available. High enables this automatically. Editing this option switches to Custom."
+msgstr "Permite que o cache cresça até o máximo definido quando há RAM disponível. High ativa isso automaticamente. Editar esta opção muda para Personalizado."
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Unknown playback memory profile"
+msgstr "Perfil de memória de reprodução desconhecido"
+
+#: qbz-qt/qml/settings/PlaybackSettings.qml
+msgid "Playback memory preset conflicts with custom cache limits"
+msgstr "O perfil de memória de reprodução conflita com os limites de cache personalizados"
+
+msgid "Apply playback memory profile?"
+msgstr "Aplicar o perfil de memória de reprodução?"
+
+msgid "Playback buffers will be released. If playing, the current track will stop and restart from the beginning. If paused, it will stay stopped at 0:00. Your queue and disk cache will be kept."
+msgstr "Os buffers de reprodução serão liberados. Se estiver tocando, a faixa atual será interrompida e reiniciada do começo. Se estiver pausada, ficará parada em 0:00. A fila e o cache em disco serão mantidos."
+
+msgid "Apply & free memory"
+msgstr "Aplicar e liberar memória"
+
+msgid "Rebuild playback buffers"
+msgstr "Reconstruir buffers de reprodução"
+
+msgid "The profile already applies to new buffers. Apply now to release existing playback buffers and the memory cache. Memory use can grow again as playback continues."
+msgstr "O perfil já se aplica aos novos buffers. Aplique agora para liberar os buffers existentes e o cache em memória. O uso de memória pode voltar a crescer conforme a reprodução continua."
+
+msgid "Playback memory can only be applied to local playback."
+msgstr "O perfil de memória só pode ser aplicado à reprodução neste dispositivo."
+
+msgid "Playback is not ready yet."
+msgstr "A reprodução ainda não está pronta."
+
+msgid "Playback is busy. Try applying the memory profile again."
+msgstr "A reprodução está ocupada. Tente aplicar o perfil de memória novamente."
+
+msgid "Playback changed. Apply again to confirm the current track."
+msgstr "A reprodução mudou. Aplique novamente para confirmar a faixa atual."
+
+msgid "Visual resource profile"
+msgstr "Perfil de recursos visuais"
+
+msgid "Low uses the Small player, compact headers, no dynamic background, header gradient, spectrum, animated play indicator, sidebar collages or optional track artwork. Default restores these visual defaults. Editing a managed option selects Custom. Audio quality and playback memory are independent."
+msgstr "Low usa o player Small e cabeçalhos compactos, sem fundo dinâmico, gradiente, espectro, indicador animado, colagens ou capas opcionais nas faixas. Default restaura esses padrões visuais. Alterações ativam Custom. Qualidade de áudio e memória de reprodução são independentes."
+
+msgid "Compare memory profiles"
+msgstr "Comparar perfis de memória"
+
+msgid "Auto: fixed 400 MiB or 50 MiB according to the computer's RAM; disk handles larger tracks."
+msgstr "Auto: 400 MiB ou 50 MiB fixos conforme a RAM; faixas maiores usam o disco."
+
+msgid "High: dynamic 400–1600 MiB; more room in RAM for large tracks, with less need for disk-backed buffers."
+msgstr "High: 400–1600 MiB dinâmicos; mais RAM para faixas grandes e menor necessidade de buffers em disco."
+
+msgid "Desktop: fixed 400 MiB; balances RAM use with disk-backed playback for larger tracks."
+msgstr "Desktop: 400 MiB fixos; equilibra RAM e reprodução em disco para faixas maiores."
+
+msgid "Low: fixed 50 MiB and reduced prefetch; lower RAM use, with more disk reads and writes for large tracks."
+msgstr "Low: 50 MiB fixos e menos pré-carregamento; menos RAM, com mais leituras e gravações em disco para faixas grandes."
+
+msgid "Custom: your RAM limits and growth preference determine when playback needs disk storage."
+msgstr "Custom: seus limites de RAM e preferência de crescimento determinam quando a reprodução usa o disco."
+
+msgid "RAM and storage trade-off"
+msgstr "Equilíbrio entre RAM e armazenamento"
+
+msgid "All profiles preserve audio quality and can use disk cache. Lower memory budgets rely more on storage speed and writes; more RAM can reduce that work. Cached disk tracks are read from disk even in High. Choose storage appropriate for your listening workload."
+msgstr "Todos os perfis preservam a qualidade e podem usar cache em disco. Menos RAM implica maior dependência da velocidade e das gravações no armazenamento; mais RAM pode reduzir esse trabalho. Faixas já no cache em disco são lidas dele mesmo em High. Escolha uma unidade adequada ao seu uso."
+
+msgid "Playback storage folder"
+msgstr "Pasta de armazenamento de reprodução"
+
+msgid "Choose an existing folder on the drive you want to use. QBZ stores its playback cache and temporary track buffers in a qbz-playback subfolder. Offline downloads are separate. Leave blank for the default location."
+msgstr "Escolha uma pasta existente na unidade desejada. QBZ armazena o cache de reprodução e buffers temporários na subpasta qbz-playback. Downloads offline são separados. Deixe vazio para usar o local padrão."
+
+msgid "Current playback storage"
+msgstr "Armazenamento atual de reprodução"
+
+msgid "Changing the folder takes effect after restarting QBZ. Existing cache files stay in the old location; they are not moved or deleted automatically."
+msgstr "A nova pasta será usada após reiniciar QBZ. Arquivos de cache existentes ficam no local anterior; não são movidos nem excluídos automaticamente."
+
+msgid "Could not use this playback storage folder:"
+msgstr "Não foi possível usar esta pasta de reprodução:"
+
+msgid "Folder access"
+msgstr "Acesso à pasta"
+
+msgid "If the sandbox blocks this folder, run the command below in a host terminal, restart QBZ, then select the folder again. Only grant access to a folder you intend to use."
+msgstr "Se o sandbox bloquear a pasta, execute o comando abaixo em um terminal do sistema, reinicie QBZ e selecione a pasta novamente. Dê acesso apenas à pasta desejada."
+
+msgid "Snap can access supported home folders and removable storage under /mnt, /media or /run/media. For removable storage, connect the interface below and retry. Snap cannot grant arbitrary folder access with a Flatpak-style override."
+msgstr "Snap acessa pastas pessoais compatíveis e mídias em /mnt, /media ou /run/media. Para essas mídias, conecte a interface abaixo e tente novamente. Snap não libera pastas arbitrárias com override como Flatpak."
+
+msgid "Choose an absolute folder path for playback storage."
+msgstr "Escolha um caminho absoluto para o armazenamento de reprodução."
+
+msgid "The folder is accessible and visible in the library."
+msgstr "A pasta está acessível e visível na biblioteca."
+
+msgid "The folder is accessible but hidden by your preference."
+msgstr "A pasta está acessível, mas oculta pela sua preferência."
+
+msgid "The folder path no longer exists. Reconnect it, change its path or remove it from the library."
+msgstr "O caminho não existe mais. Reconecte a pasta, altere o caminho ou remova-a da biblioteca."
+
+msgid "A connection failure prevents access to this storage."
+msgstr "Uma falha de conexão impede o acesso a este armazenamento."
+
+msgid "QBZ does not have permission to access this folder."
+msgstr "QBZ não tem permissão para acessar esta pasta."
+
+msgid "The folder could not be accessed. The check timed out or returned another access error."
+msgstr "Não foi possível acessar a pasta. A verificação expirou ou retornou outro erro de acesso."
+
+msgid "Folder access is being checked or has not been checked yet."
+msgstr "O acesso está sendo verificado ou ainda está pendente."
+
+msgid "Local folder"
+msgstr "Pasta local"
+
+msgid "Access denied"
+msgstr "Acesso negado"
+
+msgid "Missing"
+msgstr "Ausente"
+
+msgid "Actions"
+msgstr "Ações"
+
+msgid "Low"
+msgstr "Baixo"
+
+msgid "These options do not apply while Streaming only is enabled. Turn it off to choose a playback memory profile and apply changes."
+msgstr "Estas opções não se aplicam enquanto Apenas streaming estiver ativado. Desative-o para escolher um perfil de memória de reprodução e aplicar as alterações."
+
+msgid "Mimics official clients’ streaming behavior with lower memory usage. Skips the playback cache and its protection against network interruptions: QBZ’s cache keeps upcoming audio ready for more reliable playback and instant replay."
+msgstr "Reproduz o comportamento de streaming dos clientes oficiais com menor uso de memória. Ignora o cache de reprodução e sua proteção contra interrupções de rede: o cache do QBZ prepara o próximo áudio para uma reprodução mais confiável e repetição imediata."
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show featured artists in track rows"
+msgstr "Mostrar artistas convidados nas linhas de faixa"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Show 10-second skip buttons"
+msgstr "Mostrar botões de salto de 10 segundos"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Add ±10 s buttons beside Previous and Next in the player bar."
+msgstr "Adiciona botões de ±10 s ao lado de Anterior e Seguinte na barra do reprodutor."
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Back 10 seconds"
+msgstr "Recuar 10 segundos"
+
+#: qbz-qt/qml/shell/TransportControls.qml
+msgid "Forward 10 seconds"
+msgstr "Avançar 10 segundos"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop start (A)"
+msgstr "Definir início do loop (A)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Set loop end (B)"
+msgstr "Definir fim do loop (B)"
+
+#: qbz-qt/qml/shell/PlayerBar.qml
+msgid "Clear loop"
+msgstr "Remover loop"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "ARTWORK CACHE"
+msgstr "CACHE DE CAPAS"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Maximum size"
+msgstr "Tamanho máximo"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Album and artist images are kept on disk up to this budget; the least recently shown are dropped first, during use and at startup."
+msgstr "As imagens de álbuns e artistas ficam no disco até este limite; as menos recentemente mostradas são descartadas primeiro, durante o uso e no arranque."
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "Clear artwork cache"
+msgstr "Limpar cache de capas"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "{} images using {}"
+msgstr "{} imagens ocupando {}"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Append \"feat. …\" with the track's featured performers to the artist line of Qobuz track rows. Off by default."
+msgstr "Acrescenta \"feat. …\" com os intérpretes convidados da faixa à linha do artista nas linhas de faixa do Qobuz. Desligado por padrão."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Storage"
+msgstr "Armazenamento"
+
+#: qbz-qt/qml/settings/StorageSettings.qml
+msgid "PLEX CACHE"
+msgstr "CACHE DO PLEX"
+
+#: qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "List the track's featured performers after the main artist on Qobuz track rows, comma separated. Each name is a link. On by default."
+msgstr "Lista os intérpretes convidados da faixa após o artista principal nas linhas de faixa do Qobuz, separados por vírgulas. Cada nome é um link. Ligado por padrão."
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Apply the size limit"
+msgstr "Aplicar o limite de tamanho"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Open the cache folder"
+msgstr "Abrir a pasta do cache"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the whole offline cache…"
+msgstr "Limpar todo o cache offline…"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Clear the offline cache?"
+msgstr "Limpar o cache offline?"
+
+#: qbz-qt/qml/views/OfflineManagerView.qml
+msgid "Removes everything saved for offline listening: {} using {}. Purchased downloads in your music folder are kept; anything cleared has to be downloaded again to play offline."
+msgstr "Remove tudo o que está salvo para ouvir offline: {} ocupando {}. As compras baixadas na sua pasta de música são mantidas; o que for removido precisará ser baixado de novo para tocar offline."
+
+#: qbz-qt/qml/settings/SettingsView.qml
+msgid "Advanced"
+msgstr "Avançado"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "LOUDNESS"
+msgstr "SONORIDADE"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Volume normalization"
+msgstr "Normalização de volume"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Target loudness"
+msgstr "Sonoridade alvo"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "The loudness every track is aligned to. -14 LUFS matches streaming services, -18 LUFS is the ReplayGain reference."
+msgstr "A sonoridade à qual cada faixa é alinhada. -14 LUFS corresponde aos serviços de streaming; -18 LUFS é a referência do ReplayGain."
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Prevent clipping"
+msgstr "Evitar clipping"
+
+#: qbz-qt/qml/settings/AudioSettings.qml
+msgid "Cap the boost so the loudest peak stays under full scale. Off lets quiet tracks reach the target even if their peaks clip."
+msgstr "Limita o ganho para que o pico mais alto fique abaixo da escala completa. Desligado, as faixas baixas atingem o alvo mesmo que os picos cortem."
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-11 LUFS · Loud"
+msgstr "-11 LUFS · Alto"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-14 LUFS · Streaming (default)"
+msgstr "-14 LUFS · Streaming (padrão)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-16 LUFS · Apple Music"
+msgstr "-16 LUFS · Apple Music"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-18 LUFS · ReplayGain"
+msgstr "-18 LUFS · ReplayGain"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "-23 LUFS · Broadcast (EBU R128)"
+msgstr "-23 LUFS · Radiodifusão (EBU R128)"
+
+#: qbz-qt/src/settings_qt.rs
+msgid "Custom ({} LUFS)"
+msgstr "Personalizado ({} LUFS)"
+
+#: qbz-qt/qml/settings/NavigationSettings.qml
+msgid "Show the Purchases section beside the other sections — in the sidebar or the header, wherever they are — for browsing and downloading your purchased music"
+msgstr "Mostra a seção Compras ao lado das outras seções (na barra lateral ou no cabeçalho, onde estiverem) para navegar e baixar suas músicas compradas"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "On this network"
+msgstr "Nesta rede"
+
+#: qbz-qt/qml/shell/QconnectFlyout.qml
+msgid "Pair"
+msgstr "Parear"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist"
+msgstr "Excluir playlist"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "Delete playlist?"
+msgstr "Excluir a playlist?"
+
+#: qbz-qt/qml/controls/PlaylistDeleteConfirm.qml
+msgid "“{}” will be deleted. This cannot be undone."
+msgstr "“{}” será excluída. Isso não pode ser desfeito."
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy basic data"
+msgstr "Copiar dados básicos"
+
+#: crates/qbz-qt/qml/shell/TrackInfoBody.qml
+msgid "Copy full"
+msgstr "Copiar tudo"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "View label"
+msgstr "Ver editora"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Buy on Qobuz"
+msgstr "Comprar na Qobuz"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release isn't sold on Qobuz."
+msgstr "Este lançamento não está à venda na Qobuz."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't check the store for this release."
+msgstr "Não foi possível consultar a loja para este lançamento."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Could not open the browser"
+msgstr "Não foi possível abrir o navegador"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track name"
+msgstr "Nome da faixa"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Track - Album - Artist"
+msgstr "Faixa - Álbum - Artista"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release is no longer available on Qobuz."
+msgstr "Este lançamento já não está disponível na Qobuz."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "You might be interested in these instead"
+msgstr "Talvez estas alternativas te interessem"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Couldn't load this release."
+msgstr "Não foi possível carregar este lançamento."
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "Looking for other versions…"
+msgstr "A procurar outras versões…"
+
+#: crates/qbz-qt/qml/views/AlbumView.qml
+msgid "This release"
+msgstr "Este lançamento"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper"
+msgstr "Papel de parede"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper, blurred"
+msgstr "Papel de parede desfocado"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Background image"
+msgstr "Imagem de fundo"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "The system wallpaper. Choose an image of your own instead."
+msgstr "O papel de parede do sistema. Também pode escolher uma imagem sua."
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Choose image…"
+msgstr "Escolher imagem…"
+
+#: crates/qbz-qt/src/settings_qt.rs crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "System wallpaper"
+msgstr "Papel de parede do sistema"
+
+#: crates/qbz-qt/qml/views/PlaylistView.qml
+msgid "{} tracks will be removed from this playlist."
+msgstr "{} faixas serão removidas desta playlist."
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "Wallpaper blur"
+msgstr "Desfoque do papel de parede"
+
+#: crates/qbz-qt/qml/settings/AppearanceSettings.qml
+msgid "How much the wallpaper behind the window is blurred: 0% keeps it sharp, 100% is the strongest blur."
+msgstr "Quanto o papel de parede atrás da janela fica desfocado: 0% o mantém nítido, 100% é o desfoque máximo."
+
+msgid "This renderer does not allow remote volume control."
+msgstr "Este renderer não permite controlar o volume remotamente."
+
+msgid "Waiting for the renderer's volume…"
+msgstr "Aguardando o volume do renderer…"
+
+msgid "This audio output does not support volume control."
+msgstr "Esta saída de áudio não permite controlar o volume."
+
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Notas da versão"
+
+msgid "New in {}"
+msgstr "Novidades na {}"
+
+msgid "Open settings"
+msgstr "Abrir definições"
+
+msgid "Open playback"
+msgstr "Abrir reprodução"
+
+msgid "Open audio"
+msgstr "Abrir áudio"
+
+msgid "Reorganised settings"
+msgstr "Configurações reorganizadas"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Sei que os hábitos e as preferências de escuta variam tanto como os gostos musicais, por isso as opções foram reorganizadas e as menos usadas ficaram ocultas. Veja a secção de configurações e personalize-a ao seu gosto."
+
+msgid "Cache profiles"
+msgstr "Perfis de cache"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "O cache já não é uma decisão do produto: agora escolhe se prefere que seja o cache, a memória ou o armazenamento a tratar disso, conforme as suas preferências e as capacidades do seu computador."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "A funcionalidade foi totalmente reescrita: agora usamos a informação LUFS fornecida pelo Qobuz e implementámos perfis que cumprem os padrões da indústria."
+
+msgid "Quality of Life"
+msgstr "Qualidade de vida"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Foram recuperadas funcionalidades perdidas durante as mudanças de frontend, além de mais e melhores ações em lote e controlos de reprodução adicionais (avançar e recuar 10 segundos na barra de progresso, reprodução em ciclo), entre outros."
+
+msgid "QConnect hardening"
+msgstr "Reforço do QConnect"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Funcionamento mais estável, sobretudo correções de erros, problemas que impediam uma implementação ao estilo do cliente oficial, filas que não coincidiam e falhas. Esta funcionalidade está em melhoria contínua."

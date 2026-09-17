@@ -259,6 +259,7 @@ Rectangle {
                     border.color: nameField.activeFocus
                         ? theme.accent : theme.surfaceElevated
                     TextInput {
+                        QbzTextEditMenu { }
                         id: nameField
                         anchors.fill: parent
                         anchors.leftMargin: 12

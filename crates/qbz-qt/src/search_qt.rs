@@ -26,7 +26,7 @@
 //! - The LOCAL "on this device" sections ARE ported (`search_local.rs`):
 //!   albums / artists / tracks, appended last, Plex unioned in, fetched
 //!   CONCURRENTLY with the Qobuz half so an offline or slow Qobuz still
-//!   yields a local-only dropdown. The results PAGE is still Qobuz-only.
+//!   yields local results. The results page also carries the same local sections.
 //! - Artist "following" flags are resolved from `fav_cache_qt` (the ported
 //!   favourite-id cache) — they used to be hard-`false`, which made a search
 //!   hit on a followed artist draw "Follow" and un-follow them on click.
@@ -43,9 +43,9 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::album_qt::format_album_title;
 use cxx_qt_lib::QString;
 pub(crate) use qbz_app::settings::search_service::InteractionAction;
-use crate::album_qt::format_album_title;
 use qbz_app::settings::search_service::SearchService;
 use qbz_app::shell::AppRuntime;
 use qbz_core::LoggingAdapter;
@@ -103,6 +103,13 @@ pub fn teardown() {
         *guard = None;
     }
     crate::search_cache_qt::teardown();
+    next_page_version();
+    *PAGE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    crate::search_bridge::ui(|mut b| {
+        if PAGE.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+            b.as_mut().set_search_json(QString::from("{}"));
+        }
+    });
     next_cort_version();
     *LAST_CORT.lock().unwrap_or_else(|e| e.into_inner()) = None;
     *LAST_CORT_LOCAL.lock().unwrap_or_else(|e| e.into_inner()) = Vec::new();
@@ -187,6 +194,9 @@ pub struct CardRow {
 
 #[derive(Clone, Default, Serialize)]
 pub struct TrackRow {
+    /// Featured performers (see `album_qt::TrackRow::featured`); empty when none.
+    #[serde(rename = "featured")]
+    pub featured: Vec<crate::album_qt::FeaturedArtist>,
     pub id: String,
     pub title: String,
     pub artist: String,
@@ -321,7 +331,6 @@ fn year_of(date: Option<&str>) -> String {
     date.and_then(|d| d.get(0..4)).unwrap_or("").to_string()
 }
 
-
 fn map_album(album: &Album) -> CardRow {
     CardRow {
         // Pin badge state from the per-user store (search.rs stamps it the
@@ -398,6 +407,7 @@ fn map_track(track: &Track) -> TrackRow {
         .map(|p| (p.name, p.id.to_string()))
         .unwrap_or_default();
     TrackRow {
+        featured: crate::album_qt::featured_list(track.performers.as_deref(), &artist, &track.title, &[]),
         // Same story as `map_album`: the field was declared (line 186) and
         // never stamped, so every search track row drew the empty heart and
         // the first click sent `favorite/delete` on a track the user had
@@ -2170,6 +2180,10 @@ pub struct MostPopularDoc {
 
 #[derive(Clone, Default, Serialize)]
 pub struct SearchPageDoc {
+    #[serde(rename = "localRevision")]
+    pub local_revision: String,
+    #[serde(rename = "localSections")]
+    pub local_sections: Vec<CortSection>,
     pub query: String,
     pub tab: i32,
     pub loading: bool,
@@ -2196,6 +2210,7 @@ pub struct SearchPageDoc {
 #[derive(Default)]
 struct PageState {
     doc: SearchPageDoc,
+    local: crate::search_local::PageSnapshot,
 }
 
 static PAGE: Mutex<Option<PageState>> = Mutex::new(None);
@@ -2339,8 +2354,16 @@ pub(crate) fn apply_favorite_change(kind: &str, id: &str, favorite: bool) {
 
 fn publish_page(doc: &SearchPageDoc) {
     let json = serde_json::to_string(doc).unwrap_or_else(|_| "{}".into());
+    let revision = doc.local_revision.clone();
     crate::search_bridge::ui(move |mut b| {
-        b.as_mut().set_search_json(QString::from(json.as_str()));
+        let current = PAGE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|p| p.doc.local_revision == revision);
+        if current {
+            b.as_mut().set_search_json(QString::from(json.as_str()));
+        }
     });
 }
 
@@ -2387,52 +2410,54 @@ async fn submit_page(
     }
     {
         let mut guard = PAGE.lock().unwrap();
-        let doc = &mut guard.get_or_insert_with(PageState::default).doc;
-        if crate::kiosk_profile_qt::active() && doc.query != q {
-            // A different query must not expose the previous result set while loading.
-            doc.albums.clear();
-            doc.tracks.clear();
-            doc.artists.clear();
-            doc.artists_carousel.clear();
-            doc.playlists.clear();
-            doc.albums_total = 0;
-            doc.tracks_total = 0;
-            doc.artists_total = 0;
-            doc.playlists_total = 0;
-            doc.most_popular = MostPopularDoc::default();
+        if !is_current_page_version(version) {
+            return;
         }
-        doc.query = q.clone();
-        doc.tab = tab.unwrap_or(0);
-        doc.loading = true;
-        publish_page(doc);
+        let page = guard.get_or_insert_with(PageState::default);
+        *page = PageState::default();
+        page.doc.query = q.clone();
+        page.doc.tab = tab.unwrap_or(0);
+        crate::page_restore_qt::note_args(
+            "search",
+            serde_json::json!({ "query": &q, "tab": page.doc.tab }),
+        );
+        page.doc.loading = true;
+        page.doc.local_revision = version.to_string();
+        publish_page(&page.doc);
     }
 
     let t = std::time::Instant::now();
     // Blacklist filtering happens INSIDE search_all (`search.rs:1056-1059`).
     let (bl, abl) = blacklist_snapshots();
-    let results = runtime.core().search_all(&q, &bl, &abl).await;
+    let (results, local_rows) = tokio::join!(
+        runtime.core().search_all(&q, &bl, &abl),
+        crate::search_local::load_cortinilla_local(q.clone(), 136, false),
+    );
     if !is_current_page_version(version) {
         return;
     }
+    let local = crate::search_local::PageSnapshot::new(&q, local_rows);
+    // Local search has no Qobuz-auth prerequisite. A catalog error must not
+    // clear successful local results or their exact playback snapshot.
     let results = match results {
         Ok(r) => r,
         Err(e) => {
-            log::warn!("[qbz-qt] search failed: {e}");
-            let mut guard = PAGE.lock().unwrap();
-            let doc = &mut guard.get_or_insert_with(PageState::default).doc;
-            doc.loading = false;
-            doc.albums.clear();
-            doc.tracks.clear();
-            doc.artists.clear();
-            doc.artists_carousel.clear();
-            doc.playlists.clear();
-            doc.albums_total = 0;
-            doc.tracks_total = 0;
-            doc.artists_total = 0;
-            doc.playlists_total = 0;
-            doc.most_popular = MostPopularDoc::default();
-            publish_page(doc);
-            return;
+            log::warn!("[qbz-qt] Qobuz search failed; keeping local results: {e}");
+            fn empty<T>() -> qbz_models::SearchResultsPage<T> {
+                qbz_models::SearchResultsPage {
+                    items: vec![],
+                    total: 0,
+                    offset: 0,
+                    limit: 0,
+                }
+            }
+            SearchAllResults {
+                albums: empty(),
+                tracks: empty(),
+                artists: empty(),
+                playlists: empty(),
+                most_popular: None,
+            }
         }
     };
     log::info!(
@@ -2524,7 +2549,20 @@ async fn submit_page(
 
     let doc = {
         let mut guard = PAGE.lock().unwrap();
-        let doc = &mut guard.get_or_insert_with(PageState::default).doc;
+        if !is_current_page_version(version) {
+            return;
+        }
+        let page = guard.get_or_insert_with(PageState::default);
+        page.local = local;
+        let doc = &mut page.doc;
+        doc.local_sections = page.local.data.sections.clone();
+        missing.extend(attach_urls(
+            doc.local_sections
+                .iter_mut()
+                .flat_map(|s| &mut s.rows)
+                .map(|r| (r.art_url.clone(), &mut r.art_path))
+                .collect(),
+        ));
         doc.loading = false;
         doc.albums = albums;
         doc.tracks = tracks;
@@ -2554,6 +2592,9 @@ async fn submit_page(
             }
             let doc = {
                 let mut guard = PAGE.lock().unwrap();
+                if !is_current_page_version(version) {
+                    return;
+                }
                 let doc = &mut guard.get_or_insert_with(PageState::default).doc;
                 let mut missing2 = Vec::new();
                 missing2.extend(attach_urls(
@@ -2603,6 +2644,13 @@ async fn submit_page(
                 if let Some(t) = &mut doc.most_popular.track {
                     let _ = attach_urls(vec![(t.art_url.clone(), &mut t.art_path)]);
                 }
+                let _ = attach_urls(
+                    doc.local_sections
+                        .iter_mut()
+                        .flat_map(|s| &mut s.rows)
+                        .map(|r| (r.art_url.clone(), &mut r.art_path))
+                        .collect(),
+                );
                 let _ = missing2;
                 doc.clone()
             };
@@ -2611,11 +2659,99 @@ async fn submit_page(
     }
 }
 
+/// Resolve only the local snapshot that produced the visible page.
+pub fn local_page_action(revision: &str, index: i32, action: &str) {
+    let (row, tracks) = {
+        let guard = PAGE.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(page) = guard.as_ref().filter(|p| p.doc.local_revision == revision) else {
+            return;
+        };
+        let Some(row) = page.local.row(index) else {
+            return;
+        };
+        (row.clone(), page.local.tracks.clone())
+    };
+    if action == "open" {
+        match row.kind.as_str() {
+            "album" => crate::open_album(row.id),
+            "artist" => {
+                crate::navigate_to("local");
+                crate::local_album_actions::open_artist_by_name(row.title);
+            }
+            _ => {}
+        }
+        return;
+    }
+    if action == "open-album" && row.kind == "track" && !row.album_id.is_empty() {
+        crate::open_album(row.album_id);
+        return;
+    }
+    let start = row.id.parse::<usize>().ok().filter(|i| *i < tracks.len());
+    if action == "add-to-playlist" && row.kind == "track" {
+        if let Some(start) = start {
+            crate::local_album_actions::open_picker_for_rows(&tracks[start..start + 1]);
+        }
+        return;
+    }
+    if !matches!(action, "play" | "next" | "later" | "queue") {
+        return;
+    }
+    let runtime = crate::app();
+    let action = action.to_string();
+    crate::spawn(async move {
+        match row.kind.as_str() {
+            "album" if action == "play" => {
+                crate::local_playback::play_album(&runtime, row.id, None, false).await;
+            }
+            "album" => {
+                crate::local_playback::enqueue(&runtime, "album".into(), row.id, action).await;
+            }
+            "track" => {
+                if let Some(start) = start {
+                    if action == "play" {
+                        crate::local_playback::play_rows(&runtime, tracks, start, false).await;
+                    } else {
+                        crate::local_playback::enqueue_rows(
+                            &runtime,
+                            vec![tracks[start].clone()],
+                            action,
+                        )
+                        .await;
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
+}
+
+pub fn local_page_more(revision: &str, kind: &str) {
+    let query = {
+        let guard = PAGE.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(page) = guard.as_ref().filter(|p| p.doc.local_revision == revision) else {
+            return;
+        };
+        page.doc.query.clone()
+    };
+    let tab = match kind {
+        "local-album" => "albums",
+        "local-artist" => "artists",
+        "local" => "tracks",
+        _ => return,
+    };
+    crate::local_album_actions::set_pending_route(tab, if tab == "tracks" { &query } else { "" });
+    crate::navigate_to("local");
+}
+
 /// Tab strip: pure view state (search_all already loaded everything).
 pub fn tab_changed(tab: i32) {
     let mut guard = PAGE.lock().unwrap();
     if let Some(page) = guard.as_mut() {
         page.doc.tab = tab;
+        crate::page_restore_qt::note_args(
+            "search",
+            serde_json::json!({ "query": &page.doc.query, "tab": tab }),
+        );
         let doc = page.doc.clone();
         drop(guard);
         publish_page(&doc);

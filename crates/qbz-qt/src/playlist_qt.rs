@@ -59,11 +59,18 @@ use serde::Serialize;
 
 #[derive(Clone, Default, Serialize)]
 pub struct PlaylistTrackRow {
+    /// Featured performers (see `album_qt::TrackRow::featured`); empty when none.
+    #[serde(rename = "featured")]
+    pub featured: Vec<crate::album_qt::FeaturedArtist>,
     pub id: String,
     /// The playlist membership row id (== catalog track id for Qobuz
     /// playlists — what remove_tracks_from_playlist takes).
     #[serde(rename = "playlistTrackId")]
     pub playlist_track_id: u64,
+    /// The row's slot in the LOADED order (the API's insertion order — what
+    /// "Default" restores and "Date added" reads, 2026-09-13). Not serialised.
+    #[serde(skip)]
+    pub position: i32,
     pub title: String,
     pub artist: String,
     #[serde(rename = "artistId")]
@@ -152,6 +159,14 @@ pub struct PlaylistTrackRow {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub upcoming: bool,
+    /// The whole RELEASE this row belongs to is gone from the catalog: every
+    /// track withdrawn, or `/album/get` answering unavailable — decided by
+    /// `library_qt::unavailable_release_ids` once the rows are built, one
+    /// probe per distinct album of the pulled rows. A pulled track on a live
+    /// album keeps `false`: its album page still opens. The row's album link
+    /// and "Go to album" go dark on `true` (2026-09-13).
+    #[serde(rename = "releaseUnavailable")]
+    pub release_unavailable: bool,
     /// The recording identifier, carried so the replacement search's ISRC
     /// short-circuit can fire (`qbz-playlist-import/src/match_qobuz.rs:156-159`
     /// scores an ISRC hit 1.0). That is the owner's "a veces cambia el ID del
@@ -384,7 +399,11 @@ enum SidecarRemoval {
 /// fallback that lets a dead Plex/Jellyfin/Subsonic row be removed. Returns
 /// `None` for a Qobuz row (the caller falls through to the Qobuz arm) or when
 /// no ref can be derived.
-fn sidecar_removal(source: &str, row_id: &str, queue_ref: Option<String>) -> Option<SidecarRemoval> {
+fn sidecar_removal(
+    source: &str,
+    row_id: &str,
+    queue_ref: Option<String>,
+) -> Option<SidecarRemoval> {
     let strip = |prefix: &str| {
         queue_ref
             .as_deref()
@@ -439,7 +458,10 @@ mod sidecar_removal_tests {
 
     #[test]
     fn local_sidecar_is_the_numeric_row_id() {
-        assert!(matches!(sidecar_removal("local", "4321", None), Some(SidecarRemoval::Local(4321))));
+        assert!(matches!(
+            sidecar_removal("local", "4321", None),
+            Some(SidecarRemoval::Local(4321))
+        ));
         assert!(sidecar_removal("local", "local:nope", None).is_none());
     }
 
@@ -547,7 +569,7 @@ pub fn teardown() {
 /// `Option`: `delete_by_id`'s ownership test would otherwise read
 /// "unauthenticated" as "owns nothing", which is right, and "owns playlist 0",
 /// which is not.
-fn current_user_id() -> Option<u64> {
+pub(crate) fn current_user_id() -> Option<u64> {
     match USER_ID.load(std::sync::atomic::Ordering::SeqCst) {
         0 => None,
         id => Some(id),
@@ -588,29 +610,34 @@ static FOLLOWED_PLAYLISTS: std::sync::LazyLock<Mutex<std::collections::HashSet<u
 /// `(playlist id, owner id)` pairs. Callers pass pairs rather than the models
 /// so this stays independent of which of the two fetchers happens to run.
 pub fn set_user_playlists(pairs: &[(u64, u64)]) {
-    let uid = USER_ID.load(std::sync::atomic::Ordering::SeqCst);
-    let mut owned = std::collections::HashSet::new();
-    let mut followed = std::collections::HashSet::new();
-    for &(id, owner) in pairs {
-        // uid == 0 means "no session id yet" — claiming ownership on an id
-        // that has not been set would mark EVERY row owned.
-        if uid != 0 && owner == uid {
-            owned.insert(id);
-        } else {
-            followed.insert(id);
+    crate::library_qt::with_deleted_playlists(|deleted| {
+        let uid = USER_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let mut owned = std::collections::HashSet::new();
+        let mut followed = std::collections::HashSet::new();
+        for &(id, owner) in pairs {
+            if deleted.contains(&id.to_string()) {
+                continue;
+            }
+            // uid == 0 means "no session id yet" — claiming ownership on an id
+            // that has not been set would mark EVERY row owned.
+            if uid != 0 && owner == uid {
+                owned.insert(id);
+            } else {
+                followed.insert(id);
+            }
         }
-    }
-    log::info!(
-        "[qbz-qt] playlist ownership snapshot: {} owned / {} followed",
-        owned.len(),
-        followed.len()
-    );
-    if let Ok(mut g) = OWNED_PLAYLISTS.lock() {
-        *g = owned;
-    }
-    if let Ok(mut g) = FOLLOWED_PLAYLISTS.lock() {
-        *g = followed;
-    }
+        log::info!(
+            "[qbz-qt] playlist ownership snapshot: {} owned / {} followed",
+            owned.len(),
+            followed.len()
+        );
+        if let Ok(mut g) = OWNED_PLAYLISTS.lock() {
+            *g = owned;
+        }
+        if let Ok(mut g) = FOLLOWED_PLAYLISTS.lock() {
+            *g = followed;
+        }
+    });
 }
 
 /// Is the session user id known yet? Ownership answers are meaningless (all
@@ -853,6 +880,13 @@ pub(crate) fn map_track(track: &Track) -> PlaylistTrackRow {
         .map(|p| (p.name, p.id.to_string()))
         .unwrap_or_default();
     PlaylistTrackRow {
+        position: 0,
+        featured: crate::album_qt::featured_list(
+            track.performers.as_deref(),
+            &artist,
+            &track.title,
+            &[],
+        ),
         // Heart state at build time, from the favourite-id cache — the same
         // O(1) read `album_qt` / `artist_qt` / `label_qt` rows use. It was
         // never stamped here, so `TrackRow.qml` saw `undefined` on every
@@ -1181,6 +1215,8 @@ pub async fn load(
     .await
     .unwrap_or_default();
     let mixed = !sidecar.is_empty();
+    // Release-wide withdrawals among the pulled rows (see the field).
+    let gone_releases = crate::library_qt::unavailable_release_ids(runtime, &tracks).await;
     let merged = interleave_rows(tracks, sidecar);
 
     // Display rows + the playable snapshot + the row positions in ONE pass, so
@@ -1198,6 +1234,13 @@ pub async fn load(
             merged_queue.push(q);
         }
         rows.push(item);
+    }
+    if !gone_releases.is_empty() {
+        for item in rows.iter_mut() {
+            if item.not_streamable && gone_releases.contains(&item.album_id) {
+                item.release_unavailable = true;
+            }
+        }
     }
 
     // Seam B: a mixed detail plays through local_playlist's merged queue
@@ -1292,6 +1335,7 @@ pub async fn load(
         doc.covers = covers;
         doc.has_custom_cover = has_custom_cover;
         doc.tracks = rows;
+        stamp_positions(&mut doc.tracks);
         doc.track_count = track_count;
         doc.total_duration = total_duration;
         doc.is_owner = is_owner;
@@ -1360,6 +1404,13 @@ pub async fn load(
 // Sort + search (PlaylistActions.set-sort / filter_tracks)
 // ---------------------------------------------------------------------------
 
+/// Record the loaded order once, before any sort touches the rows.
+pub(crate) fn stamp_positions(rows: &mut [PlaylistTrackRow]) {
+    for (i, row) in rows.iter_mut().enumerate() {
+        row.position = i as i32;
+    }
+}
+
 fn apply_sort(doc: &mut PlaylistDoc, field: &str, asc: bool) {
     doc.sort_field = field.to_string();
     doc.sort_asc = asc;
@@ -1384,16 +1435,16 @@ fn apply_sort(doc: &mut PlaylistDoc, field: &str, asc: bool) {
         // the interleave computed, which is the order the user actually chose.
         "custom" if !doc.is_mixed => apply_custom_order(doc),
         "custom" => {}
-        // "default" / "added": the API insertion order is the natural
-        // order; "added" starts newest-first (asc=false reverses).
-        _ => {}
+        // "default" / "added": the API insertion order IS the added order
+        // (a track is appended when it is added), so both sort by the slot
+        // stamped at load — an actual order, not a reversal of whatever the
+        // rows happened to be in after a Title sort (issue: the direction
+        // toggle needed two clicks and switching fields kept the old order).
+        _ => doc.tracks.sort_by_key(|t| t.position),
     }
-    // Canonical ascending, then reverse for the other direction
-    // (library_all.rs derive; default/added keep model order).
-    if matches!(field, "title" | "artist" | "album" | "duration") && !asc {
-        doc.tracks.reverse();
-    }
-    if field == "added" && asc {
+    // Canonical ascending (oldest-added first for default/added), then
+    // reverse for the other direction. Custom keeps its stored order.
+    if field != "custom" && !asc {
         doc.tracks.reverse();
     }
 }
@@ -1469,10 +1520,12 @@ pub fn set_sort(field: &str) {
     let doc = with_doc(|d| {
         // Re-pick flips direction for the sortable fields; a new field
         // resets to its natural default (Library All parity).
+        // A new field starts at its natural direction: "added" newest
+        // first, everything else ascending.
         let asc = if d.sort_field == field {
             !d.sort_asc
         } else {
-            !matches!(field, "added")
+            field != "added"
         };
         apply_sort(d, field, asc);
         (d.clone(), d.is_local_playlist)
@@ -1821,6 +1874,26 @@ pub async fn rename_by_id(
         .await
         .map_err(|e| format!("rename playlist {pid} failed: {e}"))?;
 
+    // The editor seeds a Qobuz playlist from the manager's WARM cache before
+    // it fetches (`playlist_manager_qt::cached_playlist_seed`), and the
+    // reload `after_write` orders lands later — or never, offline. Patch the
+    // cache now, so an editor reopened right after Save never shows the
+    // pre-save name or description (the dirty-form report of 2026-09-14).
+    {
+        let cache_name = name.clone();
+        let cache_desc = description.map(|d| d.trim().to_string());
+        if crate::playlist_manager_qt::patch_cache(|data| {
+            if let Some(p) = data.playlists.iter_mut().find(|p| p.id == pid) {
+                p.name = cache_name;
+                if let Some(desc) = cache_desc {
+                    p.description = Some(desc);
+                }
+            }
+        }) {
+            crate::playlist_manager_qt::publish_document();
+        }
+    }
+
     let target = pid.to_string();
     let patched = with_doc(|d| {
         if d.id != target {
@@ -1883,16 +1956,27 @@ pub async fn delete_by_id(
         if owned { "deleted" } else { "unsubscribed" }
     );
     if owned {
+        crate::library_qt::playlist_deleted(&pid.to_string());
+        OWNED_PLAYLISTS.lock().unwrap().remove(&pid);
+        mark_following(pid, false);
+        crate::fav_cache_qt::set("playlist", &pid.to_string(), false);
+        crate::sidebar_qt::remove_qobuz_entry(pid);
+        crate::playlist_manager_qt::playlist_deleted(pid);
+        crate::publish_sidebar();
+        crate::publish_library_document();
         // Leave the membership index's target set now instead of waiting out
         // the authoritative-list retirement grace.
         let _ = tokio::task::spawn_blocking(move || {
             crate::library_db_qt::with_db(true, |db| {
+                db.delete_playlist_settings(pid)?;
                 Ok(db.with_connection(|conn| {
                     qbz_library::qobuz_playlist_snapshot::mark_inactive(conn, pid)
                 }))
             })
         })
         .await;
+    } else {
+        follow_settled(pid, false, None);
     }
     Ok(())
 }
@@ -2006,6 +2090,69 @@ pub async fn remove_track(runtime: &Arc<AppRuntime<LoggingAdapter>>, catalog_id:
             );
             // Reload to reconcile (bounded-retry equivalent — the Slint
             // reconciles the same way after failed playlist ops).
+            let _ = load(runtime, pid).await;
+        }
+    }
+}
+
+/// `remove_track` for a SELECTION: every matching membership leaves the
+/// document at once and the API is asked ONCE (`playlist/deleteTracks` takes
+/// the list). Same optimistic removal, same reconcile-by-reload on failure.
+pub async fn remove_tracks(runtime: &Arc<AppRuntime<LoggingAdapter>>, catalog_ids: &[u64]) {
+    let Some((pid, memberships)) = with_doc(|d| {
+        if !d.is_owner {
+            return None;
+        }
+        let pid = d.id.parse::<u64>().ok()?;
+        let memberships: Vec<u64> = d
+            .tracks
+            .iter()
+            .filter(|t| {
+                t.id.parse::<u64>()
+                    .ok()
+                    .is_some_and(|id| catalog_ids.contains(&id))
+            })
+            .map(|t| t.playlist_track_id)
+            .collect();
+        Some((pid, memberships))
+    })
+    .flatten() else {
+        return;
+    };
+    if memberships.is_empty() {
+        return;
+    }
+    with_doc(|d| {
+        d.tracks
+            .retain(|t| !memberships.contains(&t.playlist_track_id));
+        d.track_count = d.tracks.len() as i32;
+        d.total_duration = total_duration_label(&d.tracks);
+        let doc = d.clone();
+        publish(&doc);
+    });
+    match runtime
+        .core()
+        .remove_tracks_from_playlist(pid, &memberships)
+        .await
+    {
+        Ok(()) => {
+            let removed: Vec<u64> = catalog_ids.to_vec();
+            let _ = tokio::task::spawn_blocking(move || {
+                crate::library_db_qt::with_db(true, |db| {
+                    Ok(db.with_connection(|conn| {
+                        qbz_library::qobuz_playlist_snapshot::apply_removed_tracks(
+                            conn, pid, &removed,
+                        )
+                    }))
+                })
+            })
+            .await;
+        }
+        Err(e) => {
+            log::error!(
+                "[qbz-qt] remove {} membership(s) from playlist {pid} failed: {e}",
+                memberships.len()
+            );
             let _ = load(runtime, pid).await;
         }
     }

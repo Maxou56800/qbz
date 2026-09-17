@@ -263,7 +263,7 @@ jobs:
       # verify artifacts with the Tauri minisign pubkey baked into the old
       # binaries. Signing with the SAME private key lets them auto-update
       # straight into this AppImage. release-updater-manifest.yml collects
-      # the .sig. The app itself has no auto-updater.
+      # the .sig. The Qt updater also consumes this signed manifest.
       - name: Sign AppImage (Tauri-updater bridge)
         if: startsWith(github.ref, 'refs/tags/')
         env:

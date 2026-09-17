@@ -67,7 +67,7 @@ use qconnect_app::{
     QconnectSessionState, QueueCommandType, RendererPlaybackSnapshot, RendererReport,
     RendererReportType, SessionLoopHost,
 };
-use qconnect_lan::EndpointPolicy;
+use qconnect_lan::{EndpointPolicy, HandoffBody, LanTokenOut};
 use qconnect_transport_ws::{NativeWsTransport, WsTransportConfig};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
@@ -275,6 +275,38 @@ pub(crate) mod publish {
         /// Icon key from `device_icon_key`: "mobile" | "web" | "computer" |
         /// "speaker".
         pub icon: &'static str,
+        /// The cloud's device uuid, when it carries one — what lets a LAN
+        /// candidate drop out of the picker once the session lists it.
+        pub device_uuid: Option<String>,
+    }
+
+    /// The session rows as last published, kept so a LAN change can
+    /// republish the merged list without waiting for a cloud event.
+    static LAST_SESSION_ROWS: std::sync::Mutex<Vec<QconnectDeviceRow>> =
+        std::sync::Mutex::new(Vec::new());
+    /// Renderers on this network, from the LAN controller half.
+    static LAN_ROWS: std::sync::Mutex<Vec<crate::qconnect_lan_qt::LanPickerRow>> =
+        std::sync::Mutex::new(Vec::new());
+
+    fn lan_icon(device_type: qconnect_lan::DeviceType) -> &'static str {
+        use qconnect_lan::DeviceType;
+        match device_type {
+            DeviceType::Phone | DeviceType::Tablet => "mobile",
+            DeviceType::Computer => "computer",
+            _ => "speaker",
+        }
+    }
+
+    /// The LAN half's rows changed: store them and republish the merged list.
+    pub(crate) fn set_lan_rows(rows: Vec<crate::qconnect_lan_qt::LanPickerRow>) {
+        if let Ok(mut slot) = LAN_ROWS.lock() {
+            *slot = rows;
+        }
+        let session_rows = LAST_SESSION_ROWS
+            .lock()
+            .map(|rows| rows.clone())
+            .unwrap_or_default();
+        devices(session_rows);
     }
 
     /// `NowPlayingState.qconnect-connected` -> `QbzQConnect.qconnect_connected`
@@ -290,21 +322,48 @@ pub(crate) mod publish {
     /// these keys — the full contract is documented in qconnect_bridge.rs):
     /// `[{ renderer_id, name, is_local, is_active, icon }]`.
     pub(crate) fn devices(rows: Vec<QconnectDeviceRow>) {
-        let json = serde_json::to_string(
-            &rows
-                .iter()
-                .map(|row| {
-                    serde_json::json!({
-                        "renderer_id": row.renderer_id,
-                        "name": row.name,
-                        "is_local": row.is_local,
-                        "is_active": row.is_active,
-                        "icon": row.icon,
-                    })
+        if let Ok(mut slot) = LAST_SESSION_ROWS.lock() {
+            *slot = rows.clone();
+        }
+        // Session rows first, then the LAN candidates the session does not
+        // list yet (`lan: true`, `lan_uuid`): once a paired device is
+        // announced by the cloud its LAN row disappears by uuid.
+        let mut entries: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                serde_json::json!({
+                    "renderer_id": row.renderer_id,
+                    "name": row.name,
+                    "is_local": row.is_local,
+                    "is_active": row.is_active,
+                    "icon": row.icon,
                 })
-                .collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|_| "[]".to_string());
+            })
+            .collect();
+        let in_session: std::collections::HashSet<String> = rows
+            .iter()
+            .filter_map(|row| row.device_uuid.clone())
+            .collect();
+        if let Ok(lan) = LAN_ROWS.lock() {
+            entries.extend(
+                lan.iter()
+                    .filter(|row| !in_session.contains(&row.device_uuid))
+                    .map(|row| {
+                        serde_json::json!({
+                            "renderer_id": -1,
+                            "name": row.name,
+                            "is_local": false,
+                            "is_active": false,
+                            "icon": lan_icon(row.device_type),
+                            "lan": true,
+                            "lan_uuid": row.device_uuid,
+                            "brand": row.brand,
+                            "model": row.model,
+                        })
+                    }),
+            );
+        }
+        let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
         crate::qconnect_bridge::ui(move |mut b| {
             b.as_mut().set_devices_json(QString::from(json.as_str()));
         });
@@ -370,8 +429,7 @@ pub struct RemoteNowPlaying {
     pub updated_at_ms: u64,
     pub playing: bool,
     /// Peer renderer's reported volume (0..=100). `None` when the peer hasn't
-    /// reported a volume yet — the bar then clamps to a safe 50% instead of
-    /// reflecting QBZ's local 100, so a drag never nukes the AVR.
+    /// reported a volume yet — controls stay locked until it does.
     pub volume: Option<i32>,
     /// Peer mute state; independent of the owner's saved local mute toggle.
     pub muted: bool,
@@ -404,6 +462,22 @@ fn peer_seek_position_ms(
     }
     let position_ms = (fraction.clamp(0.0, 1.0) as f64 * duration_secs as f64 * 1000.0).round();
     (position_ms <= i32::MAX as f64).then_some(position_ms as i64)
+}
+
+/// Unknown remote volume is a disabled zero placeholder, never a guessed level.
+pub(crate) fn peer_volume_fraction(volume: Option<i32>) -> f32 {
+    volume
+        .map(|v| (v as f32 / 100.0).clamp(0.0, 1.0))
+        .unwrap_or(0.0)
+}
+
+pub(crate) fn peer_volume_locked(volume: Option<i32>, session: &QconnectSessionState) -> bool {
+    volume.is_none()
+        || session
+            .renderers
+            .iter()
+            .find(|r| Some(r.renderer_id) == session.active_renderer_id)
+            .is_none_or(|r| !renderer_allows_remote_volume(r))
 }
 
 fn project_peer_seek(
@@ -748,6 +822,9 @@ pub struct QtQconnectService {
     coordinator: QtDelegationCoordinator,
     lan: Mutex<Option<QtLanRuntime>>,
     lan_lifecycle: LanRuntimeLifecycle<QtLanRuntime>,
+    /// The QWS endpoint the live transport uses — the fallback endpoint for
+    /// a delegated QWS token the cloud returns without one (LAN pairing).
+    lan_qws_endpoint: Mutex<Option<String>>,
     lifecycle_gate: Mutex<()>,
     /// Controller-mode mirror of the local queue's manual block (#442 "Play
     /// later"): steers `insert_after` for play-later routing. See the struct
@@ -1097,8 +1174,9 @@ fn local_upcoming_matches_remote(
         .eq(main_upcoming_ids)
 }
 
-/// 1:1 port of the Tauri `build_qconnect_reorder_payload`. `from_index`/
-/// `to_index` index INTO the visible upcoming list. None when out of range,
+/// Reorder a visible upcoming occurrence into an insertion slot (0..=len).
+/// `from_index` identifies a row; `to_index` may be the slot after the last row.
+/// None when out of range,
 /// `Some({})` for a no-op, else the wire payload (moved id + insert_after anchor).
 fn build_reorder_payload(
     projection: &VisibleUpcomingProjection,
@@ -1106,10 +1184,10 @@ fn build_reorder_payload(
     to_index: usize,
 ) -> Option<Value> {
     let len = projection.upcoming_qids.len();
-    if from_index >= len || to_index >= len {
+    if from_index >= len || to_index > len {
         return None;
     }
-    if from_index == to_index {
+    if from_index == to_index || from_index + 1 == to_index {
         return Some(json!({}));
     }
 
@@ -1261,6 +1339,7 @@ impl QtQconnectService {
             lan_lifecycle: LanRuntimeLifecycle::new(|runtime: &mut QtLanRuntime| {
                 runtime.shutdown_blocking()
             }),
+            lan_qws_endpoint: Mutex::new(None),
             lifecycle_gate: Mutex::new(()),
             controller_manual: Mutex::new(ControllerManualBlock::default()),
             teardown_incomplete: AtomicBool::new(false),
@@ -1364,6 +1443,12 @@ impl QtQconnectService {
         self.authority.observe_owner_authority()
     }
 
+    pub(crate) async fn playback_memory_fence(&self) -> Result<
+        (tokio::sync::OwnedMutexGuard<()>, qconnect_app::OwnerActionFence), String,
+    > {
+        self.delegation_host.playback_memory_fence().await
+    }
+
     /// Preserve already-stamped owner work across a fallible candidate fence.
     /// It returns `None` only once that exact owner generation is truly stale.
     pub async fn wait_for_exact_owner_action_permit(
@@ -1439,6 +1524,7 @@ impl QtQconnectService {
         let endpoint_policy =
             EndpointPolicy::from_trusted_endpoints(qbz_qobuz::endpoints::BASE_URL, qws_endpoint)
                 .map_err(|_| "qconnect-lan-endpoint-policy-invalid".to_string())?;
+        *self.lan_qws_endpoint.lock().await = Some(qws_endpoint.to_string());
         let app_id = self
             .await_while_enabled(enable_token, self.owner_app_id())
             .await??;
@@ -1543,6 +1629,85 @@ impl QtQconnectService {
             }
         }
         Err("qconnect-lan-disabled-or-owner-superseded".to_string())
+    }
+
+    /// Pair a renderer found on this network into the account's session —
+    /// the step the official apps take when a LAN-only receiver (a BluOS
+    /// player, another QBZ) is picked: `/qws/delegateAuth` for its app id,
+    /// then the LAN handoff carrying OUR session uuid and `become_active`.
+    /// From there the cloud announces it like any other renderer. Never
+    /// account-less: the delegated pair is minted from the owner's session.
+    /// Returns the renderer's friendly name.
+    pub async fn pair_lan(&self, device_uuid: &str) -> Result<String, String> {
+        let (candidate, probe, lan_client) = {
+            let lan = self.lan.lock().await;
+            let runtime = lan
+                .as_ref()
+                .ok_or_else(|| "Qobuz Connect is not running".to_string())?;
+            runtime
+                .lan_candidate(device_uuid)
+                .ok_or_else(|| "That device is no longer on this network".to_string())?
+        };
+        let sync_state = self
+            .inner
+            .lock()
+            .map_err(|_| "Qobuz Connect state is poisoned".to_string())?
+            .runtime
+            .as_ref()
+            .map(|rt| Arc::clone(&rt.sync_state))
+            .ok_or_else(|| "Qobuz Connect is not connected".to_string())?;
+        let session_id = sync_state
+            .lock()
+            .await
+            .session
+            .session_uuid
+            .clone()
+            .ok_or_else(|| "Qobuz Connect has no session yet".to_string())?;
+        let qws_endpoint = self.lan_qws_endpoint.lock().await.clone();
+        let qobuz = self
+            .runtime
+            .core()
+            .client()
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "Not signed in".to_string())?;
+        let delegated = qobuz
+            .delegate_qconnect_auth(&probe.connect.app_id)
+            .await
+            .map_err(|e| format!("qws/delegateAuth failed: {e}"))?;
+        let (api_endpoint, api_exp, api_jwt) = delegated.jwt_api.into_parts();
+        let (qws_ep, qws_exp, qws_jwt) = delegated.jwt_qws.into_parts();
+        let api_endpoint =
+            api_endpoint.unwrap_or_else(|| qbz_qobuz::endpoints::BASE_URL.to_string());
+        let qws_ep = qws_ep
+            .or(qws_endpoint)
+            .ok_or_else(|| "the QWS endpoint is unknown".to_string())?;
+        let body = HandoffBody {
+            session_id,
+            jwt_api: LanTokenOut {
+                endpoint: api_endpoint,
+                exp: api_exp,
+                jwt: api_jwt,
+            },
+            jwt_qconnect: LanTokenOut {
+                endpoint: qws_ep,
+                exp: qws_exp,
+                jwt: qws_jwt,
+            },
+            become_active: true,
+        };
+        lan_client
+            .hand_off(&candidate, &probe.address, &body)
+            .await
+            .map_err(|e| format!("connect-to-qconnect failed: {e}"))?;
+        log::info!(
+            "[QConnect LAN] paired {} ({} {}) into the session; waiting for the cloud to list it",
+            probe.display.friendly_name,
+            probe.display.brand_display_name,
+            probe.display.model_display_name
+        );
+        Ok(probe.display.friendly_name.clone())
     }
 
     async fn stop_lan(&self) -> Result<(), String> {
@@ -1808,6 +1973,14 @@ impl QtQconnectService {
             }
         }
 
+        // What the controller's row selection is built from. Without it the
+        // periodic report is the only one whose ids never reach the log, and a
+        // wrong id here reads on the controller as "already on that track".
+        log::debug!(
+            "[QConnect] periodic report: track={track_id} current_qid={current_qid:?} next_qid={next_qid:?} playing={playing_state} pos={position_ms} qv={}.{}",
+            queue_version.major,
+            queue_version.minor,
+        );
         let report = build_renderer_playback_report(
             Uuid::new_v4().to_string(),
             queue_version,
@@ -1861,6 +2034,39 @@ impl QtQconnectService {
                 }
             }
         }
+    }
+
+    /// Refresh our advertised capabilities after an output settings change.
+    pub async fn report_device_info(&self) -> Result<(), String> {
+        let Some(_action) = self.begin_runtime_action_if_running()? else {
+            return Ok(());
+        };
+        let (app, sync_state) = {
+            let guard = lock_inner(&self.inner);
+            let Some(runtime) = guard.runtime.as_ref() else {
+                return Ok(());
+            };
+            (Arc::clone(&runtime.app), Arc::clone(&runtime.sync_state))
+        };
+        if sync_state.lock().await.session.local_renderer_id.is_none() {
+            return Ok(());
+        }
+        let mut info = default_qconnect_device_info();
+        if let Some(capabilities) = info.capabilities.as_mut() {
+            capabilities.max_audio_quality = Some(qconnect_max_audio_quality_wire());
+        }
+        log::info!("[QConnect] Reporting output capabilities: volume_remote_control={:?}",
+            info.capabilities.as_ref().and_then(|caps| caps.volume_remote_control));
+        let queue = app.queue_state_snapshot().await;
+        let report = RendererReport::new(
+            RendererReportType::RndrSrvrDeviceInfoUpdated,
+            Uuid::new_v4().to_string(),
+            queue.version,
+            serde_json::to_value(info).map_err(|e| e.to_string())?,
+        );
+        app.send_renderer_report_command(report)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Establish the QConnect session. Gated on an initialized API client (the
@@ -2389,6 +2595,12 @@ impl QtQconnectService {
 
     pub async fn disconnect(&self) -> Result<(), String> {
         self.disconnect_safely().await.map(|_| ())
+    }
+
+    /// Process exit restores ownership bookkeeping, never audible playback.
+    pub async fn disconnect_for_shutdown(&self) -> Result<bool, String> {
+        self.disconnect_with_owner_policy(false).await?;
+        Ok(!self.delegation_host.shutdown_restored_queue_only())
     }
 
     pub async fn disconnect_safely(&self) -> Result<QconnectDisconnectOutcome, String> {
@@ -3138,7 +3350,7 @@ impl QtQconnectService {
     /// True when a PEER renderer currently owns playback (controller mode). Reads
     /// the session under the sync-state lock. Shared by the play-next /
     /// add-to-queue routing entry points.
-    async fn is_peer_renderer_active(&self) -> bool {
+    pub(crate) async fn is_peer_renderer_active(&self) -> bool {
         let sync_state = {
             let guard = lock_inner(&self.inner);
             let Some(runtime) = guard.runtime.as_ref() else {
@@ -3946,11 +4158,14 @@ impl QtQconnectService {
         if len == 0 {
             return Ok(true);
         }
-        // Clamp into the projection's [0, len) index space (the core path may pass
-        // to_q == len for an append-to-end slot).
-        let from_index = from_q.min(len - 1);
-        let to_index = to_q.min(len - 1);
-        if from_index == to_index {
+        // The destination is an insertion slot, including len (append).
+        // Reject stale coordinates rather than moving a different occurrence.
+        if from_q >= len || to_q > len {
+            return Ok(true);
+        }
+        let from_index = from_q;
+        let to_index = to_q;
+        if from_index == to_index || from_index + 1 == to_index {
             return Ok(true);
         }
 
@@ -3981,26 +4196,13 @@ impl QtQconnectService {
             return Ok(false);
         };
         let remote_context = self.effective_remote_renderer_snapshot().await?;
-        let Some((_renderer, _queue, session)) = remote_context else {
+        let Some((renderer, _queue, session)) = remote_context else {
             return Ok(false);
         };
 
-        if let Some(active_id) = session.active_renderer_id {
-            if let Some(info) = session
-                .renderers
-                .iter()
-                .find(|r| r.renderer_id == active_id)
-            {
-                if !renderer_allows_remote_volume(info) {
-                    log::info!(
-                        "[QConnect] set_volume_if_remote short-circuited: renderer {active_id} disallows remote volume"
-                    );
-                    dev_push_event(
-                        "controller volume: renderer disallows remote volume (no-op)".to_string(),
-                    );
-                    return Ok(true);
-                }
-            }
+        // Guard every caller, including controls outside the player bar.
+        if peer_volume_locked(renderer.volume, &session) {
+            return Ok(true);
         }
 
         let payload = serde_json::to_value(QconnectSetVolumeRequest {
@@ -4031,6 +4233,9 @@ impl QtQconnectService {
         let Some((renderer, _queue, session)) = remote_context else {
             return Ok(false);
         };
+        if peer_volume_locked(renderer.volume, &session) {
+            return Ok(true);
+        }
         let value = !renderer.muted.unwrap_or(false);
 
         let payload = serde_json::to_value(QconnectMuteVolumeRequest {
@@ -4476,8 +4681,12 @@ impl SessionLoopHost for QtSessionLoopHost {
                 log::warn!("[QConnect] reconnect credential refresh failed: {error}");
             }
         }
+        // Announce the same persisted name the local identity matches against;
+        // the default name would break the renderer self-match after reconnect.
+        let device_name = load_persisted_device_name();
+        log::info!("[QConnect] reconnect: announcing device name {device_name:?}");
         if let Err(err) =
-            bootstrap_remote_presence(&self.app, None, &self.authority, self.stamp).await
+            bootstrap_remote_presence(&self.app, device_name, &self.authority, self.stamp).await
         {
             if !self.authority.is_current(self.stamp) {
                 return;
@@ -4946,14 +5155,81 @@ async fn deferred_renderer_join(
 mod tests {
     use super::{
         active_renderer_projection, is_qconnect_queue_track, local_upcoming_matches_remote,
-        peer_seek_position_ms, project_peer_mute, project_peer_seek, remote_upcoming_selection,
-        resolvable_queue_projection, resolvable_track_ids,
+        peer_seek_position_ms, peer_volume_fraction, peer_volume_locked, project_peer_mute,
+        project_peer_seek, remote_upcoming_selection, resolvable_queue_projection,
+        resolvable_track_ids,
     };
     use qbz_models::QueueTrack;
     use qconnect_app::{
         ensure_session_renderer_state, QConnectQueueState, QConnectRendererState,
         QconnectRemoteSyncState,
     };
+
+    #[test]
+    fn reorder_uses_insertion_slots_including_the_end() {
+        let projection = super::VisibleUpcomingProjection {
+            current_track_qid: Some(10),
+            upcoming_qids: vec![11, 12, 13],
+        };
+        for (from, slot, anchor) in [(0, 3, 13), (1, 3, 13), (2, 0, 10), (2, 1, 11), (0, 2, 12)] {
+            let payload = super::build_reorder_payload(&projection, from, slot).unwrap();
+            assert_eq!(payload["insert_after"], anchor);
+            assert_eq!(payload["queue_item_ids"], serde_json::json!([projection.upcoming_qids[from]]));
+        }
+        for (from, slot) in [(0, 0), (0, 1), (2, 3)] {
+            assert_eq!(super::build_reorder_payload(&projection, from, slot), Some(serde_json::json!({})));
+        }
+        assert!(super::build_reorder_payload(&projection, 3, 3).is_none());
+        assert!(super::build_reorder_payload(&projection, 0, 4).is_none());
+    }
+
+    #[test]
+    fn peer_volume_controls_follow_capability_and_wait_for_a_reported_level() {
+        let mut session = peer_sync().session;
+        session.renderers.clear();
+        assert!(peer_volume_locked(Some(20), &session), "wait for renderer metadata");
+        for capability in [None, Some(0), Some(1), Some(2)] {
+            session.renderers = vec![serde_json::from_value(serde_json::json!({
+                "renderer_id": 2, "volume_remote_control": capability
+            }))
+            .unwrap()];
+            assert!(peer_volume_locked(None, &session));
+            assert_eq!(
+                peer_volume_locked(Some(20), &session),
+                !matches!(capability, None | Some(2))
+            );
+            assert_eq!(peer_volume_fraction(Some(20)), 0.2);
+        }
+    }
+
+    #[test]
+    fn peer_volume_projection_uses_renderer_level_including_read_only_peers() {
+        let queue = QConnectQueueState::default();
+        let local = QConnectRendererState {
+            volume: Some(100),
+            ..Default::default()
+        };
+        let mut sync = peer_sync();
+        assert_eq!(
+            peer_volume_fraction(active_renderer_projection(&queue, &local, &sync).volume),
+            0.0
+        );
+        ensure_session_renderer_state(&mut sync, 2).volume = Some(20);
+        assert_eq!(
+            peer_volume_fraction(active_renderer_projection(&queue, &local, &sync).volume),
+            0.2
+        );
+        sync.session.active_renderer_id = Some(3);
+        assert_eq!(
+            active_renderer_projection(&queue, &local, &sync).volume,
+            None
+        );
+        sync.session.active_renderer_id = Some(1);
+        assert_eq!(
+            active_renderer_projection(&queue, &local, &sync).volume,
+            Some(100)
+        );
+    }
 
     #[test]
     fn active_peer_never_inherits_a_stale_local_renderer_snapshot() {

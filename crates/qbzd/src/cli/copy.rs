@@ -136,11 +136,18 @@ pub fn foreign_qbzd(addr: &str) -> String {
 /// `warning:` — an open LAN renderer (Sonos/Chromecast posture) is the
 /// intended default, the Origin shield already guards browsers, and this line
 /// just orients the operator toward the two ways to restrict it further.
-/// `addr` is the bound `ip:port`.
-pub fn lan_posture_note(addr: &str) -> String {
-    format!(
-        "control plane listening on {addr} — anyone on your network can control playback (set [server] bind = \"127.0.0.1\" or [server] token in qbzd.toml to restrict)"
-    )
+/// With `[server] token` set the API is already gated, so the line says that
+/// instead of nagging. `addr` is the bound `ip:port`.
+pub fn lan_posture_note(addr: &str, token_set: bool) -> String {
+    if token_set {
+        format!(
+            "control plane listening on {addr} — LAN clients must send the [server] token (Authorization: Bearer)"
+        )
+    } else {
+        format!(
+            "control plane listening on {addr} — anyone on your network can control playback (set [server] bind = \"127.0.0.1\" or [server] token in qbzd.toml to restrict)"
+        )
+    }
 }
 
 /// Version skew — daemon and CLI run different bin semvers (02 §1.6). A warning:
@@ -234,11 +241,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lan_posture_note_renders_the_verbatim_copy() {
+    fn lan_posture_note_renders_the_verbatim_copy_when_the_api_is_open() {
         // FB6 (successor to the old LAN-exposure warning) — one INFO line logged
-        // by the daemon at boot when the control API is NOT loopback-only. This
-        // test pins the exact wording so it cannot drift from the spec.
-        let rendered = lan_posture_note("0.0.0.0:6789");
+        // by the daemon at boot when the control API is NOT loopback-only and
+        // no token gates it. This test pins the exact wording so it cannot
+        // drift from the spec.
+        let rendered = lan_posture_note("0.0.0.0:6789", false);
         assert!(
             rendered.contains("control plane listening on 0.0.0.0:6789"),
             "{rendered}"
@@ -251,6 +259,20 @@ mod tests {
         assert!(
             rendered.contains("token in qbzd.toml to restrict"),
             "{rendered}"
+        );
+    }
+
+    #[test]
+    fn lan_posture_note_with_a_token_does_not_nag() {
+        let rendered = lan_posture_note("0.0.0.0:6789", true);
+        assert!(
+            rendered.contains("control plane listening on 0.0.0.0:6789"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("[server] token"), "{rendered}");
+        assert!(
+            !rendered.contains("anyone on your network"),
+            "a gated API must not be described as open: {rendered}"
         );
     }
 }

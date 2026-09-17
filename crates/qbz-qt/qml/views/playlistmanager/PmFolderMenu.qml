@@ -83,6 +83,8 @@ QbzContextMenu {
         menuRoot.playlistId = String(pid || "")
         menuRoot.currentFolderId = String(fid || "")
         menuRoot.folderQuery = ""
+        // The box too: QbzLineEdit re-seeds only while unfocused.
+        folderSearchField.reset("")
         menuRoot.openBelowRight(anchorItem)
     }
 
@@ -103,6 +105,7 @@ QbzContextMenu {
         height: visible ? (menuRoot.kioskHost ? 44 : 32) : 0
 
         QbzLineEdit {
+            id: folderSearchField
             kioskHost: menuRoot.kioskHost
             anchors.verticalCenter: parent.verticalCenter
             // The plain arm is a FIXED width: 240 — a modal/menu must set it.

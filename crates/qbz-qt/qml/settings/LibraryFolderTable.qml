@@ -10,6 +10,7 @@
 // (settings_qt/library.rs).
 
 import QtQuick
+import QtQuick.Controls
 import com.blitzfc.qbz
 import "../controls"
 import "../theme"
@@ -41,21 +42,66 @@ Column {
         })
     }
     function isSelected(id) { return selectedIds.indexOf(id) >= 0 }
-    function toggleSelected(id) {
-        const next = selectedIds.slice()
-        const at = next.indexOf(id)
-        if (at >= 0) next.splice(at, 1); else next.push(id)
+    /// A plain or Ctrl click toggles one folder; Shift adds the range from the
+    /// last plain click over the rows SHOWN (the filter is a view filter) —
+    /// the rule every multi-select list shares (controls/SelectionModel.qml).
+    SelectionModel { id: folderSel }
+    function toggleSelected(id, mods) {
+        const rows = root.shown()
+        const current = {}
+        for (let i = 0; i < selectedIds.length; i++)
+            current[String(selectedIds[i])] = true
+        const picked = folderSel.next(current, id, rows,
+                                      mods === undefined ? Qt.NoModifier : mods)
+        // Back to the ids themselves (the removal action takes them as
+        // numbers), keeping earlier picks the filter currently hides.
+        const next = selectedIds.filter(function (sid) { return picked[String(sid)] === true })
+        for (let j = 0; j < rows.length; j++)
+            if (picked[String(rows[j].id)] === true && next.indexOf(rows[j].id) < 0)
+                next.push(rows[j].id)
         selectedIds = next
     }
     function scanLabel(ts) {
         if (!ts) return QbzSession.tr("Never", QbzSession.trRev)
         return Qt.formatDateTime(new Date(ts * 1000), "yyyy-MM-dd hh:mm")
     }
-    // Shared column geometry (header + rows MUST agree):
-    // checkbox 20 · folder (rest) · last-scan 120 · status 84 · actions 110.
-    readonly property int actionsW: root.kioskHost ? 200 : 110
+    readonly property var statusLabels: ({
+        active: QbzSession.tr("Active", QbzSession.trRev),
+        hidden: QbzSession.tr("Hidden", QbzSession.trRev),
+        missing: QbzSession.tr("Missing", QbzSession.trRev),
+        disconnected: QbzSession.tr("Disconnected", QbzSession.trRev),
+        denied: QbzSession.tr("Access denied", QbzSession.trRev),
+        unavailable: QbzSession.tr("Unavailable", QbzSession.trRev),
+        checking: QbzSession.tr("Checking...", QbzSession.trRev)
+    })
+    readonly property var statusDescriptions: ({
+        active: QbzSession.tr("The folder is accessible and visible in the library.", QbzSession.trRev),
+        hidden: QbzSession.tr("The folder is accessible but hidden by your preference.", QbzSession.trRev),
+        missing: QbzSession.tr("The folder path no longer exists. Reconnect it, change its path or remove it from the library.", QbzSession.trRev),
+        disconnected: QbzSession.tr("A connection failure prevents access to this storage.", QbzSession.trRev),
+        denied: QbzSession.tr("QBZ does not have permission to access this folder.", QbzSession.trRev),
+        unavailable: QbzSession.tr("The folder could not be accessed. The check timed out or returned another access error.", QbzSession.trRev),
+        checking: QbzSession.tr("Folder access is being checked or has not been checked yet.", QbzSession.trRev)
+    })
+    FontMetrics {
+        id: statusMetrics
+        font.pixelSize: root.kioskHost ? theme.fontLegal * 1.2 : theme.fontLegal
+        font.weight: theme.weightMedium
+    }
+    readonly property int statusW: Math.ceil(Math.max(110,
+        ...Object.values(root.statusLabels).map(function(s) { return statusMetrics.advanceWidth(s) + 20 })))
+    readonly property int actionButtonW: root.kioskHost ? 44 : 40
+    readonly property int actionsW: 4 * actionButtonW + 3 * 4
     function folderColW(rowWidth) {
-        return Math.max(60, rowWidth - (root.kioskHost ? 44 : 20) - 120 - 84 - actionsW - 4 * 12)
+        return Math.max(100, rowWidth - (root.kioskHost ? 44 : 20) - 120 - statusW - actionsW - 4 * 12)
+    }
+    property string lastPickedPath: ""
+    onLibChanged: {
+        const picked = root.lib.picked_path || ""
+        if (picked !== lastPickedPath) {
+            lastPickedPath = picked
+            if (picked !== "") { root.pendingPath = picked; pathField.text = picked }
+        }
     }
 
     Item {
@@ -85,6 +131,7 @@ Column {
                     QbzBridge.settingsString("library-remove-folders",
                         JSON.stringify(root.selectedIds))
                     root.selectedIds = []
+                    folderSel.anchorId = ""
                 }
             }
         }
@@ -103,10 +150,7 @@ Column {
                 onEdited: function (v) { root.pendingPath = v }
                 onCommitted: function (v) { root.pendingPath = v }
             }
-            // The native chooser (settings_qt/library.rs pick_and_add_folder).
-            // It adds the folder itself, so there is nothing to clear here —
-            // the typed field is the OTHER route to the same insert, kept
-            // because pasting a path is faster for network mounts.
+            // Browse fills the same path field as typing; Add is the single commit.
             SettingsButton { kioskHost: root.kioskHost;
                 iconName: "folder"
                 text: QbzSession.tr("Browse...", QbzSession.trRev)
@@ -160,6 +204,20 @@ Column {
         wrapMode: Text.WordWrap
     }
 
+    // Keep every column reachable on narrow windows; never paint actions over status.
+    Flickable {
+        id: folderTable
+        width: root.width
+        height: tableRows.height
+        contentWidth: Math.max(width, 100 + (root.kioskHost ? 44 : 20) + 120 + root.statusW + root.actionsW + 70)
+        contentHeight: height
+        clip: true
+        flickableDirection: Flickable.HorizontalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        Column {
+            id: tableRows
+            width: folderTable.contentWidth
+            spacing: 4
     // Table header (columns MUST match the rows below).
     Item {
         visible: root.folders.length > 0
@@ -190,7 +248,15 @@ Column {
                 verticalAlignment: Text.AlignVCenter
             }
             Text {
-                width: 84
+                width: root.actionsW
+                height: parent.height
+                text: QbzSession.tr("Actions", QbzSession.trRev)
+                color: theme.textMuted
+                font.pixelSize: root.kioskHost ? theme.fontLegal * 1.2 : theme.fontLegal
+                verticalAlignment: Text.AlignVCenter
+            }
+            Text {
+                width: root.statusW
                 height: parent.height
                 text: QbzSession.tr("STATUS", QbzSession.trRev)
                 color: theme.textMuted
@@ -198,7 +264,7 @@ Column {
                 font.letterSpacing: 0.5
                 verticalAlignment: Text.AlignVCenter
             }
-            Item { width: root.actionsW; height: 1 }
+
         }
     }
     Rectangle {
@@ -214,7 +280,7 @@ Column {
             id: folderRow
             required property var modelData
 
-            width: root.width
+            width: folderTable.contentWidth
             height: root.kioskHost ? 64 : 40
             radius: theme.radiusSm
             color: root.isSelected(modelData.id) ? theme.surfaceElevated
@@ -227,7 +293,9 @@ Column {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleSelected(folderRow.modelData.id)
+                onClicked: function (mouse) {
+                    root.toggleSelected(folderRow.modelData.id, mouse.modifiers)
+                }
             }
 
             Row {
@@ -240,7 +308,9 @@ Column {
                     width: root.kioskHost ? 44 : 20
                     anchors.verticalCenter: parent.verticalCenter
                     checked: root.isSelected(folderRow.modelData.id)
-                    onToggled: root.toggleSelected(folderRow.modelData.id)
+                    onToggled: function (mods) {
+                        root.toggleSelected(folderRow.modelData.id, mods)
+                    }
                 }
                 // FOLDER: type glyph + name.
                 Row {
@@ -249,14 +319,22 @@ Column {
                     spacing: 8
                     QbzIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        // POC-NOTE: no `network` glyph in this icon set — a
-                        // network folder uses `link`, a local one hard-drive.
-                        name: folderRow.modelData.isNetwork ? "link" : "hard-drive"
+                        objectName: "folderType-" + folderRow.modelData.id
+                        name: folderRow.modelData.isNetwork ? "server" : "hard-drive"
+                        ToolTip.visible: typeHover.containsMouse
+                        ToolTip.delay: 400
+                        ToolTip.text: folderRow.modelData.isNetwork
+                            ? QbzSession.tr("Network folder", QbzSession.trRev)
+                            : QbzSession.tr("Local folder", QbzSession.trRev)
+                        MouseArea {
+                            id: typeHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.NoButton
+                        }
                         width: 16
                         height: 16
-                        tintName: folderRow.modelData.isNetwork
-                            ? (folderRow.modelData.accessible ? "accent" : "favorite")
-                            : "secondary"
+                        tintName: folderRow.modelData.isNetwork ? "accent" : "secondary"
                     }
                     Text {
                         width: parent.width - 24
@@ -277,38 +355,25 @@ Column {
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }
-                // STATUS (read-only, like the Slint).
-                Text {
-                    width: 84
-                    height: parent.height
-                    text: !folderRow.modelData.enabled
-                        ? QbzSession.tr("Disabled", QbzSession.trRev)
-                        : (folderRow.modelData.isNetwork && !folderRow.modelData.accessible)
-                            ? QbzSession.tr("Unavailable", QbzSession.trRev)
-                            : QbzSession.tr("Active", QbzSession.trRev)
-                    color: (folderRow.modelData.isNetwork && !folderRow.modelData.accessible
-                        && folderRow.modelData.enabled) ? theme.danger : theme.textMuted
-                    font.pixelSize: root.kioskHost ? (theme.fontLegal) * 1.2 : (theme.fontLegal)
-                    font.weight: theme.weightMedium
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
                 // ACTIONS: settings · enable/disable · scan this folder ·
                 // remove it. The eye button duplicates the edit modal's
                 // "Enabled" toggle on purpose — it predates the modal and is
                 // one click instead of three for the thing people do most.
                 Row {
+                    objectName: "folderActions-" + folderRow.modelData.id
                     width: root.actionsW
                     height: parent.height
                     spacing: 4
                     layoutDirection: Qt.RightToLeft
                     SettingsButton { kioskHost: root.kioskHost;
+                        width: root.actionButtonW
                         anchors.verticalCenter: parent.verticalCenter
                         iconName: "trash-2"
                         onClicked: QbzBridge.settingsString("library-remove-folders",
                             JSON.stringify([folderRow.modelData.id]))
                     }
                     SettingsButton { kioskHost: root.kioskHost;
+                        width: root.actionButtonW
                         anchors.verticalCenter: parent.verticalCenter
                         iconName: "refresh-cw"
                         enabled: folderRow.modelData.enabled && root.lib.scanning !== true
@@ -316,6 +381,7 @@ Column {
                             String(folderRow.modelData.id))
                     }
                     SettingsButton { kioskHost: root.kioskHost;
+                        width: root.actionButtonW
                         anchors.verticalCenter: parent.verticalCenter
                         iconName: folderRow.modelData.enabled ? "eye" : "eye-off"
                         onClicked: QbzBridge.settingsString("library-folder-enabled",
@@ -326,13 +392,38 @@ Column {
                     // the same place; this port had no affordance at all
                     // until the modal landed.
                     SettingsButton { kioskHost: root.kioskHost;
+                        width: root.actionButtonW
                         anchors.verticalCenter: parent.verticalCenter
                         iconName: "settings-2"
                         onClicked: QbzBridge.settingsString("library-folder-edit-open",
                             String(folderRow.modelData.id))
                     }
                 }
+                Text {
+                    objectName: "folderStatus-" + folderRow.modelData.id
+                    width: root.statusW
+                    height: parent.height
+                    text: root.statusLabels[folderRow.modelData.status || "checking"] || root.statusLabels.unavailable
+                    color: ["missing", "disconnected", "denied", "unavailable"].indexOf(folderRow.modelData.status) >= 0
+                        ? theme.danger : theme.textMuted
+                    font.pixelSize: root.kioskHost ? theme.fontLegal * 1.2 : theme.fontLegal
+                    font.weight: theme.weightMedium
+                    verticalAlignment: Text.AlignVCenter
+                    ToolTip.visible: statusHover.containsMouse
+                    ToolTip.delay: 400
+                    ToolTip.text: root.statusDescriptions[folderRow.modelData.status || "checking"] || root.statusDescriptions.unavailable
+                    MouseArea {
+                        id: statusHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+                }
+
             }
+        }
+    }
+
         }
     }
 

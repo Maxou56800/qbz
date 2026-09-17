@@ -63,7 +63,7 @@ Rectangle {
         QbzMyQbz.kioskDetailArtwork(first, last, px)
     }
     function openRow(r) {
-        if (root.doc.selectMode) QbzMyQbz.detailToggleItemSelect(r.position)
+        if (root.doc.selectMode) QbzMyQbz.detailToggleItemSelect(r.position, false)
         else QbzMyQbz.openItem(r.source, r.itemType, r.sourceItemId)
     }
     function entry(label, action) { return {label: root.t(label), action: action} }
@@ -154,6 +154,7 @@ Rectangle {
             TouchButton { text: "⋯" + (root.doc.selectedCount > 0 ? " " + root.doc.selectedCount : ""); onClicked: root.showMenu() }
         }
         TextField {
+            QbzTextEditMenu { }
             y: root.compactHeader ? 70 : 124
             width: parent.width
             height: 48

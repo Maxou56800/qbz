@@ -339,6 +339,8 @@ Item {
                         opacity: root.loading ? 0.5 : 1.0
 
                         TextInput {
+
+                            QbzTextEditMenu { }
                             id: urlInput
                             anchors.fill: parent
                             anchors.leftMargin: 12
@@ -460,7 +462,7 @@ Item {
                             height: 36
                             radius: theme.radiusSm
                             color: (pickArea.containsMouse && !root.loading)
-                                ? theme.surfaceHover : theme.surfaceElevated
+                                ? theme.surfaceElevatedHover : theme.surfaceElevated
                             opacity: root.loading ? 0.5 : 1.0
                             Text {
                                 id: pickLabel
@@ -542,6 +544,8 @@ Item {
                         opacity: root.loading ? 0.5 : 1.0
 
                         TextInput {
+
+                            QbzTextEditMenu { }
                             id: serviceInput
                             anchors.fill: parent
                             anchors.leftMargin: 12
@@ -667,6 +671,8 @@ Item {
                                 opacity: nameInput.enabled ? 1.0 : 0.5
 
                                 TextInput {
+
+                                    QbzTextEditMenu { }
                                     id: nameInput
                                     anchors.fill: parent
                                     anchors.leftMargin: 12

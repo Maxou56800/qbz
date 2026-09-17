@@ -515,6 +515,13 @@ pub fn qobuz_cover_at_px(url: &str, px: u32) -> Option<String> {
 pub struct Track {
     #[serde(default)]
     pub id: u64,
+    /// Favourites-list rows only (unix seconds); see `Album::favorited_at`.
+    #[serde(default, deserialize_with = "crate::purchase_serde::lenient_option")]
+    pub favorited_at: Option<i64>,
+    /// Store flag from the catalog (`purchasable`): `Some(false)` is the API
+    /// saying this release is not sold on Qobuz; absence is unknown, not no.
+    #[serde(default)]
+    pub purchasable: Option<bool>,
     #[serde(default)]
     pub title: String,
     /// Subtitle/edition info from Qobuz (e.g. "Player's Ball Mix",
@@ -723,6 +730,14 @@ impl AlbumSummary {
 pub struct Album {
     #[serde(default)]
     pub id: String,
+    /// When the user favourited it — `favorite/getUserFavorites` items carry
+    /// it (unix seconds); every other album shape leaves it `None`.
+    #[serde(default, deserialize_with = "crate::purchase_serde::lenient_option")]
+    pub favorited_at: Option<i64>,
+    /// Store flag from the catalog (`purchasable`): `Some(false)` is the API
+    /// saying this release is not sold on Qobuz; absence is unknown, not no.
+    #[serde(default)]
+    pub purchasable: Option<bool>,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -902,6 +917,9 @@ pub struct TracksContainer {
 pub struct Artist {
     #[serde(default)]
     pub id: u64,
+    /// Favourites-list rows only (unix seconds); see `Album::favorited_at`.
+    #[serde(default, deserialize_with = "crate::purchase_serde::lenient_option")]
+    pub favorited_at: Option<i64>,
     #[serde(default)]
     pub name: String,
     pub image: Option<ImageSet>,

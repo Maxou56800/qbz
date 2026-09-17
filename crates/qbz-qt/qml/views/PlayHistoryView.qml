@@ -103,7 +103,7 @@ Rectangle {
                 radius: 6
                 border.width: 1
                 border.color: theme.borderSubtle
-                color: theme.surfaceElevated
+                color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
 
                 Row {
                     anchors.fill: parent
@@ -122,6 +122,7 @@ Rectangle {
                         height: parent.height
                         clip: true
                         TextInput {
+                            QbzTextEditMenu { }
                             id: mpSearch
                             anchors.fill: parent
                             color: theme.textPrimary

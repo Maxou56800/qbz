@@ -40,13 +40,11 @@ import "../theme"
 
 Rectangle {
     id: root
-    // surface-card @ 0.5 while the ambient background is active (phase 14,
-    // PlayerBarSmall.slint).
-    color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
+    // No background of its own: the chrome band is NowPlayingBar.qml's root
+    // (surface-card @ 0.5 under the ambient background, opaque surface-card
+    // otherwise), full width behind this inset layout — see THE BAND there.
+    color: "transparent"
     readonly property bool ambientOn: theme.ambientOn
-    // Feature parked for a later release. Keep the compact renderer in place
-    // but use the classic seekbar consistently with the other NPB modes.
-    readonly property bool waveformVisible: false
     /// AppShell's one shared hover-tooltip overlay.
     property Item tooltip: null
 
@@ -67,8 +65,9 @@ Rectangle {
     // column lands PLAY on the window centre. The breakpoints (39/30/25 at
     // 1366 / 1920) are the SHARED theme token, so this bar and PlayerBar can
     // never drift apart — see QbzTheme.npbSideFrac.
-    // `root.width` IS the window width: the bar is anchored left-to-right on
-    // the shell root, exactly like PlayerBarSmall.slint reads its own root.
+    // `root.width` is the window width minus the two side gutters
+    // (NowPlayingBar.qml `gutter`): the bar is anchored left-to-right on the shell
+    // root, exactly like PlayerBarSmall.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colCentre: 1.0 - 2.0 * root.sideFrac
     // WIDE = inline horizontal volume slider; NARROW = button-only.
@@ -142,27 +141,6 @@ Rectangle {
         return m + ":" + (s < 10 ? "0" : "") + s
     }
 
-    // --- Seek clamp (closes PARITY-DEBT #15, QML half) -------------------
-    // Same SeekBar the full bar mounts (PlayerBarSmall.slint:186 passes
-    // seekable-max: NowPlayingState.seekable-max into SeekBar.slint), so the
-    // behaviour is identical here: while a track is still downloading the
-    // seek target is LOCKED to the furthest fraction that has arrived and the
-    // cursor turns not-allowed past it. Source: state.slint:4402, fed by
-    // playback.rs:5304 `buffer_progress.clamp(0,1)`, published as
-    // QbzPlayer.npSeekableMax. A fully-available track reports 1.0, so the
-    // Math.min() is a no-op and local/cached seeking stays free.
-    function clamp01(v) {
-        return Math.min(Math.max(v, 0), 1)
-    }
-    // SeekBar.slint:98 — Math.min(clamp01(mouse-x / width), seekable-max).
-    function seekTarget(fraction) {
-        return Math.min(root.clamp01(fraction), QbzPlayer.npSeekableMax)
-    }
-    // SeekBar.slint:93 — clamp01(mouse-x / width) > seekable-max.
-    function beyondSeekable(fraction) {
-        return root.clamp01(fraction) > QbzPlayer.npSeekableMax
-    }
-
     // --- Track Info (album/TrackInfoModal.slint) -------------------------
     // The (i) button and the song-card title open the MODAL (scrim + centered
     // card) — PlayerBarSmall.slint fires media-action("track", id,
@@ -214,81 +192,14 @@ Rectangle {
         spacing: 0
 
         // === A. TOP full-width seekbar (the content/bar divider) ========
-        Item {
+        QbzCompactSeekBar {
             width: parent.width
-            height: 3
-
-            Rectangle {
-                id: seekTrack
-                width: parent.width
-                height: root.waveformVisible ? 13 : 3
-                anchors.verticalCenter: parent.verticalCenter
-                radius: 2
-                color: root.waveformVisible ? "transparent" : theme.surfaceElevated
-
-                SeekWaveformItem {
-                    anchors.fill: parent
-                    visible: root.waveformVisible
-                    values: QbzPlayer.npSeekWaveform
-                    playedProgress: QbzPlayer.npProgress
-                    cacheProgress: QbzPlayer.npCacheProgress
-                    baseColor: theme.surfaceElevated
-                    cacheColor: Qt.rgba(theme.textMuted.r, theme.textMuted.g,
-                                        theme.textMuted.b, 0.35)
-                    playedColor: theme.accent
-                    renderMode: 1
-                }
-
-                // Buffered / cache line.
-                Rectangle {
-                    visible: !root.waveformVisible
-                    width: parent.width * Math.min(Math.max(QbzPlayer.npCacheProgress, 0), 1)
-                    height: parent.height
-                    radius: 2
-                    color: Qt.rgba(theme.textMuted.r, theme.textMuted.g,
-                                   theme.textMuted.b, 0.35)
-                    // Alpha in the material, not a container `opacity`: an
-                    // always-on opacity node pins this quad in its own batch,
-                    // and the three seek quads use compatible materials
-                    // (QSGSmoothColorMaterial::compare() returns 0), so folding
-                    // it lets rail + cache + progress merge.
-                }
-                // Playback progress line.
-                Rectangle {
-                    visible: !root.waveformVisible
-                    width: parent.width * Math.min(Math.max(QbzPlayer.npProgress, 0), 1)
-                    height: parent.height
-                    radius: 2
-                    color: theme.accent
-                }
-                // Hover thumb.
-                Rectangle {
-                    width: 12
-                    height: 12
-                    radius: 6
-                    color: theme.textPrimary
-                    x: parent.width * Math.min(Math.max(QbzPlayer.npProgress, 0), 1) - width / 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    opacity: seekArea.containsMouse ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 100 } }
-                }
-            }
-            // Tall, easy-to-grab hit area over the thin line.
-            MouseArea {
-                id: seekArea
-                width: parent.width
-                height: 18
-                anchors.verticalCenter: seekTrack.verticalCenter
-                hoverEnabled: true
-                // No-drop cursor over the not-yet-downloaded region
-                // (SeekBar.slint:93-95).
-                cursorShape: root.beyondSeekable(mouseX / width) ? Qt.ForbiddenCursor
-                                                                 : Qt.PointingHandCursor
-                enabled: QbzPlayer.npHasTrack
-                // Lock the seek target to what has downloaded while streaming
-                // (SeekBar.slint:96-99).
-                onClicked: QbzPlayer.seek(root.seekTarget(mouseX / width))
-            }
+            hasTrack: QbzPlayer.npHasTrack
+            progress: QbzPlayer.npProgress
+            cacheProgress: QbzPlayer.npCacheProgress
+            seekableMax: QbzPlayer.npSeekableMax
+            durationSecs: QbzPlayer.npDurationSecs
+            onSeekRequested: function (fraction) { QbzPlayer.seek(fraction) }
         }
 
         // === B. CONTROLS ROW — symmetric 3 columns =======================
@@ -411,6 +322,7 @@ Rectangle {
                     id: centreTransport
                     anchors.centerIn: parent
                     height: 34
+                    compact: root.width < 900
                     playCircle: false
                     favorite: root.npFavorite
                     ephemeral: root.npEphemeral
@@ -622,6 +534,20 @@ Rectangle {
     // idiom: a raw JSON.parse in a binding throws on the pre-publish frame and
     // takes the whole bar down with it.
     readonly property var settingsDoc: parseSettings()
+    // A-B loop entries for the "+" menu (see PlayerBar.abEntries): local
+    // playback only.
+    function abEntries() {
+        if (QbzPlayer.npIsRemote || QbzPlayer.npCastActive)
+            return []
+        var m = [{ "sep": true }]
+        if (QbzPlayer.abState === 0)
+            m.push({ "label": QbzSession.tr("Set loop start (A)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        else if (QbzPlayer.abState === 1)
+            m.push({ "label": QbzSession.tr("Set loop end (B)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        if (QbzPlayer.abState !== 0)
+            m.push({ "label": QbzSession.tr("Clear loop", QbzSession.trRev), "icon": "x", "action": "ab-clear" })
+        return m
+    }
     function parseSettings() {
         try {
             return JSON.parse(QbzBridge.settingsJson)
@@ -658,7 +584,7 @@ Rectangle {
             m.push({ "label": QbzSession.tr("Play later", QbzSession.trRev), "icon": "list-plus", "action": "later" })
             m.push({ "label": QbzSession.tr("Play next", QbzSession.trRev), "icon": "list-start", "action": "next" })
             if (root.npEphemeral)
-                return m
+                return m.concat(root.abEntries())
             // "Add to playlist" is SECOND (TransportControls.slint:143 — the
             // full bar carries the rationale). Same `npSource` gate as the
             // mixtape entry: the picker's Qobuz arm takes catalog ids and an
@@ -687,7 +613,7 @@ Rectangle {
                     "action": "album-favorite"
                 })
             }
-            return m
+            return m.concat(root.abEntries())
         }
         onPicked: function (a) {
             var id = QbzPlayer.npTrackId
@@ -702,6 +628,10 @@ Rectangle {
             } else if (a === "album-favorite") {
                 if (QbzPlayer.npAlbumId !== "")
                     QbzLibrary.libraryToggleFavorite("album", QbzPlayer.npAlbumId)
+            } else if (a === "ab-mark") {
+                QbzPlayer.abMark()
+            } else if (a === "ab-clear") {
+                QbzPlayer.abClear()
             } else if (a === "mixtape") {
                 // MyQBZ AddItem, built here from the now-playing state:
                 // `npArtworkPath` is a file:// CACHE path, so it is NOT the

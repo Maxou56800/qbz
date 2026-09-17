@@ -17,6 +17,7 @@ function fixture(tray, mac, closeToTray = true, confirm = true) {
     const ctx = vm.createContext({
         QbzTray: {trayLive: tray, closeToTray, closeDecision() {},
             confirmQuitEnabled: () => confirm, armQuitWatchdog: () => calls.push('watchdog')},
+        QbzAbout: {updatesJson: '{"phase":"idle"}', updatesCheck() {}},
         QbzShell: {isMacos: mac}, Window: {Minimized: 3},
         Qt: {exit: (code) => calls.push(`exit:${code}`)},
         quitConfirmation: {opened: false, checkboxChecked: true, open() {this.opened = true;}},
@@ -37,6 +38,11 @@ for (const mac of [false, true]) {
     assert.equal(event.accepted, false);
     ({ctx, calls} = fixture(false, mac));
     ctx.closeOrHide({accepted: true});
+    if (mac) {
+        assert.deepEqual(calls, ['hide'], 'Dock recovers macOS even without a menu-bar item');
+        calls.length = 0;
+        ctx.requestQuit();
+    }
     assert.equal(ctx.quitConfirmation.opened, true);
     assert.deepEqual(calls, [], 'dialog must not arm the watchdog');
     ctx.quitConfirmation.opened = false; // user cancels
@@ -57,3 +63,17 @@ const {ctx, calls} = fixture(true, true, false);
 ctx.closeOrHide(null);
 assert.deepEqual(calls, ['hide'], 'macOS tray lifecycle supersedes legacy close preference');
 console.log('Window lifecycle: tray/no-tray, macOS policy, confirmation cancellation and one-shot exit passed');
+
+// Re-show restores Dock policy before requesting native focus.
+const showCalls = [];
+const showCtx = vm.createContext({
+    QbzTray: {setWindowShown: () => showCalls.push('dock')},
+    Window: {Minimized: 3, Windowed: 2, Maximized: 4},
+    trayRestoreValid: false, visibility: 3, maximizedLatch: false,
+    show: () => showCalls.push('show'), raise: () => showCalls.push('raise'),
+    requestActivate: () => showCalls.push('activate'),
+});
+showCtx.window = showCtx;
+vm.runInContext(`(function () {${body('showFromTray')}})()`, showCtx);
+assert.deepEqual(showCalls, ['dock', 'show', 'raise', 'activate']);
+assert.equal(showCtx.visibility, 2);

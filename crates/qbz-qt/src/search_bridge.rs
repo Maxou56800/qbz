@@ -118,6 +118,16 @@ pub mod qbz_search {
         /// searchType filter radios (0 = none, 1..5 = the chips).
         #[qinvokable]
         fn search_filter_changed(self: Pin<&mut QbzSearch>, index: i32);
+        /// Local page results use their own versioned snapshot, not the dropdown's.
+        #[qinvokable]
+        fn search_local_action(
+            self: Pin<&mut QbzSearch>,
+            revision: QString,
+            index: i32,
+            action: QString,
+        );
+        #[qinvokable]
+        fn search_local_more(self: Pin<&mut QbzSearch>, revision: QString, kind: QString);
     }
 
     impl cxx_qt::Threading for QbzSearch {}
@@ -260,5 +270,18 @@ impl qbz_search::QbzSearch {
 
     pub fn search_filter_changed(self: Pin<&mut Self>, index: i32) {
         crate::search_filter_changed(index);
+    }
+
+    pub fn search_local_action(
+        self: Pin<&mut Self>,
+        revision: QString,
+        index: i32,
+        action: QString,
+    ) {
+        crate::search_qt::local_page_action(&revision.to_string(), index, &action.to_string());
+    }
+
+    pub fn search_local_more(self: Pin<&mut Self>, revision: QString, kind: QString) {
+        crate::search_qt::local_page_more(&revision.to_string(), &kind.to_string());
     }
 }

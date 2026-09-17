@@ -67,6 +67,7 @@ fn ensure_bound() {
         .join("users")
         .join(uid.to_string());
     STATE.init_at(&dir);
+    register_log_secrets();
     *bound = Some(uid);
     log::info!("[qbz-qt] media server settings bound to user {uid}");
 }
@@ -83,6 +84,16 @@ pub fn init_for_user(base_dir: &std::path::Path) {
     // DeviceId minted per connection attempt revokes the previous token, and a
     // salt minted per request re-downloads every cover.
     ensure_identities();
+    register_log_secrets();
+}
+
+/// Hand the stored Jellyfin token to the log redactor's literal layer, so it
+/// is scrubbed even where no labeled key (`ApiKey=`, `Token="`) precedes it.
+fn register_log_secrets() {
+    let jf = STATE.get(MediaServerKind::Jellyfin);
+    if !jf.token.is_empty() {
+        qbz_log::register_secret(jf.token);
+    }
 }
 
 pub fn reset() {
@@ -109,6 +120,7 @@ pub fn get(kind: MediaServerKind) -> MediaServerSettings {
 pub fn put(kind: MediaServerKind, s: &MediaServerSettings) {
     STATE.put(kind, s);
     invalidate_cache();
+    register_log_secrets();
 }
 
 pub fn disconnect(kind: MediaServerKind) {
@@ -284,7 +296,7 @@ async fn verified_jellyfin_session(
     session: qbz_jellyfin::Session,
     mut cfg: MediaServerSettings,
 ) -> Result<MediaServerSettings, String> {
-    qbz_jellyfin::JellyfinClient::new(url, &session.access_token, &session.user_id)
+    qbz_jellyfin::JellyfinClient::new(url, &session.access_token, &session.user_id, &cfg.device_id)
         .map_err(|e| e.to_string())?
         .music_libraries()
         .await
@@ -699,32 +711,6 @@ pub fn search_tracks_page(
     rows.into_iter().map(cached_to_local_track).collect()
 }
 
-/// Substring search across one remote source, in the `LocalTrack` shape.
-pub fn search_tracks(query: &str, limit: Option<u32>) -> Vec<qbz_library::LocalTrack> {
-    let mut out = Vec::new();
-    for kind in MediaServerKind::ALL {
-        if !get(kind).is_configured(kind) {
-            continue;
-        }
-        let (source, handle) = match kind {
-            MediaServerKind::Jellyfin => (
-                qbz_media_cache::RemoteSource::Jellyfin,
-                qbz_source::registry().jellyfin().cache(),
-            ),
-            MediaServerKind::Subsonic => (
-                qbz_media_cache::RemoteSource::Subsonic,
-                qbz_source::registry().subsonic().cache(),
-            ),
-        };
-        if let Some(rows) =
-            handle.with(|c| qbz_media_cache::search(c, source, query, limit).unwrap_or_default())
-        {
-            out.extend(rows.into_iter().map(cached_to_local_track));
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -766,10 +752,13 @@ mod tests {
                 }
                 let request = String::from_utf8_lossy(&bytes);
                 assert!(request.lines().next().unwrap().contains(path));
-                if path.contains("/Views") {
-                    assert!(request
-                        .to_ascii_lowercase()
-                        .contains("x-emby-token: test-token"));
+                if path.contains("Views") {
+                    // Jellyfin 12 reads only the modern form (#502).
+                    let lower = request.to_ascii_lowercase();
+                    assert!(lower.contains("authorization: mediabrowser "));
+                    assert!(request.contains(r#"Token="test-token""#));
+                    assert!(request.contains(r#"DeviceId="test-device""#));
+                    assert!(!lower.contains("x-emby-token"));
                 }
                 let response = format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
                 socket.write_all(response.as_bytes()).await.unwrap();
@@ -787,19 +776,41 @@ mod tests {
         const SUB_NO: &str =
             r#"{"subsonic-response":{"status":"failed","error":{"code":40,"message":"denied"}}}"#;
         for kind in MediaServerKind::ALL {
-            for mode in ["login-rejected", "library-rejected", "success"] {
+            // "success-10.8": a server that predates `/UserViews` (10.9) must
+            // still connect through the obsolete route. Self-hosted servers
+            // often sit on stable distributions and lag behind releases.
+            for mode in [
+                "login-rejected",
+                "library-rejected",
+                "success",
+                "success-10.8",
+            ] {
                 let responses = match (kind, mode) {
                     (MediaServerKind::Jellyfin, "login-rejected") => {
                         vec![("/Users/AuthenticateByName", 401, "{}")]
                     }
                     (MediaServerKind::Jellyfin, "library-rejected") => vec![
                         ("/Users/AuthenticateByName", 200, JF_AUTH),
-                        ("/Users/uid/Views", 401, "{}"),
+                        ("/UserViews?userId=uid", 401, "{}"),
+                    ],
+                    (MediaServerKind::Jellyfin, "success-10.8") => vec![
+                        ("/Users/AuthenticateByName", 200, JF_AUTH),
+                        ("/UserViews?userId=uid", 404, ""),
+                        (
+                            "/Users/uid/Views",
+                            200,
+                            r#"{"Items":[],"TotalRecordCount":0}"#,
+                        ),
+                        (
+                            "/System/Info/Public",
+                            200,
+                            r#"{"ServerName":"test","Version":"10.8.13","Id":"server"}"#,
+                        ),
                     ],
                     (MediaServerKind::Jellyfin, _) => vec![
                         ("/Users/AuthenticateByName", 200, JF_AUTH),
                         (
-                            "/Users/uid/Views",
+                            "/UserViews?userId=uid",
                             200,
                             r#"{"Items":[],"TotalRecordCount":0}"#,
                         ),

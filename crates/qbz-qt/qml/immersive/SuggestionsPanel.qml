@@ -400,7 +400,8 @@ Item {
         width: parent ? parent.width : 0
         height: 56
         radius: 8
-        color: rowArea.containsMouse ? "#21ffffff" : "transparent"
+        readonly property bool hovered: rowArea.containsMouse || artPlayArea.containsMouse
+        color: recRow.hovered ? "#21ffffff" : "transparent"
         Behavior on color { ColorAnimation { duration: 150 } }
 
         Row {
@@ -427,7 +428,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     color: "#80000000"
-                    opacity: rowArea.containsMouse ? 1.0 : 0.0
+                    opacity: recRow.hovered ? 1.0 : 0.0
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                     QbzIcon {
                         name: "play-fill"
@@ -436,6 +437,14 @@ Item {
                         anchors.centerIn: parent
                         tintName: "white"
                     }
+                }
+                // The hover disc is the row's play button: first click plays.
+                MouseArea {
+                    id: artPlayArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: QbzSuggestions.playTrack(recRow.track.id)
                 }
             }
 
@@ -472,12 +481,15 @@ Item {
             }
         }
 
+        // The track-row policy (#790, rows/TrackRow.qml `clickPlays`): a
+        // single click on the body does nothing, a double click plays. Behind
+        // the cells (z -1) so the artwork's play button answers its own click.
         MouseArea {
             id: rowArea
+            z: -1
             anchors.fill: parent
             hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: QbzSuggestions.playTrack(track.id)
+            onDoubleClicked: QbzSuggestions.playTrack(recRow.track.id)
         }
     }
 

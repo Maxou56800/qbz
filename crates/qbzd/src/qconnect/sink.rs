@@ -68,6 +68,10 @@ pub struct DaemonEventSink {
 }
 
 impl DaemonEventSink {
+    pub fn volume_mode(&self) -> super::engine::VolumeMode {
+        self.engine.volume_mode()
+    }
+
     pub fn new(
         engine: DaemonRendererEngine,
         sync_state: Arc<Mutex<QconnectRemoteSyncState>>,
@@ -355,22 +359,41 @@ impl DaemonEventSink {
     }
 }
 
-fn renderer_command_name(command: &RendererCommand) -> &'static str {
-    match command {
-        RendererCommand::SetState { .. } => "set_state",
-        RendererCommand::SetVolume { .. } => "set_volume",
-        RendererCommand::SetActive { .. } => "set_active",
-        RendererCommand::SetMaxAudioQuality { .. } => "set_max_audio_quality",
-        RendererCommand::SetLoopMode { .. } => "set_loop_mode",
-        RendererCommand::SetShuffleMode { .. } => "set_shuffle_mode",
-        RendererCommand::MuteVolume { .. } => "mute_volume",
-    }
-}
-
 #[async_trait]
 impl QconnectEventSink for DaemonEventSink {
+    fn allows_remote_volume(&self) -> bool {
+        self.is_current() && self.volume_mode().applies_remote_volume()
+    }
+
     fn playback_event(&self) -> Option<qbz_player::player::PlaybackEvent> {
         self.is_current().then(|| self.engine.playback_event())
+    }
+
+    async fn execute_renderer_command(
+        &self, command: &RendererCommand, state: &qconnect_core::QConnectRendererState,
+    ) -> Result<(), String> {
+        if !self.is_current() {
+            return Err("renderer authority retired".into());
+        }
+        if matches!(command, RendererCommand::SetVolume { .. } | RendererCommand::MuteVolume { .. })
+            && !self.allows_remote_volume()
+        {
+            return Err("local output volume is locked".into());
+        }
+        if remote_renderer_commands_are_fenced(&*self.sync_state.lock().await) {
+            return Err("renderer command fenced by local authority".into());
+        }
+        qconnect_app::renderer::apply_renderer_command(
+            &self.engine, &self.sync_state, command, state,
+        ).await?;
+        if !self.is_current() {
+            return Err("renderer authority retired during execution".into());
+        }
+        if matches!(command, RendererCommand::SetActive { active: true }) && self.engine.has_loaded_audio() {
+            self.report_active_renderer_ready().await;
+        }
+        if !self.is_current() { return Err("renderer authority retired".into()); }
+        Ok(())
     }
 
     async fn on_event(&self, event: QconnectAppEvent) {
@@ -451,41 +474,7 @@ impl QconnectEventSink for DaemonEventSink {
                     log::warn!("[QConnect] Failed to materialize remote queue: {err}");
                 }
             }
-            QconnectAppEvent::RendererCommandApplied { command, state } => {
-                let fenced = {
-                    let sync_state = self.sync_state.lock().await;
-                    remote_renderer_commands_are_fenced(&sync_state)
-                };
-                if fenced {
-                    log::info!(
-                        "[QConnect] Ignoring stale renderer command while local queue authority settles"
-                    );
-                    return;
-                }
-                log::info!(
-                    "[QConnect] Renderer command applied: {}",
-                    renderer_command_name(command)
-                );
-                let became_active = matches!(command, RendererCommand::SetActive { active: true });
-                if !self.is_current() {
-                    return;
-                }
-                if let Err(err) = qconnect_app::renderer::apply_renderer_command(
-                    &self.engine,
-                    &self.sync_state,
-                    command,
-                    state,
-                )
-                .await
-                {
-                    if !self.is_current() {
-                        return;
-                    }
-                    log::warn!("[QConnect] Failed to apply renderer command: {err}");
-                } else if became_active {
-                    self.report_active_renderer_ready().await;
-                }
-            }
+            QconnectAppEvent::RendererCommandApplied { .. } => {}
             QconnectAppEvent::RendererUnreachable { renderer_id } => {
                 // Slint copy surfaced a toast here — daemon logs it (§1.4).
                 log::warn!("[QConnect] Renderer {renderer_id} unreachable");
@@ -515,5 +504,129 @@ impl QconnectEventSink for DaemonEventSink {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod volume_tests {
+    use super::*;
+    use super::super::engine::VolumeMode;
+    use crate::adapter::DaemonAdapter;
+    use qbz_app::shell::AppRuntime;
+    use qbz_audio::settings::AudioSettings;
+    use qbz_models::Quality;
+    use qconnect_protocol::{RendererCommandType, RendererServerCommand};
+    use qconnect_transport_ws::{InMemoryWsTransport, TransportEvent, WsTransportConfig};
+    use serde_json::json;
+
+    // Exercise the actual daemon sink and engine through the shared app. No
+    // authentication, loaded audio or physical output is needed. The child
+    // process isolates the player's loudness cache from the user's profile.
+    async fn exercise_volume_mode(mode: VolumeMode) {
+        qbz_app::ensure_crypto_provider();
+        let (adapter, _core_events) = DaemonAdapter::new();
+        let runtime = Arc::new(AppRuntime::with_audio_settings(
+            adapter, None, AudioSettings::default(), None,
+        ));
+        runtime.core().player().seed_volume_state(1.0);
+        let authority = Arc::new(AuthorityCell::new());
+        let stamp = authority.reserve(super::super::authority::AuthorityOrigin::Owner);
+        assert!(authority.install(stamp));
+        let engine = DaemonRendererEngine::new(
+            Arc::clone(&runtime), mode,
+            Arc::new(std::sync::Mutex::new(Quality::UltraHiRes)),
+            Arc::clone(&authority), stamp,
+        );
+        let sync = Arc::new(Mutex::new(QconnectRemoteSyncState::default()));
+        let sink = Arc::new(DaemonEventSink::new(
+            engine, Arc::clone(&sync), Arc::clone(&authority), stamp,
+            DaemonLanProjectionSlot::default(),
+        ));
+        assert_eq!(sink.allows_remote_volume(), mode == VolumeMode::Software);
+        let transport = Arc::new(InMemoryWsTransport::new());
+        let app = QconnectApp::new(Arc::clone(&transport), Arc::clone(&sink), sync);
+        let _events = app.subscribe_transport_events();
+        app.connect(WsTransportConfig::default()).await.unwrap();
+        {
+            let state = app.state_handle();
+            let mut state = state.lock().await;
+            state.renderer.volume = Some(100);
+            state.renderer.muted = Some(false);
+        }
+        let initial = app.renderer_state_snapshot().await;
+        for (command_type, payload, expected_volume, expected_muted, player_volume) in [
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume": 40}), 40, false, 0.4),
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume_delta": -5}), 35, false, 0.35),
+            (RendererCommandType::SrvrRndrSetVolume, json!({"volume_delta": 5}), 40, false, 0.4),
+            (RendererCommandType::SrvrRndrMuteVolume, json!({"value": true}), 40, true, 0.0),
+            (RendererCommandType::SrvrRndrMuteVolume, json!({"value": false}), 40, false, 0.4),
+        ] {
+            let sent_before = transport.sent_messages().await.len();
+            app.handle_transport_event(TransportEvent::InboundRendererServerCommand(
+                RendererServerCommand { command_type, payload },
+            )).await.unwrap();
+            let state = app.renderer_state_snapshot().await;
+            let messages = transport.sent_messages().await;
+            if mode == VolumeMode::Locked {
+                assert_eq!(state, initial);
+                assert_eq!(messages.len(), sent_before);
+                assert_eq!(runtime.core().get_playback_state().volume, 1.0);
+            } else {
+                assert_eq!(state.volume, Some(expected_volume));
+                assert_eq!(state.muted, Some(expected_muted));
+                // The player consumes SetVolume on its own command thread.
+                tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                    while (runtime.core().get_playback_state().volume - player_volume).abs() >= 0.001 {
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                }).await.expect("player applies the accepted volume command");
+                assert_eq!(messages.len(), sent_before + 1);
+                let report = messages.last().unwrap();
+                if command_type == RendererCommandType::SrvrRndrMuteVolume {
+                    assert_eq!(report.message_type, "MESSAGE_TYPE_RNDR_SRVR_VOLUME_MUTED");
+                    assert_eq!(report.payload["value"], expected_muted);
+                } else {
+                    assert_eq!(report.message_type, "MESSAGE_TYPE_RNDR_SRVR_VOLUME_CHANGED");
+                    assert_eq!(report.payload["volume"], expected_volume);
+                }
+            }
+        }
+        // Retired engines must never advertise permission through the sink.
+        authority.clear();
+        assert!(!sink.allows_remote_volume());
+    }
+
+    #[tokio::test]
+    async fn locked_daemon_ignores_volume_and_mute_without_false_reports() {
+        if run_isolated_child("locked_daemon_ignores_volume_and_mute_without_false_reports") {
+            return;
+        }
+        exercise_volume_mode(VolumeMode::Locked).await;
+    }
+
+    #[tokio::test]
+    async fn software_daemon_applies_volume_and_mute_and_reports_real_changes() {
+        if run_isolated_child("software_daemon_applies_volume_and_mute_and_reports_real_changes") {
+            return;
+        }
+        exercise_volume_mode(VolumeMode::Software).await;
+    }
+
+    fn run_isolated_child(test: &str) -> bool {
+        if std::env::var("QBZD_VOLUME_TEST_CHILD").as_deref() == Ok(test) {
+            return false;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &format!("qconnect::sink::volume_tests::{test}"), "--nocapture"])
+            .env("QBZD_VOLUME_TEST_CHILD", test)
+            .env("XDG_DATA_HOME", root.path())
+            .env("XDG_CONFIG_HOME", root.path())
+            .env("XDG_CACHE_HOME", root.path())
+            .env("APPDATA", root.path())
+            .env("LOCALAPPDATA", root.path())
+            .status().unwrap();
+        assert!(result.success(), "isolated volume test failed: {test}");
+        true
     }
 }

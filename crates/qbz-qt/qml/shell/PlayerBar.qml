@@ -69,7 +69,10 @@ import "../theme"
 
 Rectangle {
     id: root
-    color: ambientOn ? theme.surfaceCardA50 : theme.surfaceCard
+    // No background of its own: the chrome band is NowPlayingBar.qml's root
+    // (surface-card @ 0.5 under the ambient background, opaque surface-card
+    // otherwise), full width behind this inset layout — see THE BAND there.
+    color: "transparent"
     readonly property bool ambientOn: theme.ambientOn
     readonly property bool largeActive: QbzShell.npbMode === 3 && QbzShell.sidebarState === 0
     readonly property bool isClassic: QbzShell.npbMode === 1
@@ -102,8 +105,9 @@ Rectangle {
     // columns EQUAL so the centre column stays dead centre. The breakpoints
     // are the SHARED theme token (QbzTheme.npbSideFrac) — the Small bar reads
     // the same one, so the two bars cannot drift apart.
-    // `root.width` IS the window width: the bar is anchored left-to-right on
-    // the shell root, exactly like PlayerBar.slint reads its own root.
+    // `root.width` is the window width minus the two side gutters
+    // (NowPlayingBar.qml `gutter`): the bar is anchored left-to-right on the shell
+    // root, exactly like PlayerBar.slint reads its own root.
     property real sideFrac: theme.npbSideFrac(root.width)
     property real colSide: isClassic ? 0.324 : sideFrac
     property real colCentre: 1.0 - 2.0 * colSide
@@ -126,6 +130,20 @@ Rectangle {
     // AppearanceState.show-volume-steppers (PlayerBar.slint gates the −/+
     // pair on it; Tauri always showed them).
     readonly property bool showVolumeSteppers: settingsDoc.showVolumeSteppers === true
+    // A-B loop entries for the "+" menu: one contextual verb + clear. Local
+    // playback only — the loop cannot follow a cast / Connect renderer.
+    function abEntries() {
+        if (QbzPlayer.npIsRemote || QbzPlayer.npCastActive)
+            return []
+        var m = [{ "sep": true }]
+        if (QbzPlayer.abState === 0)
+            m.push({ "label": QbzSession.tr("Set loop start (A)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        else if (QbzPlayer.abState === 1)
+            m.push({ "label": QbzSession.tr("Set loop end (B)", QbzSession.trRev), "icon": "repeat", "action": "ab-mark" })
+        if (QbzPlayer.abState !== 0)
+            m.push({ "label": QbzSession.tr("Clear loop", QbzSession.trRev), "icon": "x", "action": "ab-clear" })
+        return m
+    }
 
     // Favorite state of the now-playing track (Slint:
     // QueueState.now-playing-favorite). The queue document carries it on its
@@ -426,6 +444,32 @@ Rectangle {
                     x: parent.width * seekRow.visualProgress - width / 2
                     anchors.verticalCenter: parent.verticalCenter
                 }
+                // A-B loop: the tinted section + two ticks. Static bindings only
+                // (no animation), so nothing here touches the repaint pulse.
+                Rectangle {
+                    visible: QbzPlayer.abState === 2 && QbzPlayer.npDurationSecs > 0
+                    x: parent.width * (QbzPlayer.abStartSecs / Math.max(QbzPlayer.npDurationSecs, 1))
+                    width: Math.max(2, parent.width
+                        * ((QbzPlayer.abEndSecs - QbzPlayer.abStartSecs) / Math.max(QbzPlayer.npDurationSecs, 1)))
+                    height: parent.height
+                    radius: 2
+                    color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.28)
+                }
+                Repeater {
+                    model: QbzPlayer.abState === 0 ? []
+                         : (QbzPlayer.abState === 1 ? [QbzPlayer.abStartSecs]
+                                                    : [QbzPlayer.abStartSecs, QbzPlayer.abEndSecs])
+                    Rectangle {
+                        required property int modelData
+                        visible: QbzPlayer.npDurationSecs > 0
+                        width: 2
+                        height: 10
+                        radius: 1
+                        color: theme.accent
+                        x: seekTrack.width * (modelData / Math.max(QbzPlayer.npDurationSecs, 1)) - 1
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
             }
             Text {
                 anchors.right: parent.right
@@ -605,6 +649,7 @@ Rectangle {
                 TransportControls {
                     id: classicTransport
                     visible: root.isClassic
+                    compact: root.width < 1100
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     playCircle: false
@@ -630,6 +675,7 @@ Rectangle {
                 TransportControls {
                     id: centreTransport
                     visible: !root.isClassic
+                    compact: root.width < 1366
                     anchors.centerIn: parent
                     playCircle: true
                     favorite: root.npFavorite
@@ -780,18 +826,42 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: QbzPlayer.toggleMute()
                     }
-                    QbzSlider {
-                        enabled: !root.volLocked
+                    Item {
+                        id: volumeIndicator
                         width: 81
+                        height: 22
                         anchors.verticalCenter: parent.verticalCenter
-                        minimum: 0
-                        // 0..1000: whole steps on a 0..100 scale quantize the
-                        // volume to 1%; 0.1% steps drag fluidly.
-                        maximum: 1000
-                        value: Math.round(QbzPlayer.npVolume * 1000)
-                        onChanged: function (v) { QbzPlayer.setVolume(v / 1000.0) }
-                        // Persist only the settled value (PlayerBar.slint:864-866).
-                        onReleased: function (v) { QbzPlayer.persistVolume(v / 1000.0) }
+                        readonly property string hint: QbzPlayer.npRemoteVolumePending
+                            ? QbzSession.tr("Waiting for the renderer's volume…", QbzSession.trRev)
+                            : QbzPlayer.npRemoteVolumeLocked
+                                ? QbzSession.tr("This renderer does not allow remote volume control.", QbzSession.trRev)
+                                : root.volLocked
+                                    ? QbzSession.tr("This audio output does not support volume control.", QbzSession.trRev)
+                                    : Math.round(QbzPlayer.npVolume * 100) + "%"
+                        function updateHint() {
+                            if (!root.tooltip) return
+                            if (volumeHover.hovered)
+                                root.tooltip.showAbove(volumeIndicator, "renderer-volume", hint)
+                            else
+                                root.tooltip.hide("renderer-volume")
+                        }
+                        onHintChanged: updateHint()
+                        HoverHandler {
+                            id: volumeHover
+                            onHoveredChanged: volumeIndicator.updateHint()
+                        }
+                        QbzSlider {
+                            enabled: !root.volLocked
+                            anchors.fill: parent
+                            minimum: 0
+                            // 0..1000: whole steps on a 0..100 scale quantize the
+                            // volume to 1%; 0.1% steps drag fluidly.
+                            maximum: 1000
+                            value: Math.round(QbzPlayer.npVolume * 1000)
+                            onChanged: function (v) { QbzPlayer.setVolume(v / 1000.0) }
+                            // Persist only the settled value (PlayerBar.slint:864-866).
+                            onReleased: function (v) { QbzPlayer.persistVolume(v / 1000.0) }
+                        }
                     }
                     QbzIconButton {
                         visible: root.showVolumeSteppers
@@ -862,6 +932,9 @@ Rectangle {
     // "Add to…" flyout behind the transport "+" (TransportControls.slint's
     // add-menu), on the shared CardMenu surface. Same seven entries, same
     // order, same icons.
+    // The Copy submenu of the add-menu writes through this carrier.
+    QbzClipboard { id: npClipboard }
+
     CardMenu {
         id: addMenu
         menuWidth: 232
@@ -885,7 +958,7 @@ Rectangle {
             m.push({ "label": QbzSession.tr("Play later", QbzSession.trRev), "icon": "list-plus", "action": "later" })
             m.push({ "label": QbzSession.tr("Play next", QbzSession.trRev), "icon": "list-start", "action": "next" })
             if (root.npEphemeral)
-                return m
+                return m.concat(root.abEntries())
             // "Add to playlist" sits SECOND in TransportControls.slint:143 —
             // spliced in there rather than appended, because the flyout's
             // order is part of the parity. It rides the SAME `npSource` gate
@@ -917,7 +990,27 @@ Rectangle {
                     "action": "album-favorite"
                 })
             }
-            return m
+            // "Buy on Qobuz" (2026-09-13): catalog tracks only; store_qt
+            // resolves whether the release is sold and toasts when not.
+            if (root.npSource === "qobuz") {
+                m.push({
+                    "label": QbzSession.tr("Buy on Qobuz", QbzSession.trRev),
+                    "icon": "shopping-bag",
+                    "action": "buy"
+                })
+            }
+            // Copy (2026-09-13): a hover-opened submenu — the track name, or
+            // "Track - Album - Artist".
+            m.push({
+                "label": QbzSession.tr("Copy", QbzSession.trRev),
+                "icon": "copy",
+                "action": "copy",
+                "submenu": [
+                    { "label": QbzSession.tr("Track name", QbzSession.trRev), "icon": "copy", "action": "copy-title" },
+                    { "label": QbzSession.tr("Track - Album - Artist", QbzSession.trRev), "icon": "clipboard", "action": "copy-full" }
+                ]
+            })
+            return m.concat(root.abEntries())
         }
         onPicked: function (a) {
             var id = QbzPlayer.npTrackId
@@ -932,6 +1025,19 @@ Rectangle {
             } else if (a === "album-favorite") {
                 if (QbzPlayer.npAlbumId !== "")
                     QbzLibrary.libraryToggleFavorite("album", QbzPlayer.npAlbumId)
+            } else if (a === "buy") {
+                if (id !== "") QbzAlbum.buyTrack(id)
+            } else if (a === "copy-title" || a === "copy-full") {
+                var parts = [QbzPlayer.npTitle || ""]
+                if (a === "copy-full") {
+                    if ((QbzPlayer.npAlbum || "") !== "") parts.push(QbzPlayer.npAlbum)
+                    if ((QbzPlayer.npArtist || "") !== "") parts.push(QbzPlayer.npArtist)
+                }
+                npClipboard.copy(parts.join(" - "))
+            } else if (a === "ab-mark") {
+                QbzPlayer.abMark()
+            } else if (a === "ab-clear") {
+                QbzPlayer.abClear()
             } else if (a === "mixtape") {
                 // MyQBZ AddItem, built here from the now-playing state:
                 // `npArtworkPath` is a file:// CACHE path, so it is NOT the

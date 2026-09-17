@@ -243,6 +243,7 @@ Item {
                             tintName: "muted"
                         }
                         TextInput {
+                            QbzTextEditMenu { }
                             id: searchInput
                             width: parent.width - 22
                             height: parent.height
@@ -414,7 +415,7 @@ Item {
                         height: 38
                         radius: 6
                         color: chip.modelData.selected ? theme.accent
-                             : chipArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                             : chipArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
                         Row {
                             anchors.fill: parent
@@ -507,7 +508,7 @@ Item {
                 radius: 6
                 opacity: root.liveCount > 0 ? 1.0 : 0.5
                 color: clearArea.containsMouse && root.liveCount > 0
-                    ? theme.surfaceHover : theme.surfaceElevated
+                    ? theme.surfaceElevatedHover : theme.surfaceElevated
                 Text {
                     anchors.centerIn: parent
                     text: QbzSession.tr("Clear filter", QbzSession.trRev)

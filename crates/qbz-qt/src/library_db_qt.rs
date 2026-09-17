@@ -16,7 +16,6 @@
 
 use std::path::{Path, PathBuf};
 
-use qbz_app::user_data::UserDataPaths;
 use qbz_library::{LibraryDatabase, LibraryError};
 
 /// `<data_dir>/qbz/users/<uid>/library.db` — the same per-user path the
@@ -44,14 +43,7 @@ use qbz_library::{LibraryDatabase, LibraryError};
 /// Reads still pass `create: false`, so nothing is conjured by listing; only a
 /// write brings `users/0/library.db` into existence.
 fn db_path() -> Option<PathBuf> {
-    let uid = UserDataPaths::load_last_user_id().unwrap_or(0);
-    Some(
-        dirs::data_dir()?
-            .join("qbz")
-            .join("users")
-            .join(uid.to_string())
-            .join("library.db"),
-    )
+    crate::local_state::db_path()
 }
 
 /// Run `f` against the per-user database. `create` mirrors the reference's
@@ -73,25 +65,16 @@ pub(crate) fn with_db<F, R>(create: bool, f: F) -> Option<R>
 where
     F: FnOnce(&LibraryDatabase) -> Result<R, LibraryError>,
 {
-    let path = db_path()?;
-    if create {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-    } else if !path.exists() {
-        return None;
-    }
-    let db = match LibraryDatabase::open(&path) {
-        Ok(db) => db,
-        Err(e) => {
-            log::warn!("[qbz-qt] library.db open failed: {e}");
-            return None;
-        }
+    let store = qbz_library::LibraryStore::new(db_path()?);
+    let result = if create {
+        store.write(f).map(Some)
+    } else {
+        store.read(f)
     };
-    match f(&db) {
-        Ok(r) => Some(r),
+    match result {
+        Ok(value) => value,
         Err(e) => {
-            log::error!("[qbz-qt] library.db op failed: {e}");
+            log::error!("[qbz-qt] library.db operation failed: {e}");
             None
         }
     }

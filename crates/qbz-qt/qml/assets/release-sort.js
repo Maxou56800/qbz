@@ -68,7 +68,14 @@ function compareItems(a, b, mode) {
     var field = fieldOf(mode), asc = ascending(mode)
     if (field === "release-date") return compareDates(a, b, !asc)
     if (field === "date") {
-        // Existing library feed recency proxy: lower rank is more recent.
+        // The REAL date when the row has one (`addedAt`: the catalog's
+        // favorited_at, a purchase's purchased_at, a local favourite's own
+        // stamp); a dated row always precedes an undated one; undated rows
+        // fall back to the per-source recency proxy (lower rank = newer).
+        // Total and transitive, so Array.sort cannot scramble it.
+        var at = Number(a.addedAt || 0), bt = Number(b.addedAt || 0)
+        if (at && bt) return (bt - at) * (asc ? -1 : 1)
+        if (at || bt) return at ? -1 : 1
         var ar = a.added_rank === undefined ? a._feedOrder : a.added_rank
         var br = b.added_rank === undefined ? b._feedOrder : b.added_rank
         return (Number(ar || 0) - Number(br || 0)) * (asc ? -1 : 1)

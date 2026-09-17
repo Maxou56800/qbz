@@ -59,14 +59,15 @@ Rectangle {
 
     // The view's album + url-keyed cover map (artwork pipeline).
     //
-    // Applied imperatively so a SAME-ALBUM deferred rail publish can preserve
-    // the ListView offset. Binding `model` to a freshly parsed JS array makes
-    // QQuickItemView reset contentY whenever Similar albums / Suggestions / More
-    // from this artist lands — the forced jump the owner caught while reading.
+    // Applied imperatively so the page can tell a SAME-ALBUM deferred rail
+    // publish (Similar albums / Suggestions / More from this artist landing
+    // while the user reads: the viewport stays put) from a NEW album (the
+    // track filter resets and the page starts at the top). The tape itself is
+    // swapped on `cellsModel`, a QbzArrayModel: reassigning the ListView's
+    // `model` would reset contentY on every publish and, on Qt 6.11, focus a
+    // delegate — see that control's header for both.
     property var album: ({})
     property string documentAlbumId: ""
-    property int albumDocumentEpoch: 0
-    property real albumRestoreY: 0
 
     function parseAlbumDocument() {
         try {
@@ -82,30 +83,23 @@ Rectangle {
         var nextId = nextHeader.id !== undefined && nextHeader.id !== null
             ? String(nextHeader.id) : ""
         var sameAlbum = nextId !== "" && nextId === root.documentAlbumId
-        var savedY = sameAlbum ? pageFlick.contentY : 0
-        root.albumDocumentEpoch += 1
-        var epoch = root.albumDocumentEpoch
+        if (!sameAlbum && root.documentAlbumId !== "") {
+            // A different release replacing the one on screen (the empty
+            // document a load publishes first counts): its track list starts
+            // unfiltered — the header's search box mirrors `trackQuery` — and
+            // at the top. The first document of a mount leaves the viewport
+            // alone: ScrollMemory may be restoring a Back navigation.
+            root.trackQuery = ""
+            cellsModel.scrollToTop()
+        }
         root.album = next
         if (nextId !== "")
             root.documentAlbumId = nextId
-        if (!sameAlbum || savedY <= pageFlick.originY)
-            return
-        root.albumRestoreY = savedY
-        // The model reset and its content-height polish happen after the
-        // document assignment. One deferred restore coalesces a publish burst
-        // and clamps if the replacement document is genuinely shorter.
-        Qt.callLater(function () {
-            if (epoch !== root.albumDocumentEpoch
-                    || nextId !== root.documentAlbumId)
-                return
-            pageFlick.forceLayout()
-            var minY = pageFlick.originY
-            var maxY = minY + Math.max(0, pageFlick.contentHeight - pageFlick.height)
-            pageFlick.contentY = Math.max(minY, Math.min(root.albumRestoreY, maxY))
-        })
     }
 
     readonly property var albumHeader: album.header || ({})
+    /// The "cannot show this release" arm of the document (album_qt::publish_unavailable).
+    readonly property var unavailable: album.unavailable || null
     readonly property var tracks: album.tracks || []
     readonly property var purchase: album.purchase || ({})
     readonly property var localPurchaseVariants: purchase.localVariants || []
@@ -848,7 +842,18 @@ Rectangle {
         anchors.fill: parent
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.listCells
+        // The tape is swapped on this model, never on `model:` itself: a
+        // fresh array assigned to the ListView after completion makes Qt 6.11
+        // force currentIndex 0 and focus delegate 0, which robbed the header's
+        // track filter of the keyboard on every keystroke (2026-09-13). The
+        // wrapper also keeps the viewport across a same-album rail publish;
+        // applyAlbumDocument() asks for the top when the album changes.
+        model: QbzArrayModel {
+            id: cellsModel
+            view: pageFlick
+            rows: root.listCells
+            delegate: cellsDelegate
+        }
         reuseItems: true
         currentIndex: -1
         // The track tape is cheap enough that a fast wheel can consume one
@@ -889,12 +894,79 @@ Rectangle {
             // NavButtons is a 0px placeholder in the Slint source.
             Item { width: 1; height: 22 }
 
+            // The release cannot be shown (album_qt::publish_unavailable,
+            // 2026-09-13): gone from the catalog, or a load failure. The
+            // heading comes from the row that opened it, then the reason, and
+            // for a gone release the best-ranked alternatives Qobuz still
+            // sells — the same ranking the playlist replacement flow uses.
+            Column {
+                visible: root.unavailable !== null
+                width: parent.width - 64
+                spacing: 12
+                Item { width: 1; height: 8 }
+                Text {
+                    width: parent.width
+                    text: root.unavailable && (root.unavailable.title || "") !== ""
+                        ? root.unavailable.title
+                        : QbzSession.tr("This release", QbzSession.trRev)
+                    color: theme.textPrimary
+                    font.pixelSize: theme.fontTitle
+                    font.weight: theme.weightBold
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    visible: root.unavailable && (root.unavailable.artist || "") !== ""
+                    width: parent.width
+                    text: root.unavailable ? (root.unavailable.artist || "") : ""
+                    color: theme.textSecondary
+                    font.pixelSize: theme.fontSection
+                    elide: Text.ElideRight
+                }
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    QbzIcon {
+                        name: "circle-alert"
+                        width: 18
+                        height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        tintName: "muted"
+                    }
+                    Text {
+                        width: parent.width - 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.unavailable && root.unavailable.gone === true
+                            ? QbzSession.tr("This release is no longer available on Qobuz.", QbzSession.trRev)
+                            : QbzSession.tr("Couldn't load this release.", QbzSession.trRev)
+                              + ((root.unavailable && (root.unavailable.error || "") !== "")
+                                 ? " " + root.unavailable.error : "")
+                        color: theme.textMuted
+                        font.pixelSize: theme.fontBody
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Item { width: 1; height: 8 }
+                Text {
+                    visible: root.unavailable && root.unavailable.loading === true
+                    text: QbzSession.tr("Looking for other versions…", QbzSession.trRev)
+                    color: theme.textMuted
+                    font.pixelSize: theme.fontBody
+                }
+                SectionRail {
+                    visible: root.unavailable && (root.unavailable.alternatives || []).length > 0
+                    width: parent.width
+                    title: QbzSession.tr("You might be interested in these instead", QbzSession.trRev)
+                    items: root.unavailable ? (root.unavailable.alternatives || []) : []
+                    coverMap: root.coverMap
+                }
+            }
+
             // --- Album header skeleton ----------------------------------
             // Mounted on the primary flag, and the real header is hidden by
             // the same flag: opening album B never renders a half-empty
             // header frame while B's document is in flight.
             Row {
-                visible: root.primaryLoading
+                visible: root.primaryLoading && root.unavailable === null
                 width: parent.width - 64
                 spacing: root.headerGapPx
 
@@ -932,7 +1004,7 @@ Rectangle {
 
             // --- Album header -------------------------------------------
             Row {
-                visible: !root.primaryLoading
+                visible: !root.primaryLoading && root.unavailable === null
                 width: parent.width - 64
                 spacing: root.headerGapPx
 
@@ -1001,11 +1073,22 @@ Rectangle {
                             anchors.rightMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 0
+                            // The title's natural width, measured OUTSIDE the
+                            // Text: an elided Text recomputes its implicit size
+                            // after laying out at the bound width, so a `width`
+                            // that reads its own `implicitWidth` is a binding
+                            // loop (Qt reported it on every album open).
+                            TextMetrics {
+                                id: compactTitleMetrics
+                                font.pixelSize: theme.fontSection
+                                font.weight: theme.weightBold
+                                text: albumHeader.title || ""
+                            }
                             Text {
                                 id: compactAlbumTitle
                                 width: (albumHeader.artist || "") === ""
                                     ? compactHeading.width
-                                    : Math.min(implicitWidth,
+                                    : Math.min(Math.ceil(compactTitleMetrics.advanceWidth),
                                                Math.max(80, compactHeading.width * 0.62))
                                 text: albumHeader.title || ""
                                 color: root.hdrStrong
@@ -1311,6 +1394,23 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             onClicked: albumInfo.openFor(albumHeader.id)
                         }
+                        // "Buy on Qobuz" (2026-09-13): only when the catalog
+                        // says the release is sold and it is not already
+                        // owned; a link to the store page, not a purchase here.
+                        QbzCircleAction {
+                            id: buyButton
+                            visible: albumHeader.purchasable === true
+                                && (root.purchase.entitlementState || "") !== "purchased"
+                            name: "shopping-bag"
+                            diameterOverride: root.compactHeaderPref ? 28 : 0
+                            overlay: root.hdrOverlay
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: QbzAlbum.buyAlbum(albumHeader.id)
+                            HoverHandler { id: buyHover }
+                            ToolTip.visible: buyHover.hovered
+                            ToolTip.text: QbzSession.tr("Buy on Qobuz", QbzSession.trRev)
+                            ToolTip.delay: 350
+                        }
                         QbzCircleAction {
                             id: albumMenuBtn
                             name: "ellipsis"
@@ -1418,7 +1518,7 @@ Rectangle {
                     // instead of a floating overlay.
                     QbzMultiSelectBar {
                         id: bulkBar
-                        visible: root.multiSelect && !root.primaryLoading
+                        visible: root.multiSelect && !root.primaryLoading && root.unavailable === null
                         width: parent.width
                         selectedCount: root.selectedCount
                         // The reference's full AlbumView inventory
@@ -1438,7 +1538,7 @@ Rectangle {
 
                     // Toolbar — quality badge + track search (+ inert select).
                     Row {
-                        visible: !QbzAlbum.albumLoading
+                        visible: !QbzAlbum.albumLoading && root.unavailable === null
                         width: parent.width
                         height: 52
                         spacing: 16
@@ -1463,42 +1563,24 @@ Rectangle {
                                 - 168 - 30 - 2 * 16)
                             height: 1
                         }
-                        Rectangle {
+                        // Track filter (QbzSearchField: Escape clears + blurs,
+                        // clear cross). The keyboard survives the tape rebuild
+                        // because the tape lives on a QbzArrayModel.
+                        QbzSearchField {
+                            id: trackSearch
                             width: 168
                             height: 34
-                            radius: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            color: theme.surfaceElevated
-                            border.width: 1
-                            border.color: theme.borderSubtle
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 7
-                                QbzIcon {
-                                    name: "search"
-                                    width: 14
-                                    height: 14
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    tintName: "muted"
-                                }
-                                TextInput {
-                                    width: parent.width - 21
-                                    height: parent.height
-                                    color: theme.textPrimary
-                                    font.pixelSize: 13
-                                    verticalAlignment: Text.AlignVCenter
-                                    clip: true
-                                    onTextEdited: root.trackQuery = text
-                                    Text {
-                                        visible: parent.text === ""
-                                        anchors.fill: parent
-                                        text: QbzSession.tr("Search tracks...", QbzSession.trRev)
-                                        color: theme.textMuted
-                                        font.pixelSize: 13
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
+                            placeholder: QbzSession.tr("Search tracks...", QbzSession.trRev)
+                            onEdited: function (text) { root.trackQuery = text }
+                            // A new release resets `trackQuery`
+                            // (applyAlbumDocument); the box follows, so no
+                            // stale query outlives the album it was typed on.
+                            Connections {
+                                target: root
+                                function onTrackQueryChanged() {
+                                    if (trackSearch.text !== root.trackQuery)
+                                        trackSearch.text = root.trackQuery
                                 }
                             }
                         }
@@ -1510,7 +1592,8 @@ Rectangle {
                             height: 30
                             radius: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            color: selectToggleArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                            color: selectToggleArea.containsMouse ? theme.elevatedHoverFill
+                                : theme.elevatedFill
                             border.width: 1
                             border.color: root.multiSelect ? theme.accent : theme.borderSubtle
                             QbzIcon {
@@ -1548,7 +1631,7 @@ Rectangle {
                     // the band so `centerIn` centres them, which is the fix
                     // this block used to document at length.
                     TrackListHeader {
-                        visible: !QbzAlbum.albumLoading
+                        visible: !QbzAlbum.albumLoading && root.unavailable === null
                         width: parent.width
                         bandHeight: 40
                         labelSpacing: 0.5
@@ -1700,7 +1783,10 @@ Rectangle {
         // The child paints over the inert cells reserved by buildTrackCells().
         // cacheBuffer keeps the root alive until the overflowing child is well
         // outside the viewport, and creates the next heavy row asynchronously.
-        delegate: DelegateChooser {
+        // Handed to cellsModel: Qt 6.8/6.9 ignore a view's delegate when the
+        // model is an external DelegateModel, and rendered zero rows.
+        DelegateChooser {
+            id: cellsDelegate
             role: "kind"
 
             DelegateChoice {
@@ -1811,7 +1897,6 @@ Rectangle {
                         item: trackCell.modelData.track
                         number: trackCell.modelData.trackNumber
                         zebra: true
-                        clickPlays: false
                         artistLink: true
                         qualityStyle: "text"
                         showDownload: true
@@ -1826,9 +1911,14 @@ Rectangle {
                         // the entry can.
                         menuShowGoTo: false
                         onPlayRequested: QbzPlayer.playAlbumFrom(albumHeader.id, item.id)
+                        // TrackRow emits "next" | "later" | "queue" and
+                        // `enqueue_album_track` has an arm for each. Folding
+                        // everything but "next" into "later" made this row's
+                        // "Add to queue" insert on the manual block's tail —
+                        // right after the current track, under the "Next in
+                        // queue" header — instead of appending at the end.
                         onEnqueueRequested: function (m) {
-                            QbzPlayer.enqueueAlbumTrack(albumHeader.id, item.id,
-                                m === "next" ? "next" : "later")
+                            QbzPlayer.enqueueAlbumTrack(albumHeader.id, item.id, m)
                         }
                         onMixtapeRequested: QbzMyQbzAdd.open(JSON.stringify([{
                             "itemType": "track", "source": "qobuz",
@@ -1962,7 +2052,9 @@ Rectangle {
     // Back/forward scroll memory (controls/ScrollMemory.qml): reports
     // this container's offset while it is the live page, and restores it
     // when a back/forward step arms this route.
-    ScrollMemory { target: pageFlick; scope: "album" }
+    // Origin-relative: the tape swaps on cellsModel drift ListView.originY,
+    // so an absolute contentY would restore a different row after Back.
+    ScrollMemory { target: pageFlick; scope: "album"; relativeToOrigin: true }
     QbzScrollBar {
         anchors.right: parent.right
         anchors.rightMargin: 4

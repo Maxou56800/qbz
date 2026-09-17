@@ -420,8 +420,15 @@ impl PlaybackEngine {
     where
         S: Source<Item = f32> + Send + 'static,
     {
+        self.append_with_state(source, true)
+    }
+
+    /// Install a first PCM source with its transport intent already set.
+    pub fn append_with_state<S>(&mut self, source: S, playing: bool) -> Result<(), String>
+    where S: Source<Item = f32> + Send + 'static {
         match self {
             Self::Rodio { sink } => {
+                if !playing { sink.pause(); }
                 sink.append(source);
                 Ok(())
             }
@@ -445,7 +452,7 @@ impl PlaybackEngine {
                     position_frames.store(0, Ordering::SeqCst);
                     should_stop.store(false, Ordering::SeqCst);
                     source_transition.store(false, Ordering::SeqCst);
-                    is_playing.store(true, Ordering::SeqCst);
+                    is_playing.store(playing, Ordering::SeqCst);
                     log::info!("[{label}] First source queued, playback starting");
                 } else {
                     log::info!("[{label}] Source queued for gapless transition");
@@ -477,7 +484,7 @@ impl PlaybackEngine {
                     position_frames.store(0, Ordering::SeqCst);
                     should_stop.store(false, Ordering::SeqCst);
                     source_transition.store(false, Ordering::SeqCst);
-                    is_playing.store(true, Ordering::SeqCst);
+                    is_playing.store(playing, Ordering::SeqCst);
                     log::info!("[JACK Engine] First source queued, playback starting");
                 } else {
                     log::info!("[JACK Engine] Source queued for gapless transition");
@@ -568,7 +575,9 @@ impl PlaybackEngine {
                 is_playing.store(false, Ordering::SeqCst);
 
                 if let Some(handle) = playback_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[{label}] playback thread panicked before stop completed");
+                    }
                 }
 
                 if let Err(e) = stream.stop() {
@@ -589,7 +598,9 @@ impl PlaybackEngine {
                 should_stop.store(true, Ordering::SeqCst);
                 is_playing.store(false, Ordering::SeqCst);
                 if let Some(handle) = feeder_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[JACK Engine] feeder thread panicked before stop completed");
+                    }
                 }
                 // JackStream's Drop deactivates the client + unregisters the ports.
             }
@@ -608,7 +619,9 @@ impl PlaybackEngine {
                 should_stop.store(true, Ordering::SeqCst);
                 is_playing.store(false, Ordering::SeqCst);
                 if let Some(handle) = writer_thread.take() {
-                    let _ = handle.join();
+                    if handle.join().is_err() {
+                        log::error!("[DoP Engine] writer thread panicked before stop completed");
+                    }
                 }
                 if let Err(e) = stream.stop() {
                     log::warn!("[DoP Engine] Stop failed: {}", e);
@@ -931,14 +944,15 @@ fn direct_writer_thread<S: qbz_audio::backend::DirectSink + ?Sized>(
 
         // Write whatever we have to the direct sink (even partial chunks on source end)
         if !buffer_f32.is_empty() {
-            if let Err(e) = stream.write_f32(&buffer_f32) {
-                log::error!("[{label}] Write failed: {}", e);
-                break 'thread;
-            }
-
-            total_frames += frames_in_chunk as u64;
+            let result = stream.write_f32_interruptible(&buffer_f32, &should_stop);
+            let accepted = match &result { Ok(frames) => *frames, Err(error) => error.frames_written };
+            total_frames += accepted as u64;
             position_frames.store(total_frames, Ordering::SeqCst);
             duration_frames.store(total_frames, Ordering::SeqCst);
+            if let Err(error) = result {
+                if !error.canceled { log::error!("[{label}] Write failed: {}", error.message); }
+                break 'thread;
+            }
 
             if visualizer_enabled {
                 match stream.playback_delay_frames() {
@@ -985,7 +999,7 @@ fn direct_writer_thread<S: qbz_audio::backend::DirectSink + ?Sized>(
                 None => {
                     // No next source — this is a natural end of playback
                     log::info!("[{label}] No next source, draining the device buffer");
-                    if let Err(e) = stream.drain() {
+                    if let Err(e) = stream.drain_interruptible(&should_stop) {
                         log::warn!("[{label}] Drain failed: {}", e);
                     }
                     current_source = None;
@@ -1237,6 +1251,72 @@ fn dop_writer_thread(
 #[cfg(test)]
 mod tests {
     use super::direct_pcm_feed_frames;
+
+    use super::*;
+    use qbz_audio::backend::DirectSink;
+
+    struct RecordingSink(std::sync::mpsc::Sender<Vec<f32>>);
+    impl DirectSink for RecordingSink {
+        fn write_f32(&self, samples: &[f32]) -> Result<(), String> {
+            self.0.send(samples.to_vec()).map_err(|e| e.to_string())
+        }
+        fn drain(&self) -> Result<(), String> { Ok(()) }
+        fn stop(&self) -> Result<(), String> { Ok(()) }
+        fn sample_rate(&self) -> u32 { 192_000 }
+        fn channels(&self) -> u16 { 2 }
+        fn log_label(&self) -> &'static str { "test output" }
+    }
+
+    #[test]
+    fn paused_source_reaches_real_writer_only_after_resume() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut engine = PlaybackEngine::new_direct(Arc::new(RecordingSink(tx)), None, None, Arc::new(|_| {}));
+        let samples = vec![0.25f32; 3840];
+        let source = rodio::buffer::SamplesBuffer::new(
+            std::num::NonZeroU16::new(2).unwrap(),
+            std::num::NonZeroU32::new(192_000).unwrap(), samples.clone());
+        engine.append_with_state(source, false).unwrap();
+        assert!(rx.recv_timeout(Duration::from_millis(150)).is_err(), "paused installation wrote audio");
+        engine.play();
+        let written = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        engine.stop();
+        assert_eq!(written, samples);
+    }
+
+    #[test]
+    fn stop_cancels_a_stalled_writer_and_counts_only_accepted_frames() {
+        struct StalledSink(std::sync::mpsc::Sender<()>);
+        impl DirectSink for StalledSink {
+            fn write_f32(&self, _: &[f32]) -> Result<(), String> { unreachable!() }
+            fn write_f32_interruptible(&self, _: &[f32], cancel: &AtomicBool)
+                -> Result<usize, qbz_audio::backend::DirectWriteError> {
+                self.0.send(()).unwrap();
+                while !cancel.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(qbz_audio::backend::DirectWriteError {
+                    frames_written: 2, canceled: true, message: "stopped".into(),
+                })
+            }
+            fn drain(&self) -> Result<(), String> { panic!("failed write must not drain") }
+            fn stop(&self) -> Result<(), String> { Ok(()) }
+            fn sample_rate(&self) -> u32 { 192_000 }
+            fn channels(&self) -> u16 { 2 }
+            fn log_label(&self) -> &'static str { "stalled test output" }
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut engine = PlaybackEngine::new_direct(Arc::new(StalledSink(tx)), None, None, Arc::new(|_| {}));
+        let PlaybackEngine::Direct { position_frames, .. } = &engine else { unreachable!() };
+        let position = position_frames.clone();
+        engine.append(rodio::buffer::SamplesBuffer::new(
+            std::num::NonZeroU16::new(2).unwrap(),
+            std::num::NonZeroU32::new(192_000).unwrap(), vec![0.25f32; 3840])).unwrap();
+        rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let start = std::time::Instant::now();
+        engine.stop();
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert_eq!(position.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn direct_pcm_feed_stays_near_ten_ms_across_pcm_rates() {

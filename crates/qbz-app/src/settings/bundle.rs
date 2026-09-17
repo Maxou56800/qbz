@@ -678,8 +678,10 @@ const AUDIO_PORTABLE: &[&str] = &[
     "stream_first_track",
     "stream_buffer_seconds",
     "streaming_only",
+    "playback_cache",
     "normalization_enabled",
     "normalization_target_lufs",
+    "normalization_prevent_clipping",
     "gapless_enabled",
     "allow_quality_fallback",
     "sync_audio_on_startup",
@@ -1195,6 +1197,10 @@ fn apply_audio_writes(data_root: &Path, writes: &[(&str, &Value)]) -> Result<(),
             "stream_buffer_seconds" => {
                 store.set_stream_buffer_seconds(value.as_u64().unwrap_or(2) as u8)?
             }
+            "playback_cache" => {
+                let policy = serde_json::from_value((*value).clone()).map_err(|e| format!("playback_cache: {e}"))?;
+                store.set_playback_cache(&policy)?;
+            }
             "streaming_only" => store.set_streaming_only(as_bool(value))?,
             "limit_quality_to_device" => store.set_limit_quality_to_device(as_bool(value))?,
             "preferred_sample_rate" => {
@@ -1204,13 +1210,16 @@ fn apply_audio_writes(data_root: &Path, writes: &[(&str, &Value)]) -> Result<(),
             "normalization_target_lufs" => {
                 store.set_normalization_target_lufs(value.as_f64().unwrap_or(-14.0) as f32)?
             }
+            "normalization_prevent_clipping" => {
+                store.set_normalization_prevent_clipping(as_bool(value))?
+            }
             "gapless_enabled" => store.set_gapless_enabled(as_bool(value))?,
             "allow_quality_fallback" => store.set_allow_quality_fallback(as_bool(value))?,
             "sync_audio_on_startup" => store.set_sync_audio_on_startup(as_bool(value))?,
             "quality_fallback_behavior" => {
                 store.set_quality_fallback_behavior(value.as_str().unwrap_or("always_fallback"))?
             }
-            other => log::warn!("[bundle] apply: unhandled audio key {other}"),
+            other => return Err(format!("unsupported audio setting: {other}")),
         }
     }
     Ok(())

@@ -556,6 +556,7 @@ Rectangle {
                                 height: parent.height
                                 clip: true
                                 TextInput {
+                                    QbzTextEditMenu { }
                                     id: searchInput
                                     anchors.fill: parent
                                     color: theme.textPrimary
@@ -587,7 +588,7 @@ Rectangle {
                         border.width: 1
                         border.color: root.multiSelect ? theme.accent : theme.borderSubtle
                         color: (root.multiSelect || selectArea.containsMouse)
-                            ? theme.surfaceHover
+                            ? theme.surfaceElevatedHover
                             : theme.surfaceElevated
                         QbzIcon {
                             name: "square-check-big"

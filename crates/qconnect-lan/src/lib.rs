@@ -1,10 +1,14 @@
-//! Official Qobuz Connect LAN receiver surface.
+//! Official Qobuz Connect LAN surface, both halves.
 //!
-//! This crate owns only local discovery, HTTP wire validation and bounded
-//! admission. It deliberately has no Qobuz client, player, Qt or daemon
-//! dependency; credential validation and activation belong to the coordinator.
+//! Receiver half: local discovery (announce), HTTP wire validation and bounded
+//! admission. Controller half (`controller`, 2026-09-13): browse, probe and
+//! hand delegated credentials to another receiver. The crate deliberately has
+//! no Qobuz client, player, Qt or daemon dependency; credential validation and
+//! activation belong to the coordinator, and minting the delegated tokens to
+//! `qbz-qobuz` (`delegate_qconnect_auth`).
 
 mod admission;
+mod controller;
 mod mdns;
 mod model;
 mod projection;
@@ -12,6 +16,11 @@ mod server;
 mod validation;
 
 pub use admission::{admission_channel, AdmissionInbox, AdmissionSender, SubmitError};
+pub use controller::{
+    endpoint_url, ordered_addresses, HandoffBody, LanBrowseEvent, LanBrowser,
+    LanControllerClient, LanControllerError, LanRendererCandidate, LanRendererProbe,
+    LanTokenOut,
+};
 pub use model::{
     ConnectInfo, DeviceType, DisplayInfo, HandoffCandidate, LanJwtToken, MaxAudioQuality,
 };

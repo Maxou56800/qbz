@@ -12,6 +12,8 @@ name = "qbz"
 path = "src/main.rs"
 
 [dependencies]
+qbz-updater = { path = "../qbz-updater" }
+qbz-control = { path = "../qbz-control" }
 cxx = "1"
 cxx-qt = "0.7"
 cxx-qt-lib = { version = "0.7", features = ["qt_full"] }
@@ -150,6 +152,11 @@ ksni = { version = "0.3", default-features = false, features = ["blocking", "asy
 # Session-bus single-instance guard. Keep the same async-io executor as ksni;
 # enabling zbus/tokio would poison the graph-wide executor choice.
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+# The "Wallpaper" background reads this window's place on a Plasma Wayland
+# desktop through org_kde_plasma_window_management (wallpaper_wayland_qt.rs)
+# on its OWN client connection; Qt's display is never shared.
+wayland-client = "0.31"
+wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 
 [build-dependencies]
 cxx-qt-build = "0.7"

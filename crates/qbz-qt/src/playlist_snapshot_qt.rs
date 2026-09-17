@@ -39,10 +39,14 @@ pub fn authoritative_entries(
     )
 }
 
-pub fn record_authoritative_detached(entries: Vec<AuthoritativeEntry>) {
+pub fn record_authoritative_detached(mut entries: Vec<AuthoritativeEntry>) {
     let write = move || {
-        let result = crate::library_db_qt::with_db(true, |db| {
-            Ok(db.with_connection(|conn| repo::record_authoritative_list(conn, &entries)))
+        let result = crate::library_qt::with_deleted_playlists(|deleted| {
+            entries.retain(|entry| !deleted.contains(&entry.qobuz_playlist_id.to_string()));
+            let result = crate::library_db_qt::with_db(true, |db| {
+                Ok(db.with_connection(|conn| repo::record_authoritative_list(conn, &entries)))
+            });
+            result
         });
         match result {
             Some(Ok(generation)) => {

@@ -1,12 +1,13 @@
 //! Background loudness analyzer thread.
 //!
 //! Long-lived thread that receives decoded audio samples from `AnalyzerTap`,
-//! computes EBU R128 integrated LUFS, and updates a shared `Arc<AtomicU32>`
-//! gain value that `DynamicAmplify` reads.
+//! computes EBU R128 integrated LUFS + true peak, and updates a shared
+//! `Arc<AtomicU32>` gain value that `DynamicAmplify` reads.
 //!
-//! - First measurement after ~10s of audio (EBU R128 needs sufficient data)
-//! - Refinement every ~5s thereafter (gain converges by ~30-60s)
-//! - Cached results are used immediately on cache hit
+//! - Start gain comes from the player (cache / ReplayGain) when known; else
+//!   the first measurement after ~10 s of audio sets it ONCE per track
+//! - Refinement every ~5 s feeds the cache only (≥ 30 s partial; the last
+//!   window of the track is stored as the full-track figure)
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Receiver;
@@ -16,12 +17,15 @@ use std::thread;
 use ebur128::{EbuR128, Mode};
 
 use super::analyzer_tap::AnalyzerMessage;
-use super::loudness::db_to_linear;
-use super::loudness_cache::LoudnessCache;
+use super::loudness_cache::{gain_for, LoudnessCache, LoudnessSource};
 use super::seek_waveform::{SeekWaveformAccumulator, SeekWaveformCache};
 
-/// Maximum gain boost in dB (conservative clipping prevention)
-const MAX_GAIN_DB: f32 = 6.0;
+/// A live window shorter than this is not worth caching: a skip at 12 s must
+/// not become "the loudness of the track".
+const MIN_CACHE_SECS: u64 = 30;
+/// The window that reaches this close to the end of the track is the
+/// full-track measurement.
+const END_WINDOW_SECS: u64 = 2;
 
 pub struct LoudnessAnalyzer;
 
@@ -65,27 +69,25 @@ impl LoudnessAnalyzer {
                     state = match (track.target_lufs, track.gain_atomic.clone()) {
                         (Some(target_lufs), Some(gain_atomic)) => {
                             log::info!(
-                                "[LoudnessAnalyzer] New track {} ({}Hz, {}ch, target {:.1} LUFS)",
+                                "[LoudnessAnalyzer] New track {} ({}Hz, {}ch, target {:.1} LUFS, start gain {})",
                                 track.track_id,
                                 track.sample_rate,
                                 track.channels,
-                                target_lufs
+                                target_lufs,
+                                if track.known_gain { "known" } else { "unknown, measuring" }
                             );
+                            // The player already resolved the start gain
+                            // (cache / ReplayGain); this thread only ever
+                            // fills a gap and feeds the cache.
                             let mut analyzer = AnalyzerState::new(
                                 track.track_id,
                                 track.sample_rate,
                                 track.channels,
                                 target_lufs,
+                                track.known_gain,
+                                track.prevent_clipping,
+                                track.duration_secs,
                             );
-                            if let Some(cached) = cache.get(track.track_id) {
-                                let gain = compute_gain_capped(cached.gain_db);
-                                gain_atomic.store(gain.to_bits(), Ordering::Relaxed);
-                                analyzer.initial_done = true;
-                                log::info!(
-                                    "[LoudnessAnalyzer] Cache hit for track {}: {:.2} dB (source: {}), gain {:.4}",
-                                    track.track_id, cached.gain_db, cached.source, gain
-                                );
-                            }
                             analyzer.gain_atomic = Some(gain_atomic);
                             Some(analyzer)
                         }
@@ -167,16 +169,35 @@ struct AnalyzerState {
     samples_fed: u64,
     /// Total samples fed at last measurement
     samples_at_last_measure: u64,
-    /// Whether initial measurement has been done
-    initial_done: bool,
+    /// The first measurement of the current window has been taken.
+    first_measure_done: bool,
+    /// A start gain was resolved before the first sample (cache /
+    /// ReplayGain): the live gain is never touched here.
+    known_gain: bool,
+    /// The live gain has been written once for this track. A seek does not
+    /// reset it: the level after a seek is the level before it.
+    live_gain_applied: bool,
+    prevent_clipping: bool,
+    /// Track length for the end-of-track trigger; 0 = unknown.
+    duration_secs: u64,
+    /// The end-of-track measurement of the current window has been taken.
+    end_measured: bool,
     /// Dynamic thresholds based on actual sample rate and channels
     initial_threshold: u64,
     refinement_interval: u64,
 }
 
 impl AnalyzerState {
-    fn new(track_id: u64, sample_rate: u32, channels: u16, target_lufs: f32) -> Self {
-        let ebur128 = EbuR128::new(channels as u32, sample_rate, Mode::I)
+    fn new(
+        track_id: u64,
+        sample_rate: u32,
+        channels: u16,
+        target_lufs: f32,
+        known_gain: bool,
+        prevent_clipping: bool,
+        duration_secs: u64,
+    ) -> Self {
+        let ebur128 = EbuR128::new(channels as u32, sample_rate, Mode::I | Mode::TRUE_PEAK)
             .expect("Failed to create EbuR128 instance");
 
         // Scale thresholds to actual sample rate and channel count
@@ -193,19 +214,30 @@ impl AnalyzerState {
             gain_atomic: None,
             samples_fed: 0,
             samples_at_last_measure: 0,
-            initial_done: false,
+            first_measure_done: false,
+            known_gain,
+            live_gain_applied: false,
+            prevent_clipping,
+            duration_secs,
+            end_measured: false,
             initial_threshold,
             refinement_interval,
         }
     }
 
-    /// Reset the EBU R128 analyzer (e.g., after seek) but keep the gain atomic.
+    /// Reset the EBU R128 window (e.g. after a seek). A seek restarts the
+    /// window, never the gain: `known_gain` and `live_gain_applied` stay.
     fn reset_analyzer(&mut self) {
-        self.ebur128 = EbuR128::new(self.channels as u32, self.sample_rate, Mode::I)
+        self.ebur128 = EbuR128::new(self.channels as u32, self.sample_rate, Mode::I | Mode::TRUE_PEAK)
             .expect("Failed to create EbuR128 instance");
         self.samples_fed = 0;
         self.samples_at_last_measure = 0;
-        self.initial_done = false;
+        self.first_measure_done = false;
+        self.end_measured = false;
+    }
+
+    fn seconds_fed(&self) -> u64 {
+        self.samples_fed / (self.sample_rate as u64 * self.channels as u64).max(1)
     }
 
     /// Feed samples to the EBU R128 analyzer and possibly update gain.
@@ -223,14 +255,23 @@ impl AnalyzerState {
 
         self.samples_fed += samples.len() as u64;
 
-        // Check if it's time to measure
-        let should_measure = if !self.initial_done {
-            self.samples_fed >= self.initial_threshold
-        } else {
-            self.samples_fed - self.samples_at_last_measure >= self.refinement_interval
-        };
+        // Check if it's time to measure: the 10 s / 5 s cadence, plus ONE
+        // extra measurement when the window reaches the end of the track,
+        // so the full-track figure is what the cache keeps.
+        let near_end = self.duration_secs > 0
+            && !self.end_measured
+            && self.seconds_fed() + END_WINDOW_SECS >= self.duration_secs;
+        let should_measure = near_end
+            || if !self.first_measure_done {
+                self.samples_fed >= self.initial_threshold
+            } else {
+                self.samples_fed - self.samples_at_last_measure >= self.refinement_interval
+            };
 
         if should_measure {
+            if near_end {
+                self.end_measured = true;
+            }
             self.measure_and_update(cache);
         }
     }
@@ -255,38 +296,119 @@ impl AnalyzerState {
         }
 
         let measured_lufs = loudness as f32;
-        let adjustment_db = self.target_lufs - measured_lufs;
-        let gain = compute_gain_capped(adjustment_db);
+        let true_peak = (0..self.channels as u32)
+            .filter_map(|c| self.ebur128.true_peak(c).ok())
+            .fold(0.0f64, f64::max) as f32;
+        let peak = (true_peak > 0.0).then_some(true_peak);
+        let gain = gain_for(measured_lufs, peak, self.target_lufs, self.prevent_clipping);
+        let secs = self.seconds_fed();
 
-        let phase = if self.initial_done {
-            "refine"
-        } else {
-            "initial"
-        };
         log::info!(
-            "[LoudnessAnalyzer] Track {} ({}): measured {:.1} LUFS, target {:.1}, adjustment {:.2} dB, gain {:.4}",
-            self.track_id, phase, measured_lufs, self.target_lufs, adjustment_db, gain
+            "[LoudnessAnalyzer] Track {} ({}): {:.1} LUFS, true peak {:.3}, target {:.1}, gain {:.4} after {}s",
+            self.track_id,
+            if self.first_measure_done { "refine" } else { "initial" },
+            measured_lufs,
+            true_peak,
+            self.target_lufs,
+            gain,
+            secs
         );
 
-        // Only update the live gain on the FIRST measurement.
-        // Refinements update the cache only — applying gain changes mid-song
-        // causes audible volume fluctuations within a single track.
-        if !self.initial_done {
+        // The live gain moves at most ONCE per track, and only when nothing
+        // was known at start: a later window must not re-level the song.
+        if !self.known_gain && !self.live_gain_applied {
             if let Some(ref atomic) = self.gain_atomic {
                 atomic.store(gain.to_bits(), Ordering::Relaxed);
             }
+            self.live_gain_applied = true;
         }
-
         self.samples_at_last_measure = self.samples_fed;
-        self.initial_done = true;
+        self.first_measure_done = true;
 
-        // Always cache the latest measurement for next playback
-        cache.set(self.track_id, adjustment_db, 0.0, "ebur128");
+        // Cache policy: the last window of the track is the full-track
+        // figure; anything from 30 s on is worth keeping as partial; a short
+        // window (a skip at 12 s) is not.
+        if self.duration_secs > 0 && secs + END_WINDOW_SECS >= self.duration_secs {
+            self.store(cache, measured_lufs, peak, LoudnessSource::Ebur128Full);
+        } else if secs >= MIN_CACHE_SECS {
+            self.store(cache, measured_lufs, peak, LoudnessSource::Ebur128Partial);
+        }
+    }
+
+    fn store(&self, cache: &LoudnessCache, lufs: f32, peak: Option<f32>, source: LoudnessSource) {
+        cache.store(self.track_id, lufs, peak, source);
     }
 }
 
-/// Convert a dB adjustment to a capped linear gain factor.
-fn compute_gain_capped(adjustment_db: f32) -> f32 {
-    let capped_db = adjustment_db.min(MAX_GAIN_DB);
-    db_to_linear(capped_db)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sine_batch(rate: u32, frames: usize, t0: &mut u64) -> Vec<f32> {
+        let mut v = Vec::with_capacity(frames * 2);
+        for _ in 0..frames {
+            let s = 0.1 * (2.0 * std::f32::consts::PI * 1000.0 * (*t0 as f32 / rate as f32)).sin();
+            v.push(s);
+            v.push(s);
+            *t0 += 1;
+        }
+        v
+    }
+
+    fn feed_seconds(state: &mut AnalyzerState, cache: &LoudnessCache, rate: u32, secs: u32, t0: &mut u64) {
+        let mut left = (rate * secs) as usize;
+        while left > 0 {
+            let n = left.min(2048);
+            state.feed_samples(&sine_batch(rate, n, t0), cache);
+            left -= n;
+        }
+    }
+
+    #[test]
+    fn unknown_start_writes_the_live_gain_once_and_caches_from_30s_and_at_the_end() {
+        let cache = LoudnessCache::in_memory().unwrap();
+        let atomic = Arc::new(AtomicU32::new(1.0f32.to_bits()));
+        let mut s = AnalyzerState::new(7, 48_000, 2, -14.0, false, true, 40);
+        s.gain_atomic = Some(atomic.clone());
+        let mut t = 0u64;
+        feed_seconds(&mut s, &cache, 48_000, 9, &mut t);
+        assert_eq!(f32::from_bits(atomic.load(Ordering::Relaxed)), 1.0, "nothing before 10 s");
+        feed_seconds(&mut s, &cache, 48_000, 2, &mut t);
+        let first = f32::from_bits(atomic.load(Ordering::Relaxed));
+        assert!(first > 1.0 && first < 2.0, "a -20 LUFS sine at -14 target is boosted: {first}");
+        assert!(cache.lookup(7).is_none(), "an 11 s window is not cached");
+        feed_seconds(&mut s, &cache, 48_000, 20, &mut t);
+        assert_eq!(
+            f32::from_bits(atomic.load(Ordering::Relaxed)),
+            first,
+            "refinements never touch the live gain"
+        );
+        assert_eq!(cache.lookup(7).unwrap().source, LoudnessSource::Ebur128Partial);
+        feed_seconds(&mut s, &cache, 48_000, 8, &mut t);
+        assert_eq!(
+            cache.lookup(7).unwrap().source,
+            LoudnessSource::Ebur128Full,
+            "39 s of a 40 s track is the full measurement"
+        );
+        // A seek resets the window but not the latch.
+        s.reset_analyzer();
+        feed_seconds(&mut s, &cache, 48_000, 12, &mut t);
+        assert_eq!(f32::from_bits(atomic.load(Ordering::Relaxed)), first);
+    }
+
+    #[test]
+    fn a_known_start_gain_is_never_overwritten_by_the_live_analyser() {
+        let cache = LoudnessCache::in_memory().unwrap();
+        let atomic = Arc::new(AtomicU32::new(0.7f32.to_bits()));
+        let mut s = AnalyzerState::new(7, 48_000, 2, -14.0, true, true, 40);
+        s.gain_atomic = Some(atomic.clone());
+        let mut t = 0u64;
+        feed_seconds(&mut s, &cache, 48_000, 35, &mut t);
+        assert_eq!(f32::from_bits(atomic.load(Ordering::Relaxed)), 0.7);
+        assert_eq!(
+            cache.lookup(7).unwrap().source,
+            LoudnessSource::Ebur128Partial,
+            "the window still lands in the cache"
+        );
+    }
 }

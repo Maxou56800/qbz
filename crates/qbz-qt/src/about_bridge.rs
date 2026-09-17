@@ -1,7 +1,7 @@
-//! QbzAbout — the About QBZ + What's New bridge.
+//! QbzAbout — About QBZ, release notes and local application updates.
 //!
-//! Two documents and four invokables. The controllers are `about_qt.rs` and
-//! `whats_new_qt.rs`; this file is glue and nothing else, exactly like
+//! Controllers: `about_qt.rs`, `whats_new_qt.rs`, and `updates_qt.rs`.
+//! This file is glue and nothing else, exactly like
 //! `musician_bridge.rs`.
 //!
 //! # Why a NEW bridge instead of more members on QbzShell
@@ -65,6 +65,7 @@ pub mod qbz_about_bridge {
         /// `hasBody`, the TOC and the flat block model. Produced by
         /// `whats_new_qt.rs`. Same `"{}"` default, same reason.
         #[qproperty(QString, whats_new_json)]
+        #[qproperty(QString, updates_json)]
         type QbzAbout = super::QbzAboutRust;
 
         /// Registers this object's Qt-thread hop. Harmless to call twice, and
@@ -72,6 +73,21 @@ pub mod qbz_about_bridge {
         /// (see the module header).
         #[qinvokable]
         fn boot(self: Pin<&mut QbzAbout>);
+
+        #[qinvokable]
+        fn updates_launch(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_check(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_close(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_ignore(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_install(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_cancel(self: Pin<&mut QbzAbout>);
+        #[qinvokable]
+        fn updates_set_launch(self: Pin<&mut QbzAbout>, enabled: bool);
 
         /// The header menu's "About QBZ" row. Publishes the document open and
         /// kicks the one-shot GitHub avatar fetch.
@@ -89,9 +105,15 @@ pub mod qbz_about_bridge {
         fn whats_new_open(self: Pin<&mut QbzAbout>);
 
         /// All What's New dismissal paths (Escape, the X, the backdrop, the
-        /// footer Close button).
+        /// footer Close button). Dismissing marks this version's deck as seen.
         #[qinvokable]
         fn whats_new_close(self: Pin<&mut QbzAbout>);
+
+        /// Offer the release deck once per version, from the shell's first
+        /// settled frame. No-op when the version has no deck or its deck was
+        /// already dismissed, so it is safe to call on every start.
+        #[qinvokable]
+        fn whats_new_auto_open(self: Pin<&mut QbzAbout>);
     }
 
     impl cxx_qt::Threading for QbzAbout {}
@@ -103,6 +125,7 @@ use qbz_about_bridge::QbzAbout;
 pub struct QbzAboutRust {
     about_json: QString,
     whats_new_json: QString,
+    updates_json: QString,
 }
 
 impl Default for QbzAboutRust {
@@ -112,6 +135,7 @@ impl Default for QbzAboutRust {
             // empty string throws on the very first frame.
             about_json: QString::from("{}"),
             whats_new_json: QString::from("{}"),
+            updates_json: QString::from("{}"),
         }
     }
 }
@@ -161,5 +185,41 @@ impl qbz_about_bridge::QbzAbout {
     pub fn whats_new_close(self: Pin<&mut Self>) {
         self.register_thread();
         crate::whats_new_qt::close();
+    }
+
+    pub fn whats_new_auto_open(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::whats_new_qt::auto_open_if_new();
+    }
+}
+
+impl qbz_about_bridge::QbzAbout {
+    pub fn updates_launch(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::launch();
+    }
+    pub fn updates_check(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::check();
+    }
+    pub fn updates_close(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::close();
+    }
+    pub fn updates_ignore(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::ignore();
+    }
+    pub fn updates_install(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::install();
+    }
+    pub fn updates_cancel(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::updates_qt::cancel();
+    }
+    pub fn updates_set_launch(self: Pin<&mut Self>, enabled: bool) {
+        self.register_thread();
+        crate::updates_qt::set_launch(enabled);
     }
 }

@@ -22,26 +22,38 @@ Item {
     id: root
 
     property string label: ""
+    property string description: ""
+    property bool kioskHost: false
     property bool selected: false
     signal clicked()
 
     QbzTheme { id: theme }
 
-    implicitWidth: row.implicitWidth
-    implicitHeight: Math.max(18, lbl.implicitHeight)
+    implicitWidth: lbl.implicitWidth + 24
+    implicitHeight: Math.max(root.kioskHost ? 44 : 18, row.implicitHeight)
+    activeFocusOnTab: enabled
+    Accessible.role: Accessible.RadioButton
+    Accessible.name: label
+    Accessible.description: description
+    Accessible.checked: selected
+    Accessible.onPressAction: if (enabled) clicked()
+    Keys.onSpacePressed: clicked()
+    Keys.onReturnPressed: clicked()
+    Keys.onEnterPressed: clicked()
 
     Row {
         id: row
+        width: parent.width
         anchors.verticalCenter: parent.verticalCenter
         spacing: 6
 
         Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
+            y: Math.max(0, (lbl.height - height) / 2)
             width: 18
             height: 18
             radius: 9
-            border.width: root.selected ? 0 : 1.5
-            border.color: theme.textMuted
+            border.width: root.selected && !root.activeFocus ? 0 : 1.5
+            border.color: root.activeFocus ? theme.accent : theme.textMuted
             color: root.selected ? theme.accent : "transparent"
             Rectangle {
                 visible: root.selected
@@ -52,19 +64,32 @@ Item {
                 color: theme.accentGlyphColor
             }
         }
-        Text {
-            id: lbl
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.label
-            color: theme.textPrimary
-            font.pixelSize: theme.fontBody
-            verticalAlignment: Text.AlignVCenter
+        Column {
+            width: parent.width - 24
+            spacing: 4
+            Text {
+                id: lbl
+                width: parent.width
+                text: root.label
+                color: theme.textPrimary
+                font.pixelSize: root.kioskHost ? theme.fontBody * 1.2 : theme.fontBody
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+            }
+            Text {
+                visible: root.description !== ""
+                width: parent.width
+                text: root.description
+                color: theme.textMuted
+                font.pixelSize: root.kioskHost ? theme.fontLegal * 1.2 : theme.fontLegal
+                wrapMode: Text.WordWrap
+            }
         }
     }
 
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        onClicked: { root.forceActiveFocus(); root.clicked() }
     }
 }

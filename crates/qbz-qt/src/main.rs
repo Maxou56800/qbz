@@ -139,6 +139,7 @@ mod kiosk_nav_qt;
 mod tray_bridge;
 // The kiosk profile itself (the same contract, §8): env/pref resolution, the
 // live Kiosk <-> Desktop toggle, and the boot decisions that follow from it.
+mod ab_loop_qt;
 mod artwork_qt;
 mod atmosphere_qt;
 mod kiosk_profile_qt;
@@ -196,6 +197,7 @@ mod log_viewer_qt;
 // other two are plain controller modules and must NOT be.
 mod about_bridge;
 mod about_qt;
+mod updates_qt;
 mod library_bulk;
 mod library_db_qt;
 mod library_prefs;
@@ -208,6 +210,9 @@ mod local_filter;
 mod local_library_qt;
 mod local_rows;
 mod local_state;
+mod local_service_qt;
+mod orbit_bridge;
+mod orbit_qt;
 mod recommendations_qt;
 mod whats_new_qt;
 // Watcher hints + periodic root reconciliation for the incremental scanner.
@@ -285,6 +290,10 @@ mod disc_meta_qt;
 mod label_qt;
 mod local_media_info_qt;
 mod nav_qt;
+mod page_restore_qt;
+mod wallpaper_qt;
+#[cfg(target_os = "linux")]
+mod wallpaper_wayland_qt;
 mod now_playing;
 mod offline_fwd;
 mod output_labels;
@@ -294,6 +303,7 @@ mod rip_qt;
 mod rip_wizard_qt;
 mod sacd_qt;
 mod share_qt;
+mod store_qt;
 mod tag_editor_bridge;
 mod tag_editor_qt;
 // Offline cache (downloads tier): state activation on login + the action
@@ -717,11 +727,10 @@ pub(crate) fn on_boot() {
     });
     offline_fwd::start_ui_forwarder();
 
-    // Derivative-cache housekeeping, off the Qt thread. Once per run: the
-    // `.jpg` orphan sweep is idempotent (FIX 1 moved the scaled derivatives to
-    // `.png`, so every `.jpg` left in `images/scaled/` is dead weight from a
-    // pre-fix build) and the byte cap is cheap — one `read_dir`, then unlink
-    // the oldest until the directory is back under the ceiling.
+    // Image-cache housekeeping, off the Qt thread, once per run: the shared
+    // `~/.cache/qbz/images` LRU trim (200 MB, batched under the cache mutex)
+    // and the `images/scaled` orphan sweep + byte cap. See artwork_qt.rs
+    // "Cache eviction".
     spawn(async {
         let _ = tokio::task::spawn_blocking(artwork_qt::housekeeping).await;
     });
@@ -817,6 +826,11 @@ fn on_session_entered() {
     let ordinary_entry = nav_qt::shell_entry_view();
     let logged_off = offline_fwd::engine().status().offline_session;
     let local_album = local_restore_qt::take_startup_album();
+    // The exact page (page_restore_qt: a detail, a root's tab, a Settings
+    // section, a search). Consumed here even when another door wins, so a
+    // re-entry in the same process never replays it. `ordinary_entry` already
+    // names its entry view — the shell mounted that view at construction.
+    let page = page_restore_qt::take_startup_page();
     let entry_view = if local_album.is_some() {
         "localalbum".to_string()
     } else if logged_off {
@@ -826,6 +840,8 @@ fn on_session_entered() {
     };
     nav_qt::record(&entry_view);
     hydrate_view(&entry_view);
+    // The desktop wallpaper, when a background mode paints it (a no-op otherwise).
+    wallpaper_qt::refresh();
     // Logged-off startup is the ONLY automatic redirect. An authenticated
     // account keeps the established startup/restore flow even when physical
     // connectivity is down. The selected tab is the first user-ordered Local
@@ -836,6 +852,15 @@ fn on_session_entered() {
     } else if logged_off {
         let landing = settings_qt::local_landing_tab(kiosk_profile_qt::active());
         navigate_to_tab("local", &landing);
+    } else if let Some(page) = page {
+        // Re-run the page's opener on the view the shell already mounted. A
+        // page that cannot come back (a catalog page while offline, a hidden
+        // Purchases surface, stale arguments) steps back onto the root that
+        // was seeded beneath it.
+        if !page_restore_qt::restore(&page) {
+            nav_qt::back();
+            hydrate_view(&nav_qt::current_view());
+        }
     }
     now_playing::publish_current();
     // Phase 3: fetch Discover > Home (online sessions only — the offline
@@ -1304,6 +1329,8 @@ pub(crate) fn reload_sidebar_including_local() {
 /// the only refresh that is correct offline AND does not cost a round trip
 /// (contract D10).
 pub(crate) fn publish_sidebar() {
+    let deletion_revision = library_qt::playlist_deletion_revision();
+    let insertion_revision = sidebar_qt::insertion_revision();
     let entries = sidebar_qt::rebuild();
     let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into());
     log::debug!(
@@ -1313,6 +1340,11 @@ pub(crate) fn publish_sidebar() {
     );
     let (sort_by, sort_asc) = sidebar_qt::sort_state();
     shell_bridge::ui(move |mut b| {
+        if deletion_revision != library_qt::playlist_deletion_revision()
+            || insertion_revision != sidebar_qt::insertion_revision()
+        {
+            return;
+        }
         b.as_mut().set_sidebar_json(QString::from(json.as_str()));
         b.as_mut()
             .set_sidebar_sort_by(QString::from(sort_by.as_str()));
@@ -1419,7 +1451,7 @@ pub(crate) fn open_album(album_id: String) {
     if offline_fwd::engine().status().is_offline() {
         return;
     }
-    nav_qt::record("album");
+    nav_qt::record_with("album", serde_json::json!({ "id": &album_id }));
     *LAST_DETAIL.lock().unwrap() = ("album".to_string(), album_id.clone());
     let runtime = app();
     album_bridge::ui(move |mut b| {
@@ -1437,7 +1469,8 @@ pub(crate) fn open_album(album_id: String) {
             }),
             Err(e) => {
                 log::warn!("[qbz-qt] album view load failed: {e}");
-                album_bridge::ui(move |mut b| b.as_mut().set_album_loading(false));
+                let gone = e == album_qt::ALBUM_GONE;
+                album_qt::publish_unavailable(album_id, gone, e);
             }
         }
     });
@@ -1452,7 +1485,7 @@ pub(crate) fn open_artist(artist_id: String) {
     if offline_fwd::engine().status().is_offline() {
         return;
     }
-    nav_qt::record("artist");
+    nav_qt::record_with("artist", serde_json::json!({ "id": &artist_id }));
     *LAST_DETAIL.lock().unwrap() = ("artist".to_string(), artist_id.clone());
     // Warm the Library feed in the background: the page's "In library" tab is
     // built off it, and on a cold session (or right after an account switch —
@@ -1890,7 +1923,7 @@ pub(crate) fn open_playlist(playlist_id: String) {
     // QBZ as a player without Qobuz — refusing them while offline would gate
     // local files behind a network the user does not have.
     if local_playlist_qt::is_local_id(&playlist_id) {
-        nav_qt::record("playlist");
+        nav_qt::record_with("playlist", serde_json::json!({ "id": &playlist_id }));
         ui(|mut b| b.as_mut().set_playlist_json(QString::from("{}")));
         let runtime = app();
         spawn(async move {
@@ -1904,7 +1937,7 @@ pub(crate) fn open_playlist(playlist_id: String) {
         log::warn!("[qbz-qt] open_playlist: invalid id {playlist_id}");
         return;
     };
-    nav_qt::record("playlist");
+    nav_qt::record_with("playlist", serde_json::json!({ "id": &playlist_id }));
     // Clear the previous playlist before the fetch — same stale-render as the
     // album and artist views had.
     ui(|mut b| b.as_mut().set_playlist_json(QString::from("{}")));
@@ -2140,6 +2173,37 @@ pub(crate) fn playlist_remove_track(row_id: String) {
             return;
         };
         playlist_qt::remove_track(&runtime, playlist_track_id).await
+    });
+}
+
+/// Multi-select "Remove from playlist": the three arms of
+/// `playlist_remove_track` over every selected row — the local repo rows in
+/// one pass, the sidecar rows one by one (each is its own table write), the
+/// Qobuz memberships in ONE API call.
+pub(crate) fn playlist_remove_tracks(ids_json: String) {
+    let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+    if ids.is_empty() {
+        return;
+    }
+    let runtime = app();
+    spawn(async move {
+        if local_playlist_qt::local_detail_open() {
+            local_playlist_qt::remove_rows(&runtime, &ids).await;
+            return;
+        }
+        let mut catalog: Vec<u64> = Vec::new();
+        for row_id in &ids {
+            if playlist_qt::is_mixed() && playlist_qt::remove_sidecar_row(&runtime, row_id).await {
+                continue;
+            }
+            match row_id.parse::<u64>() {
+                Ok(id) => catalog.push(id),
+                Err(_) => log::warn!("[qbz-qt] playlist bulk remove: non-numeric row id {row_id}"),
+            }
+        }
+        if !catalog.is_empty() {
+            playlist_qt::remove_tracks(&runtime, &catalog).await;
+        }
     });
 }
 
@@ -2568,7 +2632,23 @@ pub(crate) fn transport_seek(frac: f32) {
     spawn(async move { playback_qt::seek_frac(&runtime, frac).await });
 }
 
+pub(crate) fn transport_seek_by(delta_secs: i32) {
+    hotkeys_bridge::seek_relative(delta_secs);
+}
+
+pub(crate) fn ab_loop_mark() {
+    let runtime = app();
+    spawn(async move { ab_loop_qt::mark(runtime).await });
+}
+
+pub(crate) fn ab_loop_clear() {
+    ab_loop_qt::clear();
+}
+
 pub(crate) fn transport_set_volume(volume: f32) {
+    if now_playing::remote_volume_locked() {
+        return;
+    }
     // Local model first (instant UI), then the engine.
     now_playing::set_volume(volume);
     let runtime = app();
@@ -2576,6 +2656,9 @@ pub(crate) fn transport_set_volume(volume: f32) {
 }
 
 pub(crate) fn transport_toggle_mute() {
+    if now_playing::remote_volume_locked() {
+        return;
+    }
     let runtime = app();
     spawn(async move { playback_qt::toggle_mute(&runtime).await });
 }
@@ -2729,6 +2812,30 @@ pub(crate) fn navigate_to_tab(view: &str, tab: &str) {
 /// The active detail view ("album"/"artist" + id) — re-published on a live
 /// language switch so its Rust-built section headers re-translate.
 static LAST_DETAIL: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+
+/// The names the row that opened an album knew (id, title, artist): a 404
+/// carries none, and the "no longer available" page needs them for its
+/// heading and its alternatives search (album_qt::publish_unavailable).
+static ALBUM_HINT: Mutex<Option<(String, String, String)>> = Mutex::new(None);
+
+pub(crate) fn album_hint(album_id: &str) -> Option<(String, String)> {
+    ALBUM_HINT
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .filter(|(id, _, _)| id == album_id)
+        .map(|(_, title, artist)| (title, artist))
+}
+
+/// `open_album` with the title/artist the caller knows — every row that
+/// opens an album passes them, so the page can name a release the catalog
+/// no longer has.
+pub(crate) fn open_album_from(album_id: String, title: String, artist: String) {
+    if let Ok(mut guard) = ALBUM_HINT.lock() {
+        *guard = Some((album_id.clone(), title, artist));
+    }
+    open_album(album_id);
+}
 
 /// Settings > Appearance > Language: the pref is already persisted by the
 /// settings arm; this applies it LIVE — "auto" resolves POSIX env — then:
@@ -3050,6 +3157,7 @@ pub(crate) fn reload_library() {
         let t = std::time::Instant::now();
         match library_qt::load_library(&runtime).await {
             Ok(total) => {
+                let deletion_revision = library_qt::playlist_deletion_revision();
                 let t_ser = std::time::Instant::now();
                 let (feed_json, counts_json) = library_qt::with_library(|d| {
                     (
@@ -3068,6 +3176,10 @@ pub(crate) fn reload_library() {
                     t.elapsed(),
                 );
                 library_bridge::ui(move |mut b| {
+                    if deletion_revision != library_qt::playlist_deletion_revision() {
+                        b.as_mut().set_library_loading(false);
+                        return;
+                    }
                     b.as_mut()
                         .set_library_json(QString::from(feed_json.as_str()));
                     b.as_mut()
@@ -3106,6 +3218,7 @@ pub(crate) fn reload_library() {
 ///
 /// No-op before the Library has ever loaded (`with_library` -> `None`).
 pub(crate) fn publish_library_document() {
+    let deletion_revision = library_qt::playlist_deletion_revision();
     let Some((feed_json, counts_json)) = library_qt::with_library(|d| {
         (
             serde_json::to_string(&d.feed).unwrap_or_else(|_| "[]".into()),
@@ -3115,6 +3228,9 @@ pub(crate) fn publish_library_document() {
         return;
     };
     library_bridge::ui(move |mut b| {
+        if deletion_revision != library_qt::playlist_deletion_revision() {
+            return;
+        }
         b.as_mut()
             .set_library_json(QString::from(feed_json.as_str()));
         b.as_mut()
@@ -3708,6 +3824,9 @@ fn apply_interface_scale_preference() {
 
 // ============================ Shutdown guarantee ==========================
 
+static OUTPUT_RELEASE_TASK: std::sync::Mutex<Option<std::thread::JoinHandle<Result<(), String>>>> =
+    std::sync::Mutex::new(None);
+
 /// One-shot latch for [`arm_hard_exit_watchdog`].
 static HARD_EXIT_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -3767,6 +3886,14 @@ pub(crate) fn arm_hard_exit_watchdog(source: &'static str) {
             // see the header above.
             unsafe { libc::_exit(0) };
         });
+    // Send release at the first quit request, even if Qt never exits its loop.
+    // The terminal player fence also rejects late Connect/Cast continuations.
+    if let Some(runtime) = APP.get() {
+        let player = runtime.core().player();
+        player.begin_shutdown();
+        playback_qt::cancel_owner_playback_tasks();
+        *OUTPUT_RELEASE_TASK.lock().unwrap() = Some(std::thread::spawn(move || player.release_device()));
+    }
 }
 
 /// Is THIS process one of the internal, disposable child processes that
@@ -4139,11 +4266,11 @@ fn main() {
                     };
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(3),
-                        service.disconnect(),
+                        service.disconnect_for_shutdown(),
                     )
                     .await
                     {
-                        Ok(Ok(())) => true,
+                        Ok(Ok(can_persist_owner)) => can_persist_owner,
                         Ok(Err(error)) => {
                             log::warn!("[qbz-qt] QConnect shutdown failed: {error}");
                             false
@@ -4172,8 +4299,8 @@ fn main() {
             qconnect_owner_safe = qconnect_stopped;
             if !qconnect_stopped {
                 log::warn!(
-                    "[qbz-qt] QConnect shutdown did not finish within 3s; \
-                     skipping session persistence to avoid saving delegated state"
+                    "[qbz-qt] preserving the saved owner session after QConnect shutdown \
+                     (teardown incomplete or owner playback intentionally not restored)"
                 );
             }
             if !notification_withdrawn {
@@ -4189,6 +4316,14 @@ fn main() {
             }
         }
 
+        if let Some(task) = OUTPUT_RELEASE_TASK.lock().unwrap().take() {
+            match task.join() {
+                Ok(Ok(())) => log::info!("[shutdown] output-device release acknowledged"),
+                Ok(Err(error)) => log::error!("[shutdown] output-device release failed: {error}"),
+                Err(_) => log::error!("[shutdown] output-device release task panicked"),
+            }
+        }
+
         // Final full snapshot. QConnect teardown MUST precede this write: a
         // delegated queue is ephemeral and may never become the owner's saved
         // session. If bounded teardown failed, preserving the previous saved
@@ -4200,6 +4335,7 @@ fn main() {
         // and the same reasoning as the session flush above (one SQLite
         // write on the main thread, behind the watchdog).
         listen_log_qt::shutdown_blocking();
+        local_service_qt::reset();
         log::info!("[qbz-qt] shutdown complete");
     }
     // Explicit, INSTRUMENTED drops (2026-08-04 quit incident). Rust would run

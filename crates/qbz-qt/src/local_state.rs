@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use qbz_app::user_data::UserDataPaths;
 use qbz_library::{LibraryDatabase, LibraryError, LocalTrack};
 use qbz_source::SourceId;
 
@@ -62,13 +61,12 @@ pub struct TracksLoadRequest {
 /// The two helpers open the SAME file and must never disagree about where it
 /// is.
 pub fn db_path() -> Option<PathBuf> {
-    let uid = UserDataPaths::load_last_user_id().unwrap_or(0);
     Some(
-        dirs::data_dir()?
-            .join("qbz")
-            .join("users")
-            .join(uid.to_string())
-            .join("library.db"),
+        crate::local_service_qt::current()?
+            .service
+            .store()
+            .database_path()
+            .to_path_buf(),
     )
 }
 
@@ -76,21 +74,10 @@ pub fn with_db<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&LibraryDatabase) -> Result<R, LibraryError>,
 {
-    let path = db_path()?;
-    if !path.exists() {
-        return None;
-    }
-    let db = match LibraryDatabase::open(&path) {
-        Ok(db) => db,
+    match qbz_library::LibraryStore::new(db_path()?).read(f) {
+        Ok(result) => result,
         Err(e) => {
-            log::error!("[qbz-qt] local library open failed: {e}");
-            return None;
-        }
-    };
-    match f(&db) {
-        Ok(r) => Some(r),
-        Err(e) => {
-            log::error!("[qbz-qt] local library query failed: {e}");
+            log::error!("[qbz-qt] local library operation failed: {e}");
             None
         }
     }
@@ -596,8 +583,8 @@ mod phase_a_tests {
     use qbz_source::SourceId;
 
     use super::{
-        library_sources_available, normalize_explorer_columns, tracks_request_is_current,
-        with_art, Prefs, TrackSourceOffsets, TracksLoadRequest,
+        library_sources_available, normalize_explorer_columns, tracks_request_is_current, with_art,
+        Prefs, TrackSourceOffsets, TracksLoadRequest,
     };
 
     #[test]

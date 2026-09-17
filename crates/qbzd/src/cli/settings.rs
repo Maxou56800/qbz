@@ -53,6 +53,7 @@ use crate::qconnect::transport as qconnect_kv;
 pub enum ApplyClass {
     Reinit,
     Reload,
+    Restart,
     None,
 }
 
@@ -78,12 +79,18 @@ const KEY_TABLE: &[(&str, ApplyClass)] = &[
     ("audio.stream_first_track", ApplyClass::Reload),
     ("audio.stream_buffer_seconds", ApplyClass::Reload),
     ("audio.streaming_only", ApplyClass::Reload),
+    ("audio.playback_memory_profile", ApplyClass::Reload),
+    ("audio.playback_cache_dynamic", ApplyClass::Reload),
+    ("audio.playback_cache_min_mib", ApplyClass::Reload),
+    ("audio.playback_cache_max_mib", ApplyClass::Reload),
+    ("audio.playback_storage_folder", ApplyClass::Restart),
     ("audio.limit_quality_to_device", ApplyClass::Reload),
     ("audio.allow_quality_fallback", ApplyClass::Reload),
     ("audio.quality_fallback_behavior", ApplyClass::Reload),
     ("audio.gapless_enabled", ApplyClass::Reload),
     ("audio.normalization_enabled", ApplyClass::Reload),
     ("audio.normalization_target_lufs", ApplyClass::Reload),
+    ("audio.normalization_prevent_clipping", ApplyClass::Reload),
     ("audio.pw_force_bitperfect", ApplyClass::Reload),
     ("audio.reserve_dac_while_running", ApplyClass::Reload),
     ("audio.sync_audio_on_startup", ApplyClass::Reload),
@@ -271,6 +278,10 @@ fn parse_opt_u32(v: &str) -> Result<Option<u32>, String> {
         format!("invalid sample rate '{trimmed}' — expected a Hz integer (e.g. 192000) or none")
     })
 }
+fn parse_cache_mib(raw: &str) -> Result<Option<u32>, String> {
+    if raw.trim().is_empty() || raw.trim().eq_ignore_ascii_case("none") { return Ok(None); }
+    raw.trim().parse::<u32>().map(Some).map_err(|_| "Expected an integer budget in MiB or none".into())
+}
 fn render_opt_u32(v: Option<u32>) -> String {
     v.map(|r| r.to_string())
         .unwrap_or_else(|| "none".to_string())
@@ -381,12 +392,18 @@ fn read_all(roots: &ProfileRoots) -> Result<Vec<(&'static str, String)>, String>
             "audio.stream_first_track" => render_bool(audio.stream_first_track),
             "audio.stream_buffer_seconds" => audio.stream_buffer_seconds.to_string(),
             "audio.streaming_only" => render_bool(audio.streaming_only),
+            "audio.playback_memory_profile" => audio.playback_cache.selected_profile().as_str().into(),
+            "audio.playback_cache_dynamic" => render_bool(audio.playback_cache.dynamic),
+            "audio.playback_cache_min_mib" => render_opt_u32(audio.playback_cache.min_mib),
+            "audio.playback_cache_max_mib" => render_opt_u32(audio.playback_cache.max_mib),
+            "audio.playback_storage_folder" => audio.playback_cache.disk_directory.clone().unwrap_or_default(),
             "audio.limit_quality_to_device" => render_bool(audio.limit_quality_to_device),
             "audio.allow_quality_fallback" => render_bool(audio.allow_quality_fallback),
             "audio.quality_fallback_behavior" => audio.quality_fallback_behavior.clone(),
             "audio.gapless_enabled" => render_bool(audio.gapless_enabled),
             "audio.normalization_enabled" => render_bool(audio.normalization_enabled),
             "audio.normalization_target_lufs" => audio.normalization_target_lufs.to_string(),
+            "audio.normalization_prevent_clipping" => render_bool(audio.normalization_prevent_clipping),
             "audio.pw_force_bitperfect" => render_bool(audio.pw_force_bitperfect),
             "audio.reserve_dac_while_running" => render_bool(audio.reserve_dac_while_running),
             "audio.sync_audio_on_startup" => render_bool(audio.sync_audio_on_startup),
@@ -682,6 +699,20 @@ pub(crate) fn write_one(
                 .set_stream_buffer_seconds(v)
                 .map_err(SetError::Io)?
         }
+        "audio.playback_memory_profile" | "audio.playback_cache_dynamic" | "audio.playback_cache_min_mib" | "audio.playback_cache_max_mib" | "audio.playback_storage_folder" => {
+            let store = open_audio(roots).map_err(SetError::Io)?;
+            let mut policy = store.get_settings().map_err(SetError::Io)?.playback_cache;
+            if key != "audio.playback_memory_profile" && key != "audio.playback_storage_folder" { policy.make_custom(); }
+            match key {
+                "audio.playback_memory_profile" => policy.select_profile(qbz_models::playback_cache::PlaybackMemoryProfile::parse(raw).map_err(SetError::Usage)?),
+                "audio.playback_cache_dynamic" => policy.dynamic = parse_bool(raw).map_err(SetError::Usage)?,
+                "audio.playback_cache_min_mib" => policy.min_mib = parse_cache_mib(raw).map_err(SetError::Usage)?,
+                "audio.playback_storage_folder" => policy.disk_directory = (!raw.is_empty() && raw != "none").then(|| raw.to_string()),
+                _ => policy.max_mib = parse_cache_mib(raw).map_err(SetError::Usage)?,
+            }
+            policy.validate().map_err(SetError::Usage)?;
+            store.set_playback_cache(&policy).map_err(SetError::Io)?;
+        }
         "audio.streaming_only" => {
             let v = parse_bool(raw).map_err(SetError::Usage)?;
             open_audio(roots)
@@ -729,6 +760,13 @@ pub(crate) fn write_one(
             open_audio(roots)
                 .map_err(SetError::Io)?
                 .set_normalization_target_lufs(v)
+                .map_err(SetError::Io)?
+        }
+        "audio.normalization_prevent_clipping" => {
+            let v = parse_bool(raw).map_err(SetError::Usage)?;
+            open_audio(roots)
+                .map_err(SetError::Io)?
+                .set_normalization_prevent_clipping(v)
                 .map_err(SetError::Io)?
         }
         "audio.pw_force_bitperfect" => {
@@ -998,10 +1036,13 @@ pub fn set(roots: &ProfileRoots, key: &str, value: &str) -> i32 {
             return 1;
         }
     };
-    if nudge(roots) {
+    if matches!(class, ApplyClass::Restart) {
+        println!("{key} = {value}");
+        println!("changes apply when the daemon starts");
+    } else if nudge(roots) {
         let hint = match class {
             ApplyClass::Reinit => " (daemon reinitialized the output device)",
-            ApplyClass::Reload | ApplyClass::None => "",
+            ApplyClass::Reload | ApplyClass::None | ApplyClass::Restart => "",
         };
         println!("{key} = {value}{hint}");
     } else {
@@ -1634,6 +1675,47 @@ mod tests {
         );
         write_one(&roots, "hooks.script", "").expect("empty clears");
         assert_eq!(daemon_prefs::load_at(&roots.data).hook_script, "");
+        cleanup(&roots);
+    }
+
+    #[test]
+    fn playback_cache_cli_persists_reloads_and_rejects_inverted_bounds() {
+        let roots = scratch_roots("playback-cache");
+        for (key, value) in [("audio.playback_cache_max_mib", "1600"), ("audio.playback_cache_min_mib", "400"), ("audio.playback_cache_dynamic", "true")] {
+            write_one(&roots, key, value).unwrap();
+            assert_eq!(classify(key), Some(ApplyClass::Reload));
+        }
+        let values: std::collections::HashMap<_, _> = read_all(&roots).unwrap().into_iter().collect();
+        assert_eq!(values["audio.playback_cache_dynamic"], "true");
+        assert_eq!(values["audio.playback_cache_min_mib"], "400");
+        assert_eq!(values["audio.playback_cache_max_mib"], "1600");
+        assert!(matches!(write_one(&roots, "audio.playback_cache_max_mib", "399"), Err(SetError::Usage(_))));
+        assert!(matches!(write_one(&roots, "audio.playback_cache_min_mib", "-1"), Err(SetError::Usage(_))));
+        write_one(&roots, "audio.playback_cache_dynamic", "false").unwrap();
+        write_one(&roots, "audio.playback_cache_min_mib", "none").unwrap();
+        write_one(&roots, "audio.playback_cache_max_mib", "none").unwrap();
+        write_one(&roots, "audio.playback_memory_profile", "auto").unwrap();
+        assert_eq!(open_audio(&roots).unwrap().get_settings().unwrap().playback_cache, Default::default());
+        cleanup(&roots);
+    }
+
+    #[test]
+    fn memory_profile_cli_presets_custom_reset_and_invalid_selection() {
+        let roots=scratch_roots("memory-profiles");
+        for (name,base,dynamic) in [("high",400,true),("desktop",400,false),("low",50,false)] {
+            write_one(&roots,"audio.playback_memory_profile",name).unwrap();
+            let p=open_audio(&roots).unwrap().get_settings().unwrap().playback_cache;
+            assert_eq!(p.selected_profile().as_str(),name);
+            assert_eq!(p.min_mib,Some(base));assert_eq!(p.dynamic,dynamic);
+        }
+        write_one(&roots,"audio.playback_cache_min_mib","64").unwrap();
+        let p=open_audio(&roots).unwrap().get_settings().unwrap().playback_cache;
+        assert_eq!(p.selected_profile().as_str(),"custom");
+        assert!(matches!(write_one(&roots,"audio.playback_memory_profile","unlimited"),Err(SetError::Usage(_))));
+        assert_eq!(open_audio(&roots).unwrap().get_settings().unwrap().playback_cache,p);
+        write_one(&roots,"audio.playback_memory_profile","auto").unwrap();
+        assert_eq!(open_audio(&roots).unwrap().get_settings().unwrap().playback_cache,Default::default());
+        assert_eq!(classify("audio.playback_memory_profile"),Some(ApplyClass::Reload));
         cleanup(&roots);
     }
 

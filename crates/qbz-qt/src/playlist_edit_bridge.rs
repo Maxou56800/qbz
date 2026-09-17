@@ -75,6 +75,9 @@ pub mod qbz_playlist_edit_bridge {
         // descLoaded / isLocal / offlineOnly / busy. Parseable default so a
         // binding reading `doc.open` on the pre-publish frame cannot throw.
         #[qproperty(QString, edit_json)]
+        /// The "Delete playlist?" confirmation summoned from context menus:
+        /// `{open, id, name, isLocal}` (`playlist_edit_qt::DeleteDoc`).
+        #[qproperty(QString, delete_json)]
         /// The "New playlist" document (`playlist_create_qt`): open / busy /
         /// offlineLocked / folders. Same parseable-default rule as `edit_json`.
         ///
@@ -138,6 +141,16 @@ pub mod qbz_playlist_edit_bridge {
         #[qinvokable]
         fn delete_playlist(self: Pin<&mut QbzPlaylistEdit>);
 
+        /// Context menus: open the shell-level "Delete playlist?"
+        /// confirmation for `id` (Qobuz id or local ref), showing `name`.
+        #[qinvokable]
+        fn ask_delete(self: Pin<&mut QbzPlaylistEdit>, id: QString, name: QString);
+        /// The confirmation's Delete / Cancel.
+        #[qinvokable]
+        fn confirm_delete(self: Pin<&mut QbzPlaylistEdit>);
+        #[qinvokable]
+        fn cancel_delete(self: Pin<&mut QbzPlaylistEdit>);
+
         /// Dismiss. Refused while a save or delete is in flight (D22).
         #[qinvokable]
         fn close(self: Pin<&mut QbzPlaylistEdit>);
@@ -180,6 +193,7 @@ use qbz_playlist_edit_bridge::QbzPlaylistEdit;
 pub struct QbzPlaylistEditRust {
     edit_json: QString,
     create_json: QString,
+    delete_json: QString,
 }
 
 impl Default for QbzPlaylistEditRust {
@@ -189,6 +203,7 @@ impl Default for QbzPlaylistEditRust {
             // and no binding in the modal throws before the first publish.
             edit_json: QString::from("{\"open\":false}"),
             create_json: QString::from("{\"open\":false}"),
+            delete_json: QString::from("{\"open\":false}"),
         }
     }
 }
@@ -216,6 +231,7 @@ impl qbz_playlist_edit_bridge::QbzPlaylistEdit {
         // full shape rather than the terser Default literal.
         crate::playlist_edit_qt::publish();
         crate::playlist_create_qt::publish();
+        crate::playlist_edit_qt::publish_delete_ask();
     }
 
     pub fn open(self: Pin<&mut Self>, id: QString) {
@@ -236,6 +252,18 @@ impl qbz_playlist_edit_bridge::QbzPlaylistEdit {
 
     pub fn delete_playlist(self: Pin<&mut Self>) {
         crate::playlist_edit_qt::delete_playlist();
+    }
+
+    pub fn ask_delete(self: Pin<&mut Self>, id: QString, name: QString) {
+        crate::playlist_edit_qt::ask_delete(&id.to_string(), &name.to_string());
+    }
+
+    pub fn confirm_delete(self: Pin<&mut Self>) {
+        crate::playlist_edit_qt::confirm_delete();
+    }
+
+    pub fn cancel_delete(self: Pin<&mut Self>) {
+        crate::playlist_edit_qt::cancel_delete();
     }
 
     pub fn close(self: Pin<&mut Self>) {

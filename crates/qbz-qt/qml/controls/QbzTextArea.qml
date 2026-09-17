@@ -28,12 +28,18 @@ Rectangle {
     property int wrapMode: TextEdit.WordWrap
     signal edited(string value)
 
+    /// Re-seed the body from `value` (default: `text`) NOW, focus or not —
+    /// the QbzLineEdit.reset() twin (the why is documented there).
+    function reset(value) {
+        input.text = (value === undefined) ? root.text : String(value)
+    }
+
     QbzTheme { id: theme }
 
     width: 240
     height: 96
     radius: theme.radiusSm
-    color: theme.surfaceElevated
+    color: (theme.ambientOn ? theme.surfaceElevatedA50 : theme.surfaceElevated)
     border.width: 1
     border.color: input.activeFocus ? theme.accent : theme.borderSubtle
 
@@ -50,6 +56,8 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
 
         TextEdit {
+
+            QbzTextEditMenu { }
             id: input
             width: flick.width
             text: root.text

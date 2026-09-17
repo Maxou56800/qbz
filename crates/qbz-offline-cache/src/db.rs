@@ -466,46 +466,6 @@ impl OfflineCacheDb {
         })
     }
 
-    /// Get tracks to evict (LRU order) to free up space
-    pub fn get_tracks_for_eviction(
-        &self,
-        bytes_to_free: u64,
-    ) -> Result<Vec<(u64, String)>, String> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT track_id, file_path, file_size_bytes FROM cached_tracks
-             WHERE status = 'ready'
-             ORDER BY last_accessed_at ASC",
-            )
-            .map_err(|e| format!("Failed to prepare eviction query: {}", e))?;
-
-        let mut result = Vec::new();
-        let mut freed = 0u64;
-
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, i64>(0)? as u64,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)? as u64,
-                ))
-            })
-            .map_err(|e| format!("Failed to query for eviction: {}", e))?;
-
-        for row in rows {
-            if freed >= bytes_to_free {
-                break;
-            }
-            let (track_id, file_path, size) =
-                row.map_err(|e| format!("Failed to read row: {}", e))?;
-            result.push((track_id, file_path));
-            freed += size;
-        }
-
-        Ok(result)
-    }
-
     /// Clear all entries
     pub fn clear_all(&self) -> Result<Vec<String>, String> {
         // Get all file paths first

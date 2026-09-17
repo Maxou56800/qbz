@@ -6,3 +6,16 @@ singleton QbzSession 1.0 QbzSession.qml
 singleton QbzBridge 1.0 QbzBridge.qml
 singleton QbzLibrary 1.0 QbzLibrary.qml
 singleton QbzPurchases 1.0 QbzPurchases.qml
+singleton QbzOrbit 1.0 QbzOrbit.qml
+
+singleton QbzAbout 1.0 QbzAbout.qml
+singleton QbzArtist 1.0 QbzArtist.qml
+singleton QbzAlbum 1.0 QbzAlbum.qml
+singleton QbzSearch 1.0 QbzSearch.qml
+singleton QbzHome 1.0 QbzHome.qml
+singleton QbzMyQbz 1.0 QbzMyQbz.qml
+singleton QbzMini 1.0 QbzMini.qml
+singleton QbzImmersive 1.0 QbzImmersive.qml
+singleton QbzQueue 1.0 QbzQueue.qml
+singleton QbzLyrics 1.0 QbzLyrics.qml
+singleton QbzIconTint 1.0 QbzIconTint.qml

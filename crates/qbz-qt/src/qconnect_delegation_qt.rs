@@ -51,7 +51,8 @@ type Runtime = Arc<AppRuntime<LoggingAdapter>>;
 pub type QtDelegationCoordinator = DelegationCoordinator<QtDelegationHost>;
 
 const SHUTDOWN_RESTORE_OWNER: u8 = 0;
-const SHUTDOWN_DISCARD_OWNER: u8 = 1;
+const SHUTDOWN_RESTORE_QUEUE_ONLY: u8 = 1;
+const SHUTDOWN_OWNER_QUEUE_RESTORED: u8 = 2;
 
 #[derive(Clone)]
 struct OwnerSnapshot {
@@ -216,6 +217,22 @@ pub struct QtDelegationHost {
 }
 
 impl QtDelegationHost {
+    /// Serialize local memory maintenance with authority handoffs. Retain both
+    /// guards until restart completes, dropping the fence before the lane.
+    pub(crate) async fn playback_memory_fence(
+        &self,
+    ) -> Result<(OwnedMutexGuard<()>, OwnerActionFence), String> {
+        let lane = Arc::clone(&self.transition_gate).lock_owned().await;
+        if self.authority.current().is_some_and(|s| s.origin() != AuthorityOrigin::Owner) {
+            return Err("Playback memory can only be applied to local playback.".into());
+        }
+        let fence = OwnerActionFence::acquire_drained(
+            Arc::clone(&self.authority),
+            crate::playback_qt::cancel_owner_playback_tasks,
+        ).await;
+        Ok((lane, fence))
+    }
+
     pub fn new(
         runtime: Runtime,
         inner: Arc<StdMutex<QtQconnectInner>>,
@@ -256,12 +273,18 @@ impl QtDelegationHost {
         self.projection.current_session_id(&self.authority, stamp)
     }
 
+    /// A silent exit restored the queue but not the player's resume position.
+    /// Preserve the already-persisted owner session instead of saving idle zero.
+    pub fn shutdown_restored_queue_only(&self) -> bool {
+        self.shutdown_mode.load(Ordering::Acquire) == SHUTDOWN_OWNER_QUEUE_RESTORED
+    }
+
     pub fn set_shutdown_restore_owner(&self, restore: bool) {
         self.shutdown_mode.store(
             if restore {
                 SHUTDOWN_RESTORE_OWNER
             } else {
-                SHUTDOWN_DISCARD_OWNER
+                SHUTDOWN_RESTORE_QUEUE_ONLY
             },
             Ordering::Release,
         );
@@ -858,8 +881,12 @@ impl DelegationHost for QtDelegationHost {
         {
             self.restore_owner_snapshot().await
         } else if was_delegated || has_owner_snapshot {
+            // Process exit still restores the owner's queue for persistence,
+            // but must never schedule audible playback or reopen the DAC.
             let _ = self.runtime.core().stop();
-            recover_lock(&self.owner_snapshot).take();
+            if self.restore_owner_snapshot().await.is_some() {
+                self.shutdown_mode.store(SHUTDOWN_OWNER_QUEUE_RESTORED, Ordering::Release);
+            }
             None
         } else {
             // A pending candidate may have captured a snapshot, but disabling an
@@ -1071,6 +1098,7 @@ async fn publish_restored_owner_ui(
     }
     crate::now_playing::set_remote(false, "");
     crate::now_playing::set_remote_volume_locked(false);
+    crate::now_playing::set_volume(runtime.core().get_playback_state().volume);
     crate::playback_qt::refresh_now_playing(runtime).await;
     if !authority_matches(authority, stamp) {
         return;

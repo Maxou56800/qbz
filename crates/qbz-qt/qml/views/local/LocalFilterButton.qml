@@ -25,7 +25,7 @@ Item {
         border.width: 1
         border.color: root.view && root.view.filterCount > 0
             ? theme.accent : theme.borderSubtle
-        color: area.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+        color: area.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
 
         QbzIcon {
             name: "list-filter"

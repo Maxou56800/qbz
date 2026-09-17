@@ -138,7 +138,7 @@ Item {
                     radius: theme.radiusSm
                     border.width: 1
                     border.color: theme.borderSubtle
-                    color: goArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+                    color: goArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated
                     Text {
                         id: goLabel
                         anchors.centerIn: parent

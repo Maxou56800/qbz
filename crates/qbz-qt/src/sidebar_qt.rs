@@ -132,6 +132,10 @@ pub struct SidebarEntry {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub is_local: bool,
+    /// The signed-in user owns it (a local playlist always does): the row
+    /// menu offers Delete only then (2026-09-13).
+    #[serde(default, rename = "isOwner")]
+    pub is_owner: bool,
 }
 
 /// One LOCAL playlist listed in the sidebar (library.db, ids `local:<uuid>`).
@@ -155,6 +159,8 @@ struct SidebarPlaylist {
     tracks_count: u32,
     cover_urls: Vec<String>,
     position: i32,
+    /// `owner.id == the signed-in user` at load; false when unknown.
+    is_owner: bool,
 }
 
 #[derive(Default, Clone)]
@@ -167,9 +173,39 @@ struct SidebarData {
     hidden_playlists: HashSet<u64>,
     /// First-class local playlists, listed alongside the Qobuz set.
     locals: Vec<SidebarLocal>,
+    // Read-after-write protection while the remote list catches up. Kept in
+    // the same mutex as the rows so an already running load cannot drop them.
+    recent_qobuz: HashMap<u64, std::time::Instant>,
 }
 
 static CACHE: Mutex<Option<SidebarData>> = Mutex::new(None);
+static INSERT_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn insertion_revision() -> u64 {
+    INSERT_REVISION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn preserve_recent_entries(
+    previous: &SidebarData,
+    next: &mut SidebarData,
+    now: std::time::Instant,
+    online: bool,
+) {
+    let recent =
+        |at: &std::time::Instant| now.duration_since(*at) < std::time::Duration::from_secs(120);
+    for (&id, &at) in previous
+        .recent_qobuz
+        .iter()
+        .filter(|(_, at)| online && recent(at))
+    {
+        if !next.playlists.iter().any(|p| p.id == id) {
+            if let Some(row) = previous.playlists.iter().find(|p| p.id == id) {
+                next.playlists.push(row.clone());
+            }
+        }
+        next.recent_qobuz.insert(id, at);
+    }
+}
 /// Session-only folder expand state (matches Tauri — not persisted).
 static EXPANDED: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
@@ -262,6 +298,7 @@ pub async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
                 out
             };
             SidebarPlaylist {
+                is_owner: crate::playlist_qt::current_user_id().is_some_and(|uid| uid == p.owner.id),
                 id: p.id,
                 name: p.name,
                 tracks_count: p.tracks_count,
@@ -327,6 +364,8 @@ pub async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
                 tracks_count,
                 cover_urls: Vec::new(),
                 position: 0,
+                // An offline header row: ownership unknown, no Delete offered.
+                is_owner: false,
             });
         }
     }
@@ -354,12 +393,23 @@ pub async fn load(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     log::debug!("[qbz-qt] sidebar load: {} local playlist(s)", locals.len());
 
     let (n_playlists, n_folders) = (playlists.len(), folders.len());
-    *CACHE.lock().unwrap() = Some(SidebarData {
-        playlists,
-        folders,
-        folder_map,
-        hidden_playlists,
-        locals,
+    crate::library_qt::with_deleted_playlists(|deleted| {
+        playlists.retain(|p| !deleted.contains(&p.id.to_string()));
+        let mut next = SidebarData {
+            playlists,
+            folders,
+            folder_map,
+            hidden_playlists,
+            locals,
+            ..Default::default()
+        };
+        let mut cache = CACHE.lock().unwrap();
+        if let Some(previous) = cache.as_ref() {
+            preserve_recent_entries(previous, &mut next, std::time::Instant::now(), !offline);
+        }
+        next.playlists
+            .retain(|p| !deleted.contains(&p.id.to_string()));
+        *cache = Some(next);
     });
     log::info!("[qbz-qt] sidebar loaded: {n_playlists} playlists, {n_folders} folders");
 }
@@ -467,6 +517,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         |p: &SidebarPlaylist| !searching || p.name.to_lowercase().contains(query.as_str());
 
     let entry_for = |p: &SidebarPlaylist, indent: bool, folder_id: &str| SidebarEntry {
+        is_owner: p.is_owner,
         kind: "playlist".into(),
         id: p.id.to_string(),
         name: p.name.clone(),
@@ -478,6 +529,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         is_local: false,
     };
     let local_entry_for = |p: &SidebarLocal, indent: bool, folder_id: &str| SidebarEntry {
+        is_owner: true,
         kind: "playlist".into(),
         id: p.id.clone(),
         name: p.name.clone(),
@@ -529,6 +581,7 @@ pub fn rebuild() -> Vec<SidebarEntry> {
         // When searching, force-expand so matches inside are visible.
         let is_exp = searching || expanded.contains(fid);
         entries.push(SidebarEntry {
+        is_owner: false,
             kind: "folder".into(),
             id: fid.clone(),
             name: fname.clone(),
@@ -736,8 +789,27 @@ pub fn insert_qobuz_entry(id: u64, name: &str, tracks_count: u32, covers: &[Stri
             tracks_count,
             cover_urls: covers.iter().take(4).cloned().collect(),
             position: 0,
+            // Just created by this user.
+            is_owner: true,
         },
     );
+    data.recent_qobuz.insert(id, std::time::Instant::now());
+    INSERT_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn insert_local_entry(id: &str, name: &str) {
+    let mut cache = CACHE.lock().unwrap();
+    let data = cache.get_or_insert_with(SidebarData::default);
+    if data.locals.iter().any(|p| p.id == id) {
+        return;
+    }
+    data.locals.push(SidebarLocal {
+        id: id.to_string(),
+        name: name.to_string(),
+        folder_id: None,
+        covers: Vec::new(),
+    });
+    INSERT_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Drop a Qobuz playlist row from the sidebar cache. Returns whether anything
@@ -761,6 +833,7 @@ pub fn remove_qobuz_entry(id: u64) -> bool {
         return false;
     };
     let before = data.playlists.len();
+    data.recent_qobuz.remove(&id);
     data.playlists.retain(|p| p.id != id);
     before != data.playlists.len()
 }
@@ -880,5 +953,53 @@ mod tests {
         teardown();
         let _ = std::fs::remove_dir_all(&guest);
         let _ = std::fs::remove_dir_all(&account);
+    }
+}
+
+#[cfg(test)]
+mod creation_regressions {
+    use super::*;
+
+    #[test]
+    fn stale_list_preserves_new_playlist_without_duplicates_or_permanent_ghosts() {
+        let now = std::time::Instant::now();
+        let mut previous = SidebarData::default();
+        previous.playlists.push(SidebarPlaylist {
+            is_owner: true,
+            id: 42,
+            name: "Created".into(),
+            tracks_count: 0,
+            cover_urls: vec![],
+            position: 0,
+        });
+        previous.recent_qobuz.insert(42, now);
+        let mut stale = SidebarData::default();
+        preserve_recent_entries(&previous, &mut stale, now, true);
+        assert_eq!(stale.playlists.len(), 1);
+        preserve_recent_entries(&previous, &mut stale, now, true);
+        assert_eq!(stale.playlists.len(), 1);
+        let mut confirmed = stale.clone();
+        confirmed.playlists[0].name = "Renamed remotely".into();
+        preserve_recent_entries(&previous, &mut confirmed, now, true);
+        assert_eq!(confirmed.playlists[0].name, "Renamed remotely");
+        let mut offline = SidebarData::default();
+        preserve_recent_entries(&previous, &mut offline, now, false);
+        assert!(
+            offline.playlists.is_empty(),
+            "uncached cloud rows stay hidden offline"
+        );
+        let mut expired = SidebarData::default();
+        preserve_recent_entries(
+            &previous,
+            &mut expired,
+            now + std::time::Duration::from_secs(120),
+            true,
+        );
+        assert!(expired.playlists.is_empty());
+        previous.playlists.clear();
+        previous.recent_qobuz.remove(&42);
+        let mut deleted = SidebarData::default();
+        preserve_recent_entries(&previous, &mut deleted, now, true);
+        assert!(deleted.playlists.is_empty());
     }
 }

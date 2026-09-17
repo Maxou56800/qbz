@@ -20,7 +20,6 @@ Rectangle {
     property string trailingIconName: ""
     property bool danger: false
     property bool busy: false
-    property bool enabled: true
     // The two metrics the MyQBZ modal footers and the Disco builder need. The
     // Slint's SecondaryButton is 34px/min-160 in Settings and 38px/hug in a
     // modal footer, which is one control with two call-site numbers — not two
@@ -37,7 +36,7 @@ Rectangle {
     border.width: root.activeFocus ? 2 : 1
     border.color: root.activeFocus ? theme.accent
         : (danger ? theme.danger : theme.borderSubtle)
-    color: enabled && btnArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated
+    color: enabled && btnArea.containsMouse ? theme.elevatedHoverFill : theme.elevatedFill
     opacity: enabled ? 1.0 : 0.4
     activeFocusOnTab: enabled
     Accessible.role: Accessible.Button

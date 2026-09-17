@@ -417,6 +417,8 @@ fn build_rhi_items() {
     // not for a cross one.
     let macos = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
     if macos {
+        println!("cargo:rerun-if-changed=cxx/macos_reopen.mm");
+        cc.file("cxx/macos_reopen.mm");
         // FRAMEWORK search path. Without it every `#include <QtCore/...>` in
         // cxx/ fails: the `-I .../QtCore.framework/Headers` that
         // `include_paths()` produces cannot resolve a module-qualified include,
@@ -522,6 +524,7 @@ fn main() {
                 "src/lyrics_qt.rs",
                 "src/icon_tint_qt.rs",
                 "src/cast_bridge.rs",
+                "src/orbit_bridge.rs",
                 "src/myqbz_bridge.rs",
                 "src/myqbz_add_bridge.rs",
                 "src/disco_bridge.rs",
@@ -569,16 +572,24 @@ fn main() {
                 "qml/controls/MyQbzModals.qml",
                 "qml/controls/PlaylistCreateModal.qml",
                 "qml/controls/PlaylistEditModal.qml",
+        "qml/controls/PlaylistDeleteConfirm.qml",
                 "qml/controls/PlaylistImportModal.qml",
                 "qml/controls/PlaylistPickerModal.qml",
                 "qml/controls/PmFolderIcon.qml",
+                "qml/controls/QbzArrayModel.qml",
+                "qml/controls/QbzKeyedModel.qml",
+                "qml/controls/QbzRowAdd.qml",
+                "qml/controls/QbzRowDisplaced.qml",
+                "qml/controls/QbzRowRemove.qml",
                 "qml/controls/QbzCircleAction.qml",
+                "qml/controls/QbzClipboard.qml",
                 "qml/controls/QbzColorPicker.qml",
                 "qml/controls/QbzConfirmModal.qml",
                 "qml/controls/QbzContextMenu.qml",
                 "qml/controls/QbzEmptyState.qml",
                 "qml/controls/QbzIconButton.qml",
                 "qml/controls/QbzLineEdit.qml",
+                "qml/controls/QbzTextEditMenu.qml",
                 "qml/controls/InputFocusDismiss.qml",
                 "qml/controls/QbzLoadingDots.qml",
                 "qml/controls/QbzLoadMore.qml",
@@ -593,7 +604,9 @@ fn main() {
                 "qml/controls/ScrollMemory.qml",
                 "qml/controls/ScopePanel.qml",
                 "qml/controls/QbzSegToggle.qml",
+                "qml/controls/QbzSearchField.qml",
                 "qml/controls/QbzSelect.qml",
+                "qml/controls/QbzSelectableText.qml",
                 "qml/controls/QbzSplitButton.qml",
                 "qml/controls/QbzSlider.qml",
                 "qml/controls/QbzTabBar.qml",
@@ -604,6 +617,7 @@ fn main() {
                 "qml/controls/QbzTooltip.qml",
                 "qml/controls/PanelResizeHandle.qml",
                 "qml/controls/QbzProgressRing.qml",
+                "qml/controls/QbzCompactSeekBar.qml",
                 // Applied-filters tooltip: the trigger a filter control mounts
                 // beside itself (it writes the shell channel QbzTooltip reads).
                 "qml/controls/QbzFilterTip.qml",
@@ -616,6 +630,7 @@ fn main() {
                 "qml/controls/IconTextButton.qml",
                 "qml/controls/SettingsButton.qml",
                 "qml/controls/SettingsDivider.qml",
+                "qml/controls/SettingsFieldset.qml",
                 "qml/controls/SettingsSpacer.qml",
                 // Moved out of views/local/ on 2026-07-31: the album/track
                 // CARD badges mount it too, and Slint keeps its counterpart in
@@ -641,11 +656,17 @@ fn main() {
                 "qml/rows/TrackRow.qml",
                 "qml/settings/AppearanceSettings.qml",
                 "qml/settings/NavigationSettings.qml",
+                "qml/settings/UpdatesSettings.qml",
                 "qml/settings/CustomThemeEditor.qml",
                 "qml/settings/IntegrationsSettings.qml",
                 "qml/settings/SettingsView.qml",
+                "qml/settings/OrbitSettings.qml",
+                "qml/settings/OrbitSettingsPanel.qml",
                 "qml/shell/AmbientField.qml",
+                "qml/shell/AppBackground.qml",
+                "qml/shell/WallpaperField.qml",
                 "qml/shell/AppShell.qml",
+                "qml/shell/OrbitBanner.qml",
                 "qml/shell/ArtPreviewOverlay.qml",
                 "qml/shell/Cortinilla.qml",
                 "qml/shell/HeaderBar.qml",
@@ -717,6 +738,7 @@ fn main() {
                 // QbzAbout's two documents.
                 "qml/shell/AboutModal.qml",
                 "qml/shell/WhatsNewModal.qml",
+                "qml/shell/UpdatesModal.qml",
                 "qml/shell/WindowsDisclaimerModal.qml",
                 // Immersive mode (2026-08-02 immersive-port contract §2) —
                 // its own module directory like views/local/ and
@@ -792,6 +814,7 @@ fn main() {
                 "qml/views/PlaylistView.qml",
                 "qml/views/QueueView.qml",
                 "qml/views/SearchView.qml",
+                "qml/views/SearchLocalResults.qml",
                 "qml/views/SectionRail.qml",
                 "qml/shell/CastPicker.qml",
                 "qml/controls/BrowseGenreButton.qml",
@@ -842,6 +865,7 @@ fn main() {
                 "qml/settings/LocalLibrarySettings.qml",
                 "qml/settings/LocalTabsConfigModal.qml",
                 "qml/settings/OfflineSettings.qml",
+                "qml/settings/StorageSettings.qml",
                 "qml/settings/PlaybackSettings.qml",
                 // ONE component instantiated twice (Jellyfin + Subsonic).
                 "qml/settings/MediaServerSettings.qml",

@@ -12,9 +12,9 @@
 //! `SearchService` is **non-generic**. It does NOT hold a `QbzCore` and does NOT
 //! call `core.search_all`. `QbzCore` is `QbzCore<A: FrontendAdapter>`; making
 //! `SearchService<A>` would force that generic through every qbz-slint global
-//! accessor for no benefit. The SWR orchestration (render cached → fire live →
-//! replace, guarded by the version counter) lives in the qbz-slint controller,
-//! which already calls `core.search_all()` itself. This struct is purely the
+//! accessor for no benefit. NOTE: the SWR orchestration this describes was
+//! never actually wired in either frontend — see `search_cache`'s header.
+//! This struct is purely the
 //! reusable cache + ranking layer.
 //!
 //! ## Interior mutability

@@ -198,9 +198,8 @@ Item {
         height: 28
         radius: 6
         color: chipMouse.containsMouse
-            ? theme.surfaceHover
-            : (theme.ambientOn ? theme.surfaceElevatedA50
-                               : theme.surfaceElevated)
+            ? theme.elevatedHoverFill
+            : theme.elevatedFill
         border.width: 1
         border.color: theme.ambientOn ? theme.frostBorder : theme.borderSubtle
 
@@ -312,7 +311,7 @@ Item {
             radius: 5
             color: theme.ambientOn
                 ? theme.surfaceElevatedA50
-                : (caretArea.containsMouse ? theme.surfaceHover : theme.surfaceElevated)
+                : (caretArea.containsMouse ? theme.surfaceElevatedHover : theme.surfaceElevated)
             border.width: 1
             border.color: theme.ambientOn ? theme.frostBorder : theme.borderSubtle
             QbzIcon {

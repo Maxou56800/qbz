@@ -5,6 +5,7 @@ on:
     workflows:
       - release-macos
       - release-linux
+      - release-windows
       - "Linux ARM64 (aarch64) Build"
     types:
       - completed
@@ -76,6 +77,7 @@ jobs:
             "x64.app.tar.gz.sig"
             "amd64.AppImage.sig"
             "aarch64.AppImage.sig"
+            "x64.msi.sig"
           )
           MAX_ATTEMPTS=40
           SLEEP_SECONDS=30
@@ -186,9 +188,16 @@ jobs:
               '. + {"linux-aarch64": {"signature": $sig, "url": $url}}')
           fi
 
+          WINDOWS_MSI=$(find_asset "_x64.msi$")
+          WINDOWS_SIG=$(read_sig "*_x64.msi.sig")
+          if [ -n "$WINDOWS_MSI" ] && [ -n "$WINDOWS_SIG" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "${RELEASE_URL}/${WINDOWS_MSI}" --arg sig "$WINDOWS_SIG" \
+              '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
           PLATFORM_COUNT=$(echo "$PLATFORMS" | jq 'length')
-          if [ "$PLATFORM_COUNT" -ne 4 ]; then
-            echo "::error::Expected four updater platforms, generated $PLATFORM_COUNT."
+          if [ "$PLATFORM_COUNT" -ne 5 ]; then
+            echo "::error::Expected five updater platforms, generated $PLATFORM_COUNT."
             echo "$PLATFORMS" | jq .
             exit 1
           fi

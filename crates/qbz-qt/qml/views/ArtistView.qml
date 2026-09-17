@@ -41,6 +41,7 @@ import com.blitzfc.qbz
 import "../cards"
 import "../controls"
 import "../rows"
+import "../shell"
 import "../theme"
 
 Rectangle {
@@ -349,15 +350,18 @@ Rectangle {
     property string albumSelectKey: ""
     property var albumSelected: ({})
     readonly property int albumSelectedCount: Object.keys(root.albumSelected).length
-    function albumSelectToggle(id) {
-        var m = Object.assign({}, root.albumSelected)
-        if (m[id]) delete m[id]
-        else m[id] = true
-        root.albumSelected = m
+    /// The armed section's cards follow the same rule as every other
+    /// select-mode surface: Shift-click ranges over the section's cards in
+    /// their CURRENT sort order, Ctrl adds one (controls/SelectionModel.qml).
+    SelectionModel { id: albumSectionSel }
+    function albumSelectToggle(id, cards, mods) {
+        root.albumSelected = albumSectionSel.next(root.albumSelected, id, cards || [],
+                                                  mods === undefined ? Qt.NoModifier : mods)
     }
     function albumSelectClear() {
         root.albumSelectKey = ""
         root.albumSelected = ({})
+        albumSectionSel.anchorId = ""
     }
     function albumSectionLabel(key) {
         return root.albumSelectKey === key
@@ -392,6 +396,7 @@ Rectangle {
         } else if (action === "play-selected") {
             root.albumSelectKey = key
             root.albumSelected = ({})
+            albumSectionSel.anchorId = ""
         } else if (action === "cancel-selection") {
             root.albumSelectClear()
         }
@@ -865,6 +870,31 @@ Rectangle {
     // paint. Arrivals are coalesced into ONE rebind per frame — the same fix
     // LocalLibraryView carries, at O(n) instead of O(n²), with the covers
     // still appearing progressively (16ms granularity is invisible).
+    // --- Track info for the Popular Tracks rows (2026-09-13) ---------------
+    // ONE lazy modal per artist view (the full Popup tree must not exist per
+    // row). Activated on demand, torn down on close (Qt.callLater so the
+    // Popup is not destroyed mid-signal) — the same shape rows/TrackRow.qml
+    // carries per row.
+    // One clipboard carrier for every Popular Tracks row's Copy submenu.
+    QbzClipboard { id: artistClipboard }
+
+    Loader {
+        id: artistTrackInfo
+        active: false
+        sourceComponent: TrackInfoModal { }
+    }
+    Connections {
+        target: artistTrackInfo.item
+        ignoreUnknownSignals: true
+        function onClosed() { Qt.callLater(function () { artistTrackInfo.active = false }) }
+    }
+    function openTrackInfo(trackId) {
+        if (!trackId || trackId === "")
+            return
+        artistTrackInfo.active = true
+        artistTrackInfo.item.openFor(trackId)
+    }
+
     property var _coverInbox: ({})
     Timer {
         id: coverFlush
@@ -1688,11 +1718,11 @@ Rectangle {
         // `controls/CardMenu.qml`, the same primitive rows/TrackRow.qml opens.
         //
         // ABSENT, not dead (the same discipline TrackRow applies): the radio
-        // pair, Share Qobuz link / Song.link and Track info. The first two
-        // need bridge seams that do not exist; the last needs the shared
-        // row's lazy Loader (a TrackInfoModal), and duplicating those per
-        // artist row is exactly the fork-drift this file already paid for
-        // once. (The offline block IS wired — it needs no Loader.)
+        // pair and Share Qobuz link / Song.link, which need bridge seams that
+        // do not exist. Track info IS wired (2026-09-13) through ONE lazy
+        // TrackInfoModal per artist view (`artistTrackInfo` below), not one
+        // per row — the per-row Loader rows/TrackRow.qml carries is what this
+        // comment used to refuse to duplicate.
         CardMenu {
             id: popMenu
             menuWidth: 224
@@ -1749,6 +1779,14 @@ Rectangle {
                     m.push({ "label": t("Go to album", r), "icon": "disc-3", "action": "go-album" })
                 if ((popRow.row.artistId || "") !== "")
                     m.push({ "label": t("Go to artist", r), "icon": "user", "action": "go-artist" })
+                if (!popRow.pulled)
+                    m.push({ "label": t("Track info", r), "icon": "info", "action": "track-info" })
+                if (!popRow.pulledDead)
+                    m.push({ "label": t("Buy on Qobuz", r), "icon": "shopping-bag", "action": "buy" })
+                m.push({ "label": t("Copy", r), "icon": "copy", "action": "copy", "submenu": [
+                    { "label": t("Track name", r), "icon": "copy", "action": "copy-title" },
+                    { "label": t("Track - Album - Artist", r), "icon": "clipboard", "action": "copy-full" }
+                ] })
                 return m
             }
             onPicked: function (a) {
@@ -1779,8 +1817,18 @@ Rectangle {
                 else if (a === "cache") QbzPlayer.cacheTrack(id)
                 else if (a === "uncache") QbzPlayer.uncacheTrack(id)
                 else if (a === "recache") QbzPlayer.recacheTrack(id)
-                else if (a === "go-album") QbzAlbum.openAlbum(popRow.row.albumId)
+                else if (a === "go-album") QbzAlbum.openAlbumFrom(popRow.row.albumId, popRow.row.album || "", popRow.row.artist || "")
                 else if (a === "go-artist") QbzArtist.openArtist(popRow.row.artistId)
+                else if (a === "track-info") root.openTrackInfo(id)
+                else if (a === "buy") QbzAlbum.buyTrack(id)
+                else if (a === "copy-title" || a === "copy-full") {
+                    var parts = [popRow.row.title || ""]
+                    if (a === "copy-full") {
+                        if ((popRow.row.album || "") !== "") parts.push(popRow.row.album)
+                        if ((popRow.row.artist || "") !== "") parts.push(popRow.row.artist)
+                    }
+                    artistClipboard.copy(parts.join(" - "))
+                }
             }
         }
 
@@ -2217,7 +2265,9 @@ Rectangle {
                     selectMode: root.albumSelectKey === (relSection.section.releaseType || "")
                     selected: root.albumSelected[modelData.id] === true
                     selectMarkBottom: true
-                    onSelectToggled: root.albumSelectToggle(modelData.id)
+                    onSelectToggled: function (mods) {
+                        root.albumSelectToggle(modelData.id, relSection.section.cards || [], mods)
+                    }
 
                     // ---- smooth append (owner, 2026-08-02) ---------------
                     // "que la aparicion de lo que se cargue, sea smooth" —
@@ -2759,29 +2809,26 @@ Rectangle {
                     onAction: function (id) { root.bulkAction(id) }
                 }
 
+                // Air between the sticky JUMP TO bar's rule and the row.
+                Item { visible: topTracks.length > 0; width: 1; height: 8 }
                 Row {
                     property string anchorId: "popular-tracks"
                     visible: topTracks.length > 0
                     width: parent.width
                     spacing: 12
                     Text {
-                        width: parent.width - 44 - 32 - 32 - 3 * 12
+                        width: parent.width - 32 - 32 - 32 - 3 * 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: QbzSession.tr("Popular Tracks", QbzSession.trRev)
                         color: theme.textPrimary
                         font.pixelSize: theme.fontHeading
                         font.weight: theme.weightSemibold
                     }
-                    // ArtistPageView.slint:732-737 mounts the SHARED
-                    // CircleAction here — `primary: true` plus an explicit
-                    // `on-surface: true` with the .slint's own reason on the
-                    // line above it: "Plain page background (below the header
-                    // divider) — theme-aware variant so it reads on light
-                    // themes." The port hand-rolled a 44px accent disc
-                    // instead, which duplicated the control AND bypassed that
-                    // arm. `overlay` defaults false = the on-surface arm.
+                    // The SHARED CircleAction, in the same plain 32px outlined
+                    // form as its two siblings (2026-09-13): the filled 44px
+                    // accent disc the .slint carried here clashed with them
+                    // and butted the JUMP TO bar's rule.
                     QbzCircleAction {
-                        primary: true
                         name: "play-fill"
                         anchors.verticalCenter: parent.verticalCenter
                         onClicked: QbzPlayer.playArtistTop(false)
@@ -3232,7 +3279,9 @@ Rectangle {
                             selectMode: root.albumSelectKey === "library"
                             selected: root.albumSelected[modelData.id] === true
                             selectMarkBottom: true
-                            onSelectToggled: root.albumSelectToggle(modelData.id)
+                            onSelectToggled: function (mods) {
+                                root.albumSelectToggle(modelData.id, root.libAlbumsSorted, mods)
+                            }
                             albumId: modelData.id
                             title: modelData.title
                             artist: modelData.artist
