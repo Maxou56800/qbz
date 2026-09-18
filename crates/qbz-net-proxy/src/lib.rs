@@ -11,14 +11,14 @@
 //! # DNS leaks
 //!
 //! A SOCKS proxy can resolve the destination hostname on either side of the
-//! tunnel. `socks4`/`socks5` resolve it with the *local* system resolver and
-//! only hand the proxy a raw IP — every hostname visited is still leaked to
-//! the local network/ISP even though the traffic itself goes through the
-//! proxy. `socks4a`/`socks5h` send the hostname itself and let the proxy
-//! resolve it. [`ProxyKind::Socks4`] and [`ProxyKind::Socks5`] always build
-//! the `*a`/`*h` variant internally (see [`ProxyKind::url_scheme`]): this is
-//! not a user-facing option; there is no correct reason for this app to leak
-//! a hostname past a proxy the user explicitly configured.
+//! tunnel. `socks5` resolves it with the *local* system resolver and only
+//! hands the proxy a raw IP — every hostname visited is still leaked to the
+//! local network/ISP even though the traffic itself goes through the proxy.
+//! `socks5h` sends the hostname itself and lets the proxy resolve it.
+//! [`ProxyKind::Socks5`] always builds the `*h` variant internally (see
+//! [`ProxyKind::url_scheme`]): this is not a user-facing option; there is no
+//! correct reason for this app to leak a hostname past a proxy the user
+//! explicitly configured.
 //!
 //! # What "disabled" means
 //!
@@ -52,7 +52,6 @@ mod insecure_tls;
 pub enum ProxyKind {
     Http,
     Https,
-    Socks4,
     Socks5,
 }
 
@@ -62,7 +61,6 @@ impl ProxyKind {
         match self {
             Self::Http => "http",
             Self::Https => "https",
-            Self::Socks4 => "socks4",
             Self::Socks5 => "socks5",
         }
     }
@@ -73,7 +71,6 @@ impl ProxyKind {
         match self {
             Self::Http => "http",
             Self::Https => "https",
-            Self::Socks4 => "socks4a",
             Self::Socks5 => "socks5h",
         }
     }
@@ -86,7 +83,6 @@ impl std::str::FromStr for ProxyKind {
         match value {
             "http" => Ok(Self::Http),
             "https" => Ok(Self::Https),
-            "socks4" => Ok(Self::Socks4),
             "socks5" => Ok(Self::Socks5),
             other => Err(ProxyConfigError::UnknownKind(other.to_string())),
         }
@@ -324,10 +320,6 @@ mod tests {
             config(ProxyKind::Socks5, None).to_url().unwrap().scheme(),
             "socks5h"
         );
-        assert_eq!(
-            config(ProxyKind::Socks4, None).to_url().unwrap().scheme(),
-            "socks4a"
-        );
     }
 
     #[test]
@@ -390,12 +382,7 @@ mod tests {
 
     #[test]
     fn proxy_kind_round_trips_through_its_stable_string_form() {
-        for kind in [
-            ProxyKind::Http,
-            ProxyKind::Https,
-            ProxyKind::Socks4,
-            ProxyKind::Socks5,
-        ] {
+        for kind in [ProxyKind::Http, ProxyKind::Https, ProxyKind::Socks5] {
             assert_eq!(kind.as_str().parse::<ProxyKind>().unwrap(), kind);
         }
     }

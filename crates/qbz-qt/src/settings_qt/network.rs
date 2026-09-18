@@ -15,8 +15,8 @@
 
 use serde::Serialize;
 
-const PROXY_KINDS: &[&str] = &["http", "https", "socks4", "socks5"];
-const PROXY_KIND_LABELS: &[&str] = &["HTTP", "HTTPS", "SOCKS4", "SOCKS5"];
+const PROXY_KINDS: &[&str] = &["http", "https", "socks5"];
+const PROXY_KIND_LABELS: &[&str] = &["HTTP", "HTTPS", "SOCKS5"];
 
 #[derive(Clone, Default, Serialize)]
 pub struct Snapshot {
@@ -101,23 +101,22 @@ fn friendly_proxy_error(raw_detail: &str, config: &qbz_net_proxy::ProxyConfig) -
             .to_string();
     }
     if lower.contains("socks") && lower.contains("handshake") {
-        return "The proxy did not complete the SOCKS handshake correctly. If this is a \
-                SOCKS4 proxy, try SOCKS5 if the provider supports it — some SOCKS4 servers \
-                are known to be incompatible with this app's SOCKS4 client."
+        return "The proxy did not complete the SOCKS handshake correctly. Double-check the \
+                host, port and credentials."
             .to_string();
     }
     raw_detail.to_string()
 }
 
-/// The other of HTTP/HTTPS. `None` for SOCKS4/5 — there's no cheap "did you
-/// mean the other one" check for those (SOCKS4 and SOCKS5 don't share a
-/// listening port the way a plain-HTTP and a TLS-terminated proxy might get
-/// mixed up on the same port number).
+/// The other of HTTP/HTTPS. `None` for SOCKS5 — there's no cheap "did you
+/// mean the other one" check for it (it doesn't share a listening port the
+/// way a plain-HTTP and a TLS-terminated proxy might get mixed up on the
+/// same port number).
 fn opposite_http_kind(kind: qbz_net_proxy::ProxyKind) -> Option<qbz_net_proxy::ProxyKind> {
     match kind {
         qbz_net_proxy::ProxyKind::Http => Some(qbz_net_proxy::ProxyKind::Https),
         qbz_net_proxy::ProxyKind::Https => Some(qbz_net_proxy::ProxyKind::Http),
-        qbz_net_proxy::ProxyKind::Socks4 | qbz_net_proxy::ProxyKind::Socks5 => None,
+        qbz_net_proxy::ProxyKind::Socks5 => None,
     }
 }
 

@@ -1,17 +1,16 @@
 //! Raw, proxy-tunneled streams for the one consumer that doesn't use
 //! reqwest: `qconnect-transport-ws`'s WebSocket connects with
 //! `tokio-tungstenite`, which dials its own TCP/TLS and has no proxy support
-//! at all. [`connect_tunnel`] establishes the tunnel first — through SOCKS4,
-//! SOCKS5 or a plain HTTP `CONNECT` — and hands back a plain
+//! at all. [`connect_tunnel`] establishes the tunnel first — through SOCKS5
+//! or a plain HTTP `CONNECT` — and hands back a plain
 //! `AsyncRead + AsyncWrite` stream that the caller then passes to
 //! `tokio_tungstenite::client_async_tls_with_config` in place of a fresh
 //! `TcpStream::connect`.
 //!
 //! Domain targets are passed straight through to the proxy (never resolved
 //! locally first) for the same reason [`crate::ProxyKind::url_scheme`]
-//! always builds `socks4a`/`socks5h`: resolving locally leaks every host
-//! visited to the local network/ISP even though the traffic itself is
-//! proxied.
+//! always builds `socks5h`: resolving locally leaks every host visited to
+//! the local network/ISP even though the traffic itself is proxied.
 //!
 //! An HTTPS proxy (TLS to the proxy itself, as opposed to the `wss://`
 //! target's own TLS layer) is not supported here — see [`connect_tunnel`].
@@ -54,10 +53,6 @@ pub async fn connect_tunnel(
             let stream = connect_socks5(config, target_host, target_port).await?;
             Ok(Box::pin(stream))
         }
-        ProxyKind::Socks4 => {
-            let stream = connect_socks4(config, target_host, target_port).await?;
-            Ok(Box::pin(stream))
-        }
         ProxyKind::Http => {
             let stream = connect_http(config, target_host, target_port).await?;
             Ok(Box::pin(stream))
@@ -85,26 +80,6 @@ async fn connect_socks5(
         _ => tokio_socks::tcp::Socks5Stream::connect(proxy, target).await,
     };
     result.map_err(|e| ProxyConfigError::Tunnel(format!("SOCKS5 tunnel failed: {e}")))
-}
-
-async fn connect_socks4(
-    config: &ProxyConfig,
-    target_host: &str,
-    target_port: u16,
-) -> Result<tokio_socks::tcp::Socks4Stream<TcpStream>, ProxyConfigError> {
-    let proxy = (config.host.as_str(), config.port);
-    let target = (target_host, target_port);
-    // SOCKS4 has only a single USERID field — no password. A configured
-    // password is silently unusable here; the settings UI should say so for
-    // this proxy kind rather than this layer failing loudly for a field the
-    // protocol simply has no room for.
-    let result = match &config.auth {
-        Some(ProxyAuth { username, .. }) if !username.is_empty() => {
-            tokio_socks::tcp::Socks4Stream::connect_with_userid(proxy, target, username).await
-        }
-        _ => tokio_socks::tcp::Socks4Stream::connect(proxy, target).await,
-    };
-    result.map_err(|e| ProxyConfigError::Tunnel(format!("SOCKS4 tunnel failed: {e}")))
 }
 
 async fn connect_http(

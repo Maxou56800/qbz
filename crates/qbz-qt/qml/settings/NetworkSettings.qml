@@ -54,8 +54,8 @@ Column {
         if (!insecureTouched) insecureTlsInput = net.proxyInsecureTls === true
     }
 
-    // Index into proxyKindOptions ("HTTP", "HTTPS", "SOCKS4", "SOCKS5") —
-    // only an https-kind proxy has a TLS handshake of its own to skip.
+    // Index into proxyKindOptions ("HTTP", "HTTPS", "SOCKS5") — only an
+    // https-kind proxy has a TLS handshake of its own to skip.
     readonly property bool isHttpsKind: root.kindIndexInput === 1
 
     readonly property string effectiveHost:
