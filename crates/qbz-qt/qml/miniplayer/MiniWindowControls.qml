@@ -16,11 +16,8 @@
 // carries the K1 column of §4.3.4's table (cluster 243, expanded 272), not the
 // nine-button one (219 / 248).
 //
-// THIS COMPONENT IS MOUNTED CONDITIONALLY, NEVER `visible: false` (§15 trap 7).
-// MiniFooter mounts it through a `Loader { active: windowHovered }`, so when the
-// pointer leaves the card the whole thing is destroyed and `expanded` plus the
-// 250 ms collapse timer die with it. A `visible` flip would leave a capsule
-// mid-unfold waiting to be re-revealed in that state.
+// The trigger stays mounted while the mini is open. Leaving the card resets
+// expansion without hiding the entry point to the window controls.
 //
 // THE WIDTH IS COMPUTED FROM CONSTANTS, NOT FROM THE CHILDREN (§8 rule 1).
 // The reference reads `cluster.preferred-width` (:81); a QML port that reached
@@ -48,6 +45,7 @@ import "../theme"
 
 Rectangle {
     id: root
+    objectName: "miniWindowControls"
 
     /// The lit tab. Passed in rather than read off QbzMini here so the mount
     /// site owns the binding (:56, `active-surface`).
@@ -63,6 +61,13 @@ Rectangle {
     // 118 · two 3 px gaps in the outer row = 118 + 3 + 1 + 3 + 118.
     readonly property int clusterWidth: 243
 
+    property bool windowHovered: true
+    onWindowHoveredChanged: {
+        if (!windowHovered) {
+            collapseTimer.stop()
+            expanded = false
+        }
+    }
     property bool expanded: false
 
     // A1 (§4.12): 220 ms, cubic-bezier(0.4, 0, 0.2, 1). The ONLY animated
@@ -83,9 +88,9 @@ Rectangle {
 
     radius: 13
     antialiasing: true
-    color: "#e606070a"  // #06070ae6 in Slint; Qt is #AARRGGBB
+    color: Qt.rgba(theme.surfaceElevated.r, theme.surfaceElevated.g, theme.surfaceElevated.b, 1.0)
     border.width: 1
-    border.color: "#33ffffff"  // #ffffff33 in Slint; Qt is #AARRGGBB
+    border.color: theme.alphaTier(20)
 
     HoverHandler {
         onHoveredChanged: {
@@ -171,7 +176,7 @@ Rectangle {
             Rectangle {
                 width: 1
                 height: 12
-                color: "#29ffffff"  // #ffffff29 in Slint; Qt is #AARRGGBB
+                color: theme.alphaTier(15)
                 anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -243,11 +248,16 @@ Rectangle {
         }
     }
 
-    // The trigger: always visible, HOVER-ONLY — it has no clicked handler in
-    // the reference either (:176-183). 22 x 22 overrides CapBtn's 22 x 20 so
+    // The trigger opens on hover or click. 22 x 22 overrides CapBtn's 22 x 20 so
     // the collapsed capsule is a circle inside the 26 px radius-13 chrome.
     CapBtn {
+        objectName: "miniMenuTrigger"
         name: "square"
+        idleOpacity: 1.0
+        onClicked: {
+            collapseTimer.stop()
+            root.expanded = true
+        }
         iconSize: 12
         width: 22
         height: 22

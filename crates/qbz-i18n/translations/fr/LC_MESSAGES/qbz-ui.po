@@ -7881,3 +7881,46 @@ msgstr "QBZ acceptera n'importe quel certificat présenté par ce proxy. Ne lais
 msgid "Network settings"
 msgstr "Paramètres réseau"
 
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Notes de version"
+
+msgid "New in {}"
+msgstr "Nouveautés de {}"
+
+msgid "Open settings"
+msgstr "Ouvrir les réglages"
+
+msgid "Open playback"
+msgstr "Ouvrir la lecture"
+
+msgid "Open audio"
+msgstr "Ouvrir l'audio"
+
+msgid "Reorganised settings"
+msgstr "Paramètres réorganisés"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Je sais que les habitudes et les préférences d'écoute varient autant que les goûts musicaux : les options ont donc été réorganisées et les moins utilisées masquées. Faites un tour dans la section des paramètres et configurez-la à votre goût."
+
+msgid "Cache profiles"
+msgstr "Profils de cache"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "La mise en cache n'est plus une décision du produit : vous choisissez désormais si c'est le cache, la mémoire ou le stockage qui s'en charge, selon vos préférences et les capacités de votre ordinateur."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "La fonction a été entièrement réécrite : nous utilisons désormais les valeurs LUFS fournies par Qobuz et avons mis en place des profils conformes aux standards de l'industrie."
+
+msgid "Quality of Life"
+msgstr "Confort d'utilisation"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Des fonctions perdues lors des changements de frontend sont de retour, avec plus et de meilleures actions groupées et des commandes de lecture supplémentaires (avance et retour de 10 secondes sur la barre de progression, lecture en boucle), entre autres."
+
+msgid "QConnect hardening"
+msgstr "Renforcement de QConnect"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Un fonctionnement plus stable : corrections de bugs, problèmes qui empêchaient une implémentation à la manière du client officiel, files d'attente qui ne correspondaient pas et plantages. Cette fonction est en amélioration continue."

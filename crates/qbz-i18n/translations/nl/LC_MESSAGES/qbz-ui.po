@@ -7871,3 +7871,46 @@ msgstr "QBZ accepteert elk certificaat dat deze proxy aanbiedt. Laat dit alleen 
 msgid "Network settings"
 msgstr "Netwerkinstellingen"
 
+# What's New 2.1.2 deck
+
+msgid "Release notes"
+msgstr "Release-opmerkingen"
+
+msgid "New in {}"
+msgstr "Nieuw in {}"
+
+msgid "Open settings"
+msgstr "Instellingen openen"
+
+msgid "Open playback"
+msgstr "Afspelen openen"
+
+msgid "Open audio"
+msgstr "Audio openen"
+
+msgid "Reorganised settings"
+msgstr "Opnieuw ingedeelde instellingen"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "Ik weet dat luistergewoonten en voorkeuren net zo verschillen als de muzieksmaak, dus de opties zijn opnieuw ingedeeld en de minst gebruikte zijn verborgen. Bekijk de instellingen en pas ze aan naar jouw smaak."
+
+msgid "Cache profiles"
+msgstr "Cacheprofielen"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching is geen productbeslissing meer: je kiest nu zelf of de cache, het geheugen of de opslag het afhandelt, afhankelijk van je voorkeuren en wat je computer aankan."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "De functie is volledig herschreven: we gebruiken nu de LUFS-informatie van Qobuz en hebben profielen volgens de industriestandaard ingebouwd."
+
+msgid "Quality of Life"
+msgstr "Dagelijks gemak"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Functies die bij de frontendwissels verloren gingen zijn terug, samen met meer en betere bulkacties en extra afspeelbediening (10 seconden vooruit en terug op de voortgangsbalk, afspelen in een lus) en meer."
+
+msgid "QConnect hardening"
+msgstr "QConnect versterkt"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "Stabieler gedrag: opgeloste bugs, problemen die een implementatie in de stijl van de officiële client in de weg stonden, wachtrijen die niet overeenkwamen en crashes. Deze functie wordt doorlopend verbeterd."

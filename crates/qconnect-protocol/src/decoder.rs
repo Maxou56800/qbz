@@ -844,8 +844,9 @@ fn map_ctrl_renderer_state_updated(
 }
 
 fn map_add_renderer(payload: CtrlAddRendererMessage) -> Result<QueueServerEvent, ProtocolError> {
-    let device_info = payload.device_info.map(|di| {
-        json!({
+    let device_info = payload.device_info.map(|di| -> Result<Value, ProtocolError> {
+        Ok(json!({
+            "device_uuid": uuid_bytes_to_string_opt(di.device_uuid, "device_info.device_uuid")?,
             "friendly_name": di.friendly_name,
             "brand": di.brand,
             "model": di.model,
@@ -856,8 +857,8 @@ fn map_add_renderer(payload: CtrlAddRendererMessage) -> Result<QueueServerEvent,
                 "max_audio_quality": capabilities.max_audio_quality,
                 "volume_remote_control": capabilities.volume_remote_control,
             }))
-        })
-    });
+        }))
+    }).transpose()?;
 
     Ok(QueueServerEvent {
         event_type: QueueEventType::SrvrCtrlAddRenderer,
@@ -873,8 +874,9 @@ fn map_add_renderer(payload: CtrlAddRendererMessage) -> Result<QueueServerEvent,
 fn map_update_renderer(
     payload: CtrlUpdateRendererMessage,
 ) -> Result<QueueServerEvent, ProtocolError> {
-    let device_info = payload.device_info.map(|di| {
-        json!({
+    let device_info = payload.device_info.map(|di| -> Result<Value, ProtocolError> {
+        Ok(json!({
+            "device_uuid": uuid_bytes_to_string_opt(di.device_uuid, "device_info.device_uuid")?,
             "friendly_name": di.friendly_name,
             "brand": di.brand,
             "model": di.model,
@@ -885,8 +887,8 @@ fn map_update_renderer(
                 "max_audio_quality": capabilities.max_audio_quality,
                 "volume_remote_control": capabilities.volume_remote_control,
             }))
-        })
-    });
+        }))
+    }).transpose()?;
 
     Ok(QueueServerEvent {
         event_type: QueueEventType::SrvrCtrlUpdateRenderer,
@@ -1130,6 +1132,31 @@ mod tests {
     use super::{
         decode_playback_error, decode_queue_server_events, decode_renderer_server_commands,
     };
+
+    #[test]
+    fn controller_renderer_uuid_survives_add_and_update_frames() {
+        use crate::queue_command_proto::{CtrlAddRendererMessage, CtrlUpdateRendererMessage, DeviceInfoMessage};
+        let uuid = uuid::Uuid::parse_str("13d40c34-df5d-4eb5-a513-e5145364a800").unwrap();
+        for update in [false, true] {
+            for bytes in [None, Some(uuid.as_bytes().to_vec()), Some(vec![1, 2])] {
+                let info = DeviceInfoMessage { device_uuid: bytes.clone(), ..Default::default() };
+                let mut message = QConnectMessage::default();
+                if update {
+                    message.srvr_ctrl_update_renderer = Some(CtrlUpdateRendererMessage { renderer_id: Some(2), device_info: Some(info) });
+                } else {
+                    message.srvr_ctrl_add_renderer = Some(CtrlAddRendererMessage { renderer_id: Some(2), device_info: Some(info) });
+                }
+                let batch = QConnectMessages { messages: vec![message], ..Default::default() };
+                let result = decode_queue_server_events(&batch.encode_to_vec());
+                if bytes.as_ref().is_some_and(|bytes| bytes.len() != 16) {
+                    assert!(result.is_err());
+                } else {
+                    let events = result.unwrap();
+                    assert_eq!(events[0].payload["device_info"]["device_uuid"], serde_json::json!(bytes.map(|_| uuid.to_string())));
+                }
+            }
+        }
+    }
 
     #[test]
     fn controller_renderer_capabilities_survive_add_and_update_frames() {

@@ -690,4 +690,28 @@ mod tests {
         assert_eq!(max_audio_quality_from_quality(Quality::HiRes), 3);
         assert_eq!(max_audio_quality_from_quality(Quality::UltraHiRes), 4);
     }
+    #[test]
+    fn uuid_disambiguates_identical_renderer_names() {
+        let mut session = super::QconnectSessionState::default();
+        session.renderers = [1, 2].into_iter().map(|id| super::QconnectRendererInfo {
+            renderer_id: id,
+            device_uuid: Some(format!("uuid-{id}")),
+            friendly_name: Some("QBZ".into()),
+            brand: None, model: None, device_type: None, volume_remote_control: None,
+        }).collect();
+        let identity = super::LocalIdentity {
+            device_uuid: "uuid-2".into(),
+            friendly_name: Some("QBZ".into()),
+            ..Default::default()
+        };
+        super::refresh_local_renderer_id(&mut session, &identity);
+        assert_eq!(session.local_renderer_id, Some(2));
+        for renderer in &mut session.renderers { renderer.device_uuid = None; }
+        super::refresh_local_renderer_id(&mut session, &identity);
+        assert_eq!(session.local_renderer_id, None);
+        session.renderers.remove(0);
+        super::refresh_local_renderer_id(&mut session, &identity);
+        assert_eq!(session.local_renderer_id, Some(2));
+    }
+
 }

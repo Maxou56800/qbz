@@ -13,6 +13,8 @@ bash scripts/test-playback-cache-qml.sh
 bash scripts/test-text-edit-menu-qml.sh
 bash scripts/test-compact-seek-qml.sh
 bash scripts/test-remote-volume-qml.sh
+bash scripts/test-miniplayer-qml.sh
+node scripts/test_qt_window_lifecycle.mjs
 bash scripts/test-library-folders-qml.sh
 bash scripts/test-array-model-qml.sh
 bash scripts/test-keyed-model-qml.sh

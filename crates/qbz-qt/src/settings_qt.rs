@@ -3912,7 +3912,12 @@ pub async fn settings_bool(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &str,
         "tray-mac-hide-dock" => tray()
             .set_mac_hide_dock(value)
             .map_err(|e| e.to_string())
-            .map(|_| Apply::None),
+            .map(|_| {
+                crate::tray_bridge::ui(|t| {
+                    crate::tray_qt::refresh_mac_dock_policy(*t.as_ref().tray_live());
+                });
+                Apply::None
+            }),
         // --- Integrations (phase 19) --------------------------------------
         "show-recommendations" => {
             crate::integrations_qt::set_show_recommendations(value).map(|_| Apply::None)
@@ -4196,6 +4201,8 @@ pub async fn settings_select(runtime: &Arc<AppRuntime<LoggingAdapter>>, key: &st
                 // release and raced its own re-enumeration.
                 if let Err(error) = release_output_device_with_owner(runtime).await {
                     report_release_failure(&error);
+                    publish_snapshot().await;
+                    return;
                 }
             }
             if let Err(e) = with_audio(|s| s.set_backend_type(Some(backend))) {
@@ -4753,6 +4760,10 @@ pub async fn settings_reset(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     let Some(_owner_action) = begin_audio_owner_action("reset live audio settings", false) else {
         return;
     };
+    if let Err(error) = release_output_device_with_owner(runtime).await {
+        report_release_failure(&error);
+        return;
+    }
     if let Err(e) = with_audio(|s| s.reset_all().map(|_| ())) {
         log::error!("[qbz-qt] audio settings reset failed: {e}");
     }
@@ -4785,6 +4796,9 @@ pub async fn refresh_devices(runtime: &Arc<AppRuntime<LoggingAdapter>>) {
     if let Err(error) = release_output_device_with_owner(runtime).await {
         report_release_failure(&error);
     }
+    // As in Slint's release button, allow WirePlumber to recreate the sink
+    // after PCM/reservation release before publishing the fresh device list.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     invalidate_device_cache();
     // #638 fix 3, trigger 6 — Qt-only, and the easiest of the six to miss.
     // This button exists precisely for hotplug: the hardware behind the

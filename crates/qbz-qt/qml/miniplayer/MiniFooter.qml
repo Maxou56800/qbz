@@ -24,9 +24,8 @@
 // smell, so all of them are cached here, including the paddings and the seek
 // sizes the reference also spells inline.
 //
-// THE CAPSULE IS A CONDITIONAL MOUNT (§15 trap 7). `Loader { active: }`, never
-// `visible: false`: when the pointer leaves the card the component is destroyed
-// and its expanded flag and 250 ms collapse timer go with it.
+// The menu trigger remains visible while the mini is open; leaving the card
+// collapses its controls.
 //
 // The two mode branches are Loaders for the same reason Slint uses `if`
 // (:263, :332) rather than a visibility flip — an always-visible surface pays
@@ -45,9 +44,7 @@ Rectangle {
     property int mode: 0
     /// The MINI window (§8 rule 3), for startSystemMove().
     property var hostWindow: null
-    /// Drives the capsule's conditional mount. Fed by MiniShell's HoverHandler
-    /// on the card, which is §13-D4's replacement for the reference's winit
-    /// CursorMoved/CursorLeft feed.
+    /// Leaving the card collapses the menu without hiding its trigger.
     property bool windowHovered: false
 
     QbzTheme { id: theme }
@@ -141,7 +138,11 @@ Rectangle {
         return m + ":" + (s < 10 ? "0" : "") + s
     }
 
-    color: QbzMini.backgroundBlur ? "#d906070a" : theme.surfaceCard  // #06070ad9 in Slint; Qt is #AARRGGBB
+    property bool backgroundActive: false
+    readonly property bool lightForeground: backgroundActive && theme.isDark
+    color: root.backgroundActive
+           ? Qt.rgba(theme.surfaceCard.r, theme.surfaceCard.g, theme.surfaceCard.b, 0.20)
+           : theme.surfaceCard
 
     /// The CARD's corner radius, handed down by MiniShell.
     ///
@@ -181,6 +182,7 @@ Rectangle {
         sourceComponent: Component {
             Item {
                 MiniSeek {
+                    lightForeground: root.lightForeground
                     id: seek
                     anchors.top: parent.top
                     anchors.left: parent.left
@@ -205,7 +207,7 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.fmt(QbzPlayer.npElapsedSecs)
-                        color: theme.textMuted
+                        color: root.lightForeground ? "#e0ffffff" : theme.textSecondary
                         font.pixelSize: root.timeFont
                     }
                     Text {
@@ -221,7 +223,7 @@ Rectangle {
                         // itself.
                         text: "-" + root.fmt(Math.max(0, QbzPlayer.npDurationSecs
                                                          - QbzPlayer.npElapsedSecs))
-                        color: theme.textMuted
+                        color: root.lightForeground ? "#e0ffffff" : theme.textSecondary
                         font.pixelSize: root.timeFont
                     }
                 }
@@ -235,6 +237,7 @@ Rectangle {
                     height: root.ctrlH
 
                     MiniVolume {
+                        lightForeground: root.lightForeground
                         id: vol
                         // Above the transport, so its popup and the
                         // click-outside layer inside it are not painted under
@@ -260,6 +263,7 @@ Rectangle {
                     }
 
                     MiniTransport {
+                        lightForeground: root.lightForeground
                         id: transport
                         anchors.verticalCenter: parent.verticalCenter
                         // Centred in the band BETWEEN the volume button and the
@@ -282,11 +286,12 @@ Rectangle {
                     // volume popup's dismiss layer.
                     Loader {
                         z: 3
-                        active: root.windowHovered
+                        active: QbzMini.open
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         sourceComponent: Component {
                             MiniWindowControls {
+                                windowHovered: root.windowHovered
                                 activeSurface: QbzMini.surface
                                 hostWindow: root.hostWindow
                             }
@@ -328,7 +333,7 @@ Rectangle {
                                  ? QbzPlayer.npTitle + " - " + QbzPlayer.npArtist
                                  : QbzPlayer.npTitle)
                               : QbzSession.tr("No track playing", QbzSession.trRev)
-                        color: theme.alphaTier(70)
+                        color: root.lightForeground ? "#e0ffffff" : theme.textSecondary
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -359,17 +364,17 @@ Rectangle {
                     // the reference's own arithmetic leaves it overflowing
                     // upward and visibly high. `root` is the footer, which in
                     // micro IS the whole card (§13-D10), so its centre is the
-                    // card's centre. Anchoring across the parent boundary is
-                    // safe here and NOT the §8 rule-1 hazard: `root` is an id,
-                    // not a `parent.<something>` walk.
+                    // card's centre. Qt anchors require a parent or sibling;
+                    // the footer is neither here. Use its mapped centre.
                     Loader {
                         z: 1
-                        active: root.windowHovered
+                        active: QbzMini.open
                         anchors.right: parent.right
                         anchors.rightMargin: 8
-                        anchors.verticalCenter: root.verticalCenter
+                        y: root.mapToItem(microHeader, 0, root.height / 2).y - height / 2
                         sourceComponent: Component {
                             MiniWindowControls {
+                                windowHovered: root.windowHovered
                                 activeSurface: QbzMini.surface
                                 hostWindow: root.hostWindow
                             }
@@ -388,6 +393,7 @@ Rectangle {
                     height: 16
 
                     MiniTransport {
+                        lightForeground: root.lightForeground
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.verticalCenter: parent.verticalCenter
                         btn: 16
@@ -405,6 +411,7 @@ Rectangle {
                 // layout's 8 px side padding says otherwise and the CODE wins
                 // (§12-P6).
                 MiniSeek {
+                    lightForeground: root.lightForeground
                     anchors.top: microCtrl.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right

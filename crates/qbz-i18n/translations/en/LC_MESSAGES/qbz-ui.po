@@ -3538,3 +3538,58 @@ msgstr "QBZ will accept any certificate this proxy presents. Only leave this on 
 msgid "Network settings"
 msgstr "Network settings"
 
+msgid "Hide Dock icon when closed to menu bar"
+msgstr "Hide Dock icon when closed to menu bar"
+
+msgid "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"
+msgstr "Run as a menu-bar-only app while the window is closed. Off keeps the Dock icon (like Spotify)"
+
+# What's New 2.1.2 deck
+
+msgid "Back"
+msgstr "Back"
+
+msgid "Next"
+msgstr "Next"
+
+msgid "Release notes"
+msgstr "Release notes"
+
+msgid "New in {}"
+msgstr "New in {}"
+
+msgid "Open settings"
+msgstr "Open settings"
+
+msgid "Open playback"
+msgstr "Open playback"
+
+msgid "Open audio"
+msgstr "Open audio"
+
+msgid "Reorganised settings"
+msgstr "Reorganised settings"
+
+msgid "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+msgstr "I know that listening habits and preferences vary as much as musical tastes do, so the options have been reorganised and the less frequently used ones have been hidden. Have a look at the settings section and customise it to your liking."
+
+msgid "Cache profiles"
+msgstr "Cache profiles"
+
+msgid "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+msgstr "Caching is no longer a product-driven decision; you can now choose whether you prefer the cache, memory or storage to handle it, depending on your preferences and/or your computer's capabilities."
+
+msgid "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+msgstr "The feature has been completely rewritten; we now utilise the LUFS information provided by Qobuz and have implemented profiles that comply with industry standards."
+
+msgid "Quality of Life"
+msgstr "Quality of Life"
+
+msgid "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+msgstr "Features that were lost during the front-end changes have been restored, along with more and better batch actions, additional playback controls (jump forward and back within 10 seconds on the seek bar, loop playback), etc."
+
+msgid "QConnect hardening"
+msgstr "QConnect hardening"
+
+msgid "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."
+msgstr "More stable performance, particularly bug fixes, issues that were preventing an official-style implementation, mismatched queues, and crashes. This feature is undergoing continuous improvement."

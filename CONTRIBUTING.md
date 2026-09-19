@@ -150,6 +150,29 @@ helps the maintainer choose an appropriate review strategy; it is not grounds
 for rejecting a contribution. The contributor remains responsible for reading
 the resulting diff and reporting how it was verified.
 
+### Authorship and responsibility
+
+The human who signs a commit is its author and is responsible for it. Models are
+tools: they are disclosed in the PR body, as described above, and they are not
+added as co-authors. Do not include `Co-Authored-By` lines for a model, and do
+not attribute a change to a product or an agent. Credit here follows
+accountability, and an agent cannot answer a review comment six months from now.
+
+Before opening a PR, read the whole diff yourself and run it. "The model says it
+works" is not a test result, and a change verified only by the same agent that
+wrote it has not been reviewed — it has been re-read by its author.
+
+The same rule applies to review and testing:
+
+- **Findings are welcome, verified or not** — open an issue describing what you
+  observed, with logs or steps. Say plainly if an agent found it and you have
+  not reproduced it. That is useful and honest.
+- **Fixes must be verified by you.** Explain what you ran and what you saw.
+- **A generated code review is not a review.** If you submit one, check each item
+  against the current code first and drop what does not hold. An unfiltered list
+  of possible problems moves the work of separating real from imaginary onto the
+  maintainer, and that is the opposite of a contribution.
+
 ## What not to include
 
 - Large refactors mixed with feature work.

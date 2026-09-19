@@ -68,7 +68,7 @@ members = [
 default-members = ["qbz-qt"]
 
 [workspace.package]
-version = "2.1.1"
+version = "2.1.2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/vicrodh/qbz"

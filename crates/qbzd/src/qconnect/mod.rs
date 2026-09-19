@@ -863,6 +863,7 @@ impl DaemonQconnectService {
             result = bootstrap_remote_presence(
                 &app,
                 custom_name.clone(),
+                volume_mode,
                 &self.authority,
                 stamp,
             ) => result,

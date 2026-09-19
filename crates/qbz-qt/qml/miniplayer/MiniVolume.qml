@@ -42,6 +42,7 @@ import "../theme"
 
 Rectangle {
     id: root
+    property bool lightForeground: false
 
     readonly property bool volLocked: (QbzPlayer.npVolumeLocked && !QbzPlayer.npIsRemote) || QbzPlayer.npRemoteVolumeLocked
     property int btn: 30
@@ -61,6 +62,7 @@ Rectangle {
     color: "transparent"
 
     TBtn {
+        lightForeground: root.lightForeground
         name: (QbzPlayer.npMuted || QbzPlayer.npVolume === 0) ? "volume-x" : "volume-2"
         iconSize: root.iconSize
         btn: root.btn

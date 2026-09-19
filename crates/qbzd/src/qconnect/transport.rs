@@ -205,6 +205,7 @@ pub fn resolve_qconnect_friendly_name(custom_name: Option<&str>) -> String {
 pub const AUDIO_QUALITY_MP3: i32 = 1;
 pub const AUDIO_QUALITY_HIRES_LEVEL2: i32 = 4;
 const VOLUME_REMOTE_CONTROL_ALLOWED: i32 = 2;
+const VOLUME_REMOTE_CONTROL_NOT_ALLOWED: i32 = 1;
 /// Renderer buffer-state wire value for OK/ready (mirrors the Tauri adapter).
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -339,6 +340,15 @@ pub fn default_qconnect_device_info() -> QconnectDeviceInfoPayload {
 pub fn default_qconnect_device_info_with_name(
     custom_name: Option<&str>,
 ) -> QconnectDeviceInfoPayload {
+    device_info_with_volume_mode(custom_name, super::engine::VolumeMode::Software)
+}
+
+/// Use the runtime's captured mode, including on reconnect. Reading the KV
+/// again here could advertise a different policy from the running engine.
+pub fn device_info_with_volume_mode(
+    custom_name: Option<&str>,
+    volume_mode: super::engine::VolumeMode,
+) -> QconnectDeviceInfoPayload {
     QconnectDeviceInfoPayload {
         device_uuid: Some(resolve_qconnect_device_uuid()),
         friendly_name: Some(resolve_qconnect_friendly_name(custom_name)),
@@ -349,7 +359,11 @@ pub fn default_qconnect_device_info_with_name(
         capabilities: Some(QconnectDeviceCapabilitiesPayload {
             min_audio_quality: Some(AUDIO_QUALITY_MP3),
             max_audio_quality: Some(AUDIO_QUALITY_HIRES_LEVEL2),
-            volume_remote_control: Some(VOLUME_REMOTE_CONTROL_ALLOWED),
+            volume_remote_control: Some(if volume_mode.applies_remote_volume() {
+                VOLUME_REMOTE_CONTROL_ALLOWED
+            } else {
+                VOLUME_REMOTE_CONTROL_NOT_ALLOWED
+            }),
         }),
         software_version: Some(resolve_qconnect_software_version()),
     }
@@ -673,6 +687,17 @@ pub fn decode_hex_channel(raw: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_advertisement_matches_captured_volume_mode() {
+        use super::super::engine::VolumeMode;
+        for (mode, expected) in [(VolumeMode::Locked, 1), (VolumeMode::Software, 2)] {
+            let info = device_info_with_volume_mode(Some("test-daemon"), mode);
+            let wire = serde_json::to_value(info).unwrap();
+            assert_eq!(wire["friendly_name"], "test-daemon");
+            assert_eq!(wire["capabilities"]["volume_remote_control"], expected);
+        }
+    }
 
     #[test]
     fn decode_hex_channel_pads_odd_length() {

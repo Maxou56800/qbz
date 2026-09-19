@@ -175,6 +175,17 @@ static QT_THREAD: OnceLock<CxxQtThread<QbzTray>> = OnceLock::new();
 
 unsafe extern "C" {
     fn qbz_install_lifecycle_filter(request: extern "C" fn(bool));
+    #[cfg(target_os = "macos")]
+    fn qbz_install_macos_reopen_handler(present: extern "C" fn());
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn present_from_dock() {
+    if crate::HARD_EXIT_ARMED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    log::info!("[macos] Dock/Finder reopen requested");
+    crate::tray_qt::present();
 }
 
 extern "C" fn request_lifecycle(quit: bool) {
@@ -204,6 +215,8 @@ impl qbz_tray::QbzTray {
         // SAFETY: boot runs on the GUI thread after QGuiApplication exists;
         // callback has static lifetime and queues all QML work.
         unsafe { qbz_install_lifecycle_filter(request_lifecycle) };
+        #[cfg(target_os = "macos")]
+        unsafe { qbz_install_macos_reopen_handler(present_from_dock) };
         // If `tray_qt::init` ran before this point its queued closure was
         // dropped on the floor -- `ui()` above is a no-op until the line
         // right here. Pick the work up now; we are already on the GUI thread.
@@ -222,15 +235,11 @@ impl qbz_tray::QbzTray {
     /// (`hideToTray` / `showFromTray`), so the macOS Dock-icon policy hangs
     /// here rather than growing a third visibility owner.
     ///
-    /// A live tray keeps hidden windows reachable, so hiding removes the Dock
-    /// icon. Showing always restores it. Minimizing does not call this method.
+    /// Hide the Dock only by opt-in, with a live menu-bar recovery path and
+    /// no miniplayer on screen. Showing always restores it.
     pub fn set_window_shown(self: Pin<&mut Self>, shown: bool) {
         crate::tray_qt::set_window_shown(shown);
-        if shown {
-            crate::tray_qt::set_mac_dock_hidden(false);
-        } else if *self.as_ref().tray_live() {
-            crate::tray_qt::set_mac_dock_hidden(true);
-        }
+        crate::tray_qt::refresh_mac_dock_policy(*self.as_ref().tray_live());
     }
 
     /// The close-choreography evidence line — see the declaration above. The

@@ -3861,6 +3861,9 @@ fn apply_interface_scale_preference() {
 
 // ============================ Shutdown guarantee ==========================
 
+static OUTPUT_RELEASE_TASK: std::sync::Mutex<Option<std::thread::JoinHandle<Result<(), String>>>> =
+    std::sync::Mutex::new(None);
+
 /// One-shot latch for [`arm_hard_exit_watchdog`].
 static HARD_EXIT_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -3920,6 +3923,14 @@ pub(crate) fn arm_hard_exit_watchdog(source: &'static str) {
             // see the header above.
             unsafe { libc::_exit(0) };
         });
+    // Send release at the first quit request, even if Qt never exits its loop.
+    // The terminal player fence also rejects late Connect/Cast continuations.
+    if let Some(runtime) = APP.get() {
+        let player = runtime.core().player();
+        player.begin_shutdown();
+        playback_qt::cancel_owner_playback_tasks();
+        *OUTPUT_RELEASE_TASK.lock().unwrap() = Some(std::thread::spawn(move || player.release_device()));
+    }
 }
 
 /// Is THIS process one of the internal, disposable child processes that
@@ -4298,11 +4309,11 @@ fn main() {
                     };
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(3),
-                        service.disconnect(),
+                        service.disconnect_for_shutdown(),
                     )
                     .await
                     {
-                        Ok(Ok(())) => true,
+                        Ok(Ok(can_persist_owner)) => can_persist_owner,
                         Ok(Err(error)) => {
                             log::warn!("[qbz-qt] QConnect shutdown failed: {error}");
                             false
@@ -4331,8 +4342,8 @@ fn main() {
             qconnect_owner_safe = qconnect_stopped;
             if !qconnect_stopped {
                 log::warn!(
-                    "[qbz-qt] QConnect shutdown did not finish within 3s; \
-                     skipping session persistence to avoid saving delegated state"
+                    "[qbz-qt] preserving the saved owner session after QConnect shutdown \
+                     (teardown incomplete or owner playback intentionally not restored)"
                 );
             }
             if !notification_withdrawn {
@@ -4345,6 +4356,14 @@ fn main() {
                     "[qbz-qt] cast shutdown did not finish within 2s; exiting anyway \
                      (a cast device may keep playing until it times out)"
                 );
+            }
+        }
+
+        if let Some(task) = OUTPUT_RELEASE_TASK.lock().unwrap().take() {
+            match task.join() {
+                Ok(Ok(())) => log::info!("[shutdown] output-device release acknowledged"),
+                Ok(Err(error)) => log::error!("[shutdown] output-device release failed: {error}"),
+                Err(_) => log::error!("[shutdown] output-device release task panicked"),
             }
         }
 

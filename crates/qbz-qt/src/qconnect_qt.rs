@@ -1200,8 +1200,9 @@ fn local_upcoming_matches_remote(
         .eq(main_upcoming_ids)
 }
 
-/// 1:1 port of the Tauri `build_qconnect_reorder_payload`. `from_index`/
-/// `to_index` index INTO the visible upcoming list. None when out of range,
+/// Reorder a visible upcoming occurrence into an insertion slot (0..=len).
+/// `from_index` identifies a row; `to_index` may be the slot after the last row.
+/// None when out of range,
 /// `Some({})` for a no-op, else the wire payload (moved id + insert_after anchor).
 fn build_reorder_payload(
     projection: &VisibleUpcomingProjection,
@@ -1209,10 +1210,10 @@ fn build_reorder_payload(
     to_index: usize,
 ) -> Option<Value> {
     let len = projection.upcoming_qids.len();
-    if from_index >= len || to_index >= len {
+    if from_index >= len || to_index > len {
         return None;
     }
-    if from_index == to_index {
+    if from_index == to_index || from_index + 1 == to_index {
         return Some(json!({}));
     }
 
@@ -2641,6 +2642,12 @@ impl QtQconnectService {
 
     pub async fn disconnect(&self) -> Result<(), String> {
         self.disconnect_safely().await.map(|_| ())
+    }
+
+    /// Process exit restores ownership bookkeeping, never audible playback.
+    pub async fn disconnect_for_shutdown(&self) -> Result<bool, String> {
+        self.disconnect_with_owner_policy(false).await?;
+        Ok(!self.delegation_host.shutdown_restored_queue_only())
     }
 
     pub async fn disconnect_safely(&self) -> Result<QconnectDisconnectOutcome, String> {
@@ -4198,11 +4205,14 @@ impl QtQconnectService {
         if len == 0 {
             return Ok(true);
         }
-        // Clamp into the projection's [0, len) index space (the core path may pass
-        // to_q == len for an append-to-end slot).
-        let from_index = from_q.min(len - 1);
-        let to_index = to_q.min(len - 1);
-        if from_index == to_index {
+        // The destination is an insertion slot, including len (append).
+        // Reject stale coordinates rather than moving a different occurrence.
+        if from_q >= len || to_q > len {
+            return Ok(true);
+        }
+        let from_index = from_q;
+        let to_index = to_q;
+        if from_index == to_index || from_index + 1 == to_index {
             return Ok(true);
         }
 
@@ -5201,6 +5211,24 @@ mod tests {
         ensure_session_renderer_state, QConnectQueueState, QConnectRendererState,
         QconnectRemoteSyncState,
     };
+
+    #[test]
+    fn reorder_uses_insertion_slots_including_the_end() {
+        let projection = super::VisibleUpcomingProjection {
+            current_track_qid: Some(10),
+            upcoming_qids: vec![11, 12, 13],
+        };
+        for (from, slot, anchor) in [(0, 3, 13), (1, 3, 13), (2, 0, 10), (2, 1, 11), (0, 2, 12)] {
+            let payload = super::build_reorder_payload(&projection, from, slot).unwrap();
+            assert_eq!(payload["insert_after"], anchor);
+            assert_eq!(payload["queue_item_ids"], serde_json::json!([projection.upcoming_qids[from]]));
+        }
+        for (from, slot) in [(0, 0), (0, 1), (2, 3)] {
+            assert_eq!(super::build_reorder_payload(&projection, from, slot), Some(serde_json::json!({})));
+        }
+        assert!(super::build_reorder_payload(&projection, 3, 3).is_none());
+        assert!(super::build_reorder_payload(&projection, 0, 4).is_none());
+    }
 
     #[test]
     fn peer_volume_controls_follow_capability_and_wait_for_a_reported_level() {

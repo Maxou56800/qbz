@@ -105,9 +105,15 @@ pub mod qbz_about_bridge {
         fn whats_new_open(self: Pin<&mut QbzAbout>);
 
         /// All What's New dismissal paths (Escape, the X, the backdrop, the
-        /// footer Close button).
+        /// footer Close button). Dismissing marks this version's deck as seen.
         #[qinvokable]
         fn whats_new_close(self: Pin<&mut QbzAbout>);
+
+        /// Offer the release deck once per version, from the shell's first
+        /// settled frame. No-op when the version has no deck or its deck was
+        /// already dismissed, so it is safe to call on every start.
+        #[qinvokable]
+        fn whats_new_auto_open(self: Pin<&mut QbzAbout>);
     }
 
     impl cxx_qt::Threading for QbzAbout {}
@@ -179,6 +185,11 @@ impl qbz_about_bridge::QbzAbout {
     pub fn whats_new_close(self: Pin<&mut Self>) {
         self.register_thread();
         crate::whats_new_qt::close();
+    }
+
+    pub fn whats_new_auto_open(self: Pin<&mut Self>) {
+        self.register_thread();
+        crate::whats_new_qt::auto_open_if_new();
     }
 }
 

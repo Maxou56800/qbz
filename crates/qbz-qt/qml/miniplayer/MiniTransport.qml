@@ -20,6 +20,7 @@ import com.blitzfc.qbz
 
 Row {
     id: root
+    property bool lightForeground: false
 
     property int btn: 30
     property int icShuffle: 16
@@ -35,6 +36,7 @@ Row {
     spacing: root.gap
 
     TBtn {
+        lightForeground: root.lightForeground
         name: "shuffle"
         iconSize: root.icShuffle
         btn: root.btn
@@ -43,6 +45,7 @@ Row {
         onClicked: QbzPlayer.toggleShuffle()
     }
     TBtn {
+        lightForeground: root.lightForeground
         name: "skip-back"
         iconSize: root.icSkip
         btn: root.btn
@@ -50,6 +53,7 @@ Row {
         onClicked: QbzPlayer.previous()
     }
     TBtn {
+        lightForeground: root.lightForeground
         name: QbzPlayer.npPlaying ? "pause" : "play-fill"
         iconSize: root.icPlay
         btn: root.btn
@@ -57,6 +61,7 @@ Row {
         onClicked: QbzPlayer.togglePlay()
     }
     TBtn {
+        lightForeground: root.lightForeground
         name: "skip-forward"
         iconSize: root.icSkip
         btn: root.btn
@@ -64,6 +69,7 @@ Row {
         onClicked: QbzPlayer.next()
     }
     TBtn {
+        lightForeground: root.lightForeground
         // 0 off · 1 all · 2 one (src/player_bridge.rs:52).
         name: QbzPlayer.npRepeatMode === 2 ? "repeat-1" : "repeat"
         iconSize: root.icShuffle
