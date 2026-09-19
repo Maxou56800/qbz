@@ -594,6 +594,32 @@ pub fn service() -> Option<Arc<QtQconnectService>> {
     SERVICE.get().cloned()
 }
 
+/// Settings -> Network's "Block Qobuz Connect on the local network" should
+/// take effect immediately, not just on the next `connect()`: tear down an
+/// already-bound mDNS registration / local HTTP receiver right away.
+/// `stop_lan` only touches `self.lan`/`self.lan_lifecycle`/the delegation
+/// projection — the owner cloud (WS) session, if any, is left running
+/// untouched.
+pub(crate) fn stop_lan_if_running() {
+    let Some(svc) = service() else { return };
+    crate::spawn(async move {
+        if let Err(e) = svc.stop_lan().await {
+            log::warn!("[qbz-qt] failed to stop QConnect LAN after enabling the block: {e}");
+        }
+    });
+}
+
+/// Whether an owner Qobuz Connect session is currently up. Used by Settings
+/// -> Network to warn that turning "Block Qobuz Connect on the local
+/// network" back off, unlike turning it on, does not itself restart the LAN
+/// receiver on an already-connected session (`start_lan` only ever runs as
+/// part of `connect()`).
+pub(crate) fn is_connected() -> bool {
+    service()
+        .map(|svc| lock_inner(&svc.inner).lifecycle_state == QconnectLifecycleState::Connected)
+        .unwrap_or(false)
+}
+
 /// Startup auto-connect (Settings > Playback, "Auto-connect Qobuz Connect on
 /// startup"). Ports the Tauri `startup.rs::maybe_auto_connect_after_bootstrap`
 /// + its bounded retry schedule (gap #8): decide from the persisted mode (and,
@@ -1630,6 +1656,16 @@ impl QtQconnectService {
             .unwrap_or(false);
         drop(lan);
         if installed {
+            // The receiver is confirmed up: Settings -> Network's "reconnect
+            // to fully apply this" warning (if showing) no longer applies.
+            // `commit_if_current`'s closure above is sync and cannot await a
+            // snapshot republish itself, so the clear + push both happen
+            // here instead, in the same order a settings toggle gets it
+            // (mutate, then `publish_snapshot`) — otherwise QML never learns
+            // the flag changed until some unrelated republish happens to
+            // fire.
+            crate::settings_qt::network::clear_qconnect_lan_reconnect_recommended();
+            crate::settings_qt::publish_snapshot().await;
             return Ok(());
         }
 

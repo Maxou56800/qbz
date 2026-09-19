@@ -62,6 +62,14 @@ pub struct Snapshot {
     /// comment for why this can't just apply itself live.
     #[serde(rename = "restartRecommended")]
     pub restart_recommended: bool,
+    /// "Block Qobuz Connect on the local network" was turned off while an
+    /// active Qobuz Connect session was already running. Turning the block
+    /// off has no live effect (unlike turning it on, which tears the LAN
+    /// receiver down immediately) — the existing session must be
+    /// disconnected and reconnected, or QBZ restarted, before local-network
+    /// discovery actually comes back. Also process-lifetime only.
+    #[serde(rename = "qconnectLanReconnectRecommended")]
+    pub qconnect_lan_reconnect_recommended: bool,
 }
 
 #[derive(Clone, Default)]
@@ -70,6 +78,7 @@ struct TestState {
     result_kind: String,
     result_detail: String,
     restart_recommended: bool,
+    qconnect_lan_reconnect_recommended: bool,
 }
 
 static TEST_STATE: std::sync::Mutex<TestState> = std::sync::Mutex::new(TestState {
@@ -77,6 +86,7 @@ static TEST_STATE: std::sync::Mutex<TestState> = std::sync::Mutex::new(TestState
     result_kind: String::new(),
     result_detail: String::new(),
     restart_recommended: false,
+    qconnect_lan_reconnect_recommended: false,
 });
 
 /// Translate a raw `qbz_net_proxy::test` failure into something a user can
@@ -184,6 +194,7 @@ pub fn snapshot() -> Snapshot {
         test_result_kind: test.result_kind,
         test_result_detail: test.result_detail,
         restart_recommended: test.restart_recommended,
+        qconnect_lan_reconnect_recommended: test.qconnect_lan_reconnect_recommended,
     }
 }
 
@@ -210,7 +221,39 @@ fn mark_restart_recommended() {
 }
 
 pub fn set_block_qconnect_lan(value: bool) -> Result<(), String> {
-    super::network().set_block_qconnect_lan(value)
+    super::network().set_block_qconnect_lan(value)?;
+    if value {
+        // Take effect now, not just on the next connect(): an already-bound
+        // mDNS registration / local HTTP receiver must not linger just
+        // because nobody disconnected and reconnected Qobuz Connect. This
+        // fully resolves the flag below for a session already caught by it,
+        // since the block is enforced immediately in this direction.
+        crate::qconnect_qt::stop_lan_if_running();
+        clear_qconnect_lan_reconnect_recommended();
+    } else if crate::qconnect_qt::is_connected() {
+        // Unlike enabling it, turning the block off has no live effect: LAN
+        // only (re)starts from `start_lan`, which only runs as part of
+        // `connect()`. An already-running session needs a disconnect/
+        // reconnect (or a restart) before local-network discovery actually
+        // comes back. Cleared by `clear_qconnect_lan_reconnect_recommended`
+        // once `start_lan` actually confirms the receiver is back up.
+        TEST_STATE
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .qconnect_lan_reconnect_recommended = true;
+    }
+    Ok(())
+}
+
+/// The LAN receiver just confirmed it's up (a fresh `connect()` reached
+/// `start_lan`'s success path) — any earlier "reconnect to fully apply this"
+/// warning is now stale, whether it clears because the block was flipped
+/// back on or because the user actually reconnected as asked.
+pub(crate) fn clear_qconnect_lan_reconnect_recommended() {
+    TEST_STATE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .qconnect_lan_reconnect_recommended = false;
 }
 
 pub fn set_block_cast(value: bool) -> Result<(), String> {

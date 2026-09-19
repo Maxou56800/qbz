@@ -252,6 +252,18 @@ Column {
             onToggled: function (v) { QbzBridge.settingsBool("network-block-qconnect-lan", v) }
         }
     }
+    // Turning the block ON takes effect immediately (the LAN receiver is torn
+    // down right away). Turning it back OFF does not: unlike enabling it,
+    // there is no live restart — only the next connect() re-arms the LAN
+    // receiver. Its own flag/banner, deliberately not sharing the PROXY
+    // section's restartRecommended: different cause, different fix, and
+    // showing both at once (proxy + this) must not be read as one issue.
+    WarningBanner {
+        visible: root.net.qconnectLanReconnectRecommended === true
+        variant: "warning"
+        title: QbzSession.tr("Reconnect or restart to fully turn this back on", QbzSession.trRev)
+        body: QbzSession.tr("Qobuz Connect is already running on this device. Disconnect and reconnect it, or restart QBZ, so local-network discovery starts again.", QbzSession.trRev)
+    }
     SettingRow { kioskHost: root.kioskHost;
         label: QbzSession.tr("Block casting", QbzSession.trRev)
         description: QbzSession.tr("Stop Chromecast/DLNA discovery and the local cast media server.", QbzSession.trRev)

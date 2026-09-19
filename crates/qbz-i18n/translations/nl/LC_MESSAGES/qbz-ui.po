@@ -7827,6 +7827,14 @@ msgid "Stop mDNS advertisement and the local Connect receiver, so nothing reache
 msgstr "Schakelt de mDNS-aankondiging en de lokale Connect-ontvanger uit, zodat niets buiten de proxy om andere apparaten op dit netwerk bereikt."
 
 #: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Reconnect or restart to fully turn this back on"
+msgstr "Maak opnieuw verbinding of start opnieuw op om dit volledig te heractiveren"
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
+msgid "Qobuz Connect is already running on this device. Disconnect and reconnect it, or restart QBZ, so local-network discovery starts again."
+msgstr "Qobuz Connect draait al op dit apparaat. Verbreek de verbinding en maak deze opnieuw, of start QBZ opnieuw, zodat detectie op het lokale netwerk weer begint."
+
+#: crates/qbz-qt/qml/settings/NetworkSettings.qml
 msgid "Block casting"
 msgstr "Casten blokkeren"
 
